@@ -1,7 +1,7 @@
 {
   "name": "xplorer2-modern",
   "productName": "Xplorer2 Modern",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A modern, keyboard-first dual-pane file manager for Windows, macOS and Linux — tabs, folder tree, preview pane, scrap panes, search, duplicates, compare/sync and more.",
   "main": "electron/main.js",
   "homepage": "https://github.com/vikramdex-ops/Xplorer2",
@@ -38,7 +38,15 @@
     "appId": "com.vikramdex.xplorer2",
     "productName": "Xplorer2 Modern",
     "copyright": "Copyright © 2026 Vikram",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Xplorer2-Modern-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vikramdex-ops",
+        "repo": "Xplorer2",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -55,9 +63,20 @@
     },
     "win": {
       "icon": "build/icon.ico",
+      "verifyUpdateCodeSignature": false,
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -67,20 +86,40 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Xplorer2 Modern",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true,
+      "include": "build/installer.nsh"
     },
     "mac": {
       "icon": "build/icon.png",
       "category": "public.app-category.utilities",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
       "icon": "build/icon.png",
       "category": "Utility",
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

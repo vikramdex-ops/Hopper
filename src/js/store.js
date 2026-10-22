@@ -53,6 +53,7 @@ export const defaults = () => ({
   checkboxSelection: false,
   confirmDelete: true,
   confirmOverwrite: true,
+  autoUpdate: true,   // silent background update checks + downloads
   personalRules: []   // color rules
 });
 export function pref(k, v) {

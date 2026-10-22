@@ -20,3 +20,6 @@ desktop.ini
 
 # tool metadata
 .freebuff/
+
+# session scratch (debug scripts created during investigation)
+tools/dbg-*.mjs

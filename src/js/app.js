@@ -931,6 +931,12 @@ class App {
         for (const p of [this.paneL, this.paneR]) { p.view.viewMode = cm; p.view.buildHead(); await p.refresh(); }
         break;
       }
+      case 'themeToggle': {
+        const next = pref('theme') === 'light' ? 'dark' : 'light';
+        pref('theme', next);
+        this.toast(next === 'light' ? 'Light theme' : 'Dark theme', 'ok', 1600);
+        break;
+      }
       case 'toggleTree': {
         const on = !pref('showTree');
         pref('showTree', on);
@@ -1409,12 +1415,49 @@ function mkArchiveEntry(e, apath) {
     path: apath + '::/' + e.name, isDir: e.isDir, size: e.size, mtimeMs: 0, ctimeMs: 0, atimeMs: 0, entry: e, nameFull: e.name };
 }
 
+// Update-lifecycle toasts — driven by main's silent updater events.
+let updBucket = -1, updVersion = '';
+function updateToasts(app, m) {
+  if (!m || !m.state) return;
+  switch (m.state) {
+    case 'checking':
+      if (m.manual) app.toast('Checking for updates…', '', 2500);
+      break;
+    case 'available':
+      updBucket = -1;
+      updVersion = m.version || '';
+      app.toast(`Update ${updVersion} available — downloading in the background`, 'ok', 4000);
+      break;
+    case 'downloading': {
+      const p = Math.max(0, Math.min(100, Number(m.percent) || 0));
+      const bucket = Math.floor(p / 25);
+      if (bucket > updBucket) { updBucket = bucket; app.toast(`Downloading update… ${p}%`, '', 1800); }
+      break;
+    }
+    case 'ready':
+      window.__x2UpdateReady = m.version || true;
+      app.toast(`Update ${m.version || ''} is ready — it installs when you quit the app`, 'ok', 6000);
+      break;
+    case 'not-available':
+      if (m.manual) app.toast(`You already have the latest version (${m.current})`, 'ok', 3000);
+      break;
+    case 'error':
+      if (m.manual) app.toast('Update check failed: ' + (m.message || 'network error'), 'err', 5000);
+      break;
+  }
+}
+
 async function boot() {
   const app = new App();
   window.app = app;
   window.addEventListener('unhandledrejection', e => console.error('[x2m unhandled]', e.reason?.stack || e.reason));
   window.addEventListener('error', e => console.error('[x2m window err]', e.message, e.filename, e.lineno));
   try { await app.boot(); console.log('[x2m] booted'); } catch (err) { console.error('[x2m] boot failed', err?.stack || err); }
+  // main-process pushes: external folder opens (folder verbs) + update lifecycle
+  try {
+    window.x2.onOpenPath(p => { try { app.nav(app.active, p); } catch (e) { console.warn('[x2m] openPath', e); } });
+    window.x2.onUpdate(m => updateToasts(app, m));
+  } catch (e) { console.warn('[x2m] event wiring', e); }
 }
 boot();
 

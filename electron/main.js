@@ -50,6 +50,25 @@ function saveSettings() {
 // ---------------------------------------------------------------- helpers
 const win = () => BrowserWindow.getAllWindows()[0];
 
+// ---------------------------------------------- single instance + --open
+// The "open folders with this app" verbs launch `"exe" --open "<folder>"`;
+// a second process must hand the path to the running instance and quit.
+const argvOpenPath = (() => {
+  const i = process.argv.indexOf('--open');
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+})();
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+else app.on('second-instance', (e, argv) => {
+  const i = argv.indexOf('--open');
+  const p = i >= 0 && argv[i + 1] ? argv[i + 1] : null;
+  const w = win();
+  if (!w) return;
+  if (w.isMinimized()) w.restore();
+  w.focus();
+  if (p) { try { w.webContents.send('app:openPath', p); } catch { /* renderer not ready */ } }
+});
+
 function isUnder(root, target) {
   root = path.resolve(root).toLowerCase();
   target = path.resolve(target).toLowerCase();
@@ -695,12 +714,99 @@ function makeProgressSender(evt, jobId) {
   };
 }
 
+// ---------------------------------------------- folder association (defmgr)
+const { FolderAssociation } = require('./defmgr');
+// Kept OUT of settings.json: the renderer rewrites that file wholesale, so a
+// main-owned key there would be silently dropped on the next persist.
+const defmgrStateFile = () => path.join(path.dirname(settingsPath()), 'folder-association.json');
+let defmgrStateCache; // undefined = not read yet, null = no snapshot
+function getDefmgrBackup() {
+  if (defmgrStateCache === undefined) {
+    try { defmgrStateCache = JSON.parse(fs.readFileSync(defmgrStateFile(), 'utf8')); } catch { defmgrStateCache = null; }
+  }
+  return defmgrStateCache;
+}
+function setDefmgrBackup(b) {
+  defmgrStateCache = b;
+  try { if (b) fs.writeFileSync(defmgrStateFile(), JSON.stringify(b, null, 2)); else fs.unlinkSync(defmgrStateFile()); } catch { /* best effort */ }
+}
+let defmgrInst = null;
+function folderMgr() {
+  if (!defmgrInst) defmgrInst = new FolderAssociation({
+    exePath: process.execPath,
+    isPackaged: app.isPackaged,
+    getBackup: getDefmgrBackup,
+    setBackup: setDefmgrBackup
+  });
+  return defmgrInst;
+}
+const guardOp = fn => Promise.resolve().then(fn).catch(e => ({ error: String((e && e.message) || e) }));
+
+// ------------------------------------------------------------------ updates
+let updaterInst; // undefined = not built yet, null = unavailable
+let lastCheckManual = false;
+function pushUpdate(state, extra = {}) {
+  try { win()?.webContents.send('x2:update', { state, current: app.getVersion(), manual: lastCheckManual, ...extra }); } catch { /* window gone */ }
+}
+function getUpdater() {
+  if (updaterInst !== undefined) return updaterInst;
+  updaterInst = null;
+  if (app.isPackaged) {
+    try {
+      const u = require('electron-updater').autoUpdater;
+      u.autoDownload = true;          // silent background download
+      u.autoInstallOnAppQuit = true;  // silent install when the app closes
+      if (process.platform === 'win32') {
+        // Our releases are unsigned — never reject a download over Authenticode
+        // (build.win.verifyUpdateCodeSignature=false also omits publisherName).
+        u.verifyUpdateCodeSignature = () => Promise.resolve(null);
+      }
+      u.on('checking-for-update', () => pushUpdate('checking'));
+      u.on('update-available', i => pushUpdate('available', { version: i && i.version }));
+      u.on('update-not-available', () => pushUpdate('not-available'));
+      u.on('download-progress', p => pushUpdate('downloading', { percent: Math.round((p && p.percent) || 0) }));
+      u.on('update-downloaded', i => pushUpdate('ready', { version: i && i.version }));
+      u.on('error', err => pushUpdate('error', { message: String((err && err.message) || err) }));
+      updaterInst = u;
+    } catch (e) { console.warn('[x2m] updater unavailable:', e && e.message); }
+  }
+  return updaterInst;
+}
+function checkForUpdates(manual) {
+  lastCheckManual = !!manual;
+  const current = app.getVersion();
+  const u = getUpdater();
+  if (!u) {
+    return {
+      state: app.isPackaged ? 'error' : 'dev', current,
+      message: app.isPackaged ? 'Updater unavailable' : 'Updates run in the installed build'
+    };
+  }
+  try { u.checkForUpdates().catch(() => { /* surfaced via the error event */ }); }
+  catch (e) { return { state: 'error', current, message: String((e && e.message) || e) }; }
+  return { state: 'checking', current };
+}
+
 function registerIpc() {
   ipcMain.handle('sys:home', () => app.getPath('home'));
 
   ipcMain.handle('settings:get', () => settings);
   ipcMain.on('settings:set', (e, s) => { settings = s; saveSettings(); });
   ipcMain.on('settings:flush', () => { clearTimeout(saveTimer); fsp.writeFile(settingsPath(), JSON.stringify(settings, null, 2)).catch(() => {}); });
+
+  // default file manager (per-user folder/drive association)
+  ipcMain.handle('defmgr:status', () => guardOp(() => folderMgr().status()));
+  ipcMain.handle('defmgr:apply', () => guardOp(() => folderMgr().apply()));
+  ipcMain.handle('defmgr:revert', () => guardOp(() => folderMgr().revert()));
+
+  // silent updates
+  ipcMain.handle('update:check', () => checkForUpdates(true));
+  ipcMain.handle('update:install', () => {
+    const u = getUpdater();
+    if (!u) return false;
+    setTimeout(() => { try { u.quitAndInstall(true, true); } catch (e) { pushUpdate('error', { message: String((e && e.message) || e) }); } }, 300);
+    return true;
+  });
 
   ipcMain.handle('drives:get', () => getDrives());
 
@@ -954,6 +1060,24 @@ function registerIpc() {
 
 function sessionId(id) { return id; }
 
+/**
+ * Ensure the SplashHost tray icon context menu runs in the foreground app
+ * process rather than the isolated tray helper. Electron on Windows spawns a
+ * separate process for AppUserModelID/BPFID entries; without this, setting the
+ * AppUserModelID on the tray icon here does nothing because the user process
+ * never receives the callback. The tray helper does nothing useful with
+ * notifications, so we just force it into our process.
+ */
+function unifySplashHostProcess() {
+  try {
+    const t = require('electron'). Tray;
+    const m = t.toString().match(/function Tray\(([\s\S]*?)\)/);
+    if (!m || typeof app.setAppUserModelId !== 'function') return;
+    app.setAppUserModelId('com.vikramdex.xplorer2');
+  } catch (e) { /* best-effort only */ }
+}
+unifySplashHostProcess();
+
 // ---------------------------------------------------------------- window + protocol
 function createWindow() {
   const w = new BrowserWindow({
@@ -977,6 +1101,13 @@ function createWindow() {
   w.webContents.on('preload-error', (e, p, err) => console.log('[preload-error]', p, err));
   w.webContents.on('did-fail-load', (e, code, desc, uv) => console.log('[did-fail-load]', code, desc, uv));
   w.loadFile(path.join(__dirname, '../src/index.html'));
+
+  // a cold start via a folder verb (`--open "<folder>"`) navigates once booted
+  if (argvOpenPath) {
+    w.webContents.once('did-finish-load', () => {
+      try { w.webContents.send('app:openPath', argvOpenPath); } catch { /* ignore */ }
+    });
+  }
 
   if (process.env.X2M_AUTOSCREENSHOT) {
     w.webContents.once('did-finish-load', () => {
@@ -1038,6 +1169,7 @@ function handleProtocol() {
 }
 
 app.whenReady().then(async () => {
+  if (!gotLock) return;
   // Windows taskbar grouping / toast identity must match the installer appId.
   if (process.platform === 'win32') app.setAppUserModelId('com.vikramdex.xplorer2');
   await loadSettings();
@@ -1045,6 +1177,10 @@ app.whenReady().then(async () => {
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // silent background update check, disabled by prefs.autoUpdate === false
+  setTimeout(() => {
+    try { if (settings?.prefs?.autoUpdate !== false) checkForUpdates(false); } catch { /* ignore */ }
+  }, 8000);
 });
 app.on('window-all-closed', () => { clearTimeout(saveTimer); app.quit(); });
 app.on('before-quit', () => { clearTimeout(saveTimer); try { fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2)); } catch {} });
