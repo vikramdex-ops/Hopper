@@ -582,6 +582,56 @@ step('archive + misc IPC surface intact', `
   return missing.length === 0 ? true : 'missing=' + missing.join(',');
 `);
 
+step('light/dark theme toggle flips, persists, and restores', `
+  const before = document.documentElement.dataset.theme;
+  window.app.runCmd('themeToggle');
+  await new Promise(r => setTimeout(r, 600));
+  const after = document.documentElement.dataset.theme;
+  if (after === before) return 'theme unchanged: ' + after;
+  const saved = await window.x2.getSettings();
+  const persisted = saved?.prefs?.theme === after;
+  window.app.runCmd('themeToggle');
+  await new Promise(r => setTimeout(r, 300));
+  const back = document.documentElement.dataset.theme === before;
+  const btn = document.querySelector('#ribbon [data-cmd="themeToggle"]');
+  if (!btn || !btn.querySelector('svg.i')) return 'theme button or icon missing';
+  return (persisted && back) ? true : 'persisted=' + persisted + ' pref=' + JSON.stringify(saved?.prefs?.theme) + ' after=' + after + ' back=' + back;
+`);
+
+step('settings: default-manager + update sections render', `
+  window.app.runCmd('settings');
+  await new Promise(r => setTimeout(r, 500));
+  const d = document.querySelector('#overlay .dlg');
+  if (!d || d.offsetParent === null) return 'settings dialog did not open';
+  const state = d.querySelector('#st-dm-state');
+  const apply = d.querySelector('#st-dm-apply');
+  const revert = d.querySelector('#st-dm-revert');
+  const auto = d.querySelector('#st-autoupd');
+  const checkBtn = d.querySelector('#st-upd-check');
+  if (!state || !apply || !revert || !auto || !checkBtn) return 'section elements missing';
+  for (let i = 0; i < 20 && /Checking/.test(state.textContent); i++) await new Promise(r => setTimeout(r, 150));
+  const txt = state.textContent;
+  const devDisabled = apply.disabled;   // dev runs must not offer registration
+  const autoWasChecked = auto.checked;  // defaults to on (the disable setting)
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise(r => setTimeout(r, 250));
+  const stuck = !document.querySelector('#overlay').classList.contains('hidden');
+  const okText = /dev run|installed build|Windows-only|Active/i.test(txt);
+  return (!stuck && devDisabled && autoWasChecked && okText)
+    ? true : 'stuck=' + stuck + ' disabled=' + devDisabled + ' auto=' + autoWasChecked + ' txt=' + txt;
+`);
+
+step('update + defmgr IPC channels answer', `
+  const up = await window.x2.updateCheck().catch(e => ({ error: String(e) }));
+  if (!up || up.error) return 'updateCheck failed: ' + JSON.stringify(up);
+  const st = await window.x2.defmgrStatus().catch(e => ({ error: String(e) }));
+  if (!st || st.error) return 'defmgrStatus failed: ' + JSON.stringify(st);
+  if (typeof window.x2.onUpdate !== 'function' || typeof window.x2.onOpenPath !== 'function') return 'event subscriptions missing';
+  const upOk = up.state === 'dev' && /installed build/i.test(up.message || '');
+  const stOk = st.supported === true && typeof st.packaged === 'boolean' && typeof st.state === 'string';
+  return (upOk && stOk) ? true : 'up=' + JSON.stringify(up) + ' st=' + JSON.stringify(st);
+`);
+
 step('no page exceptions or console errors so far', `
   return true;
 `);

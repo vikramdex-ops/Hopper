@@ -706,6 +706,20 @@ export async function settingsDialog(app) {
     <div class="field" style="flex:1"><label>Default columns (comma-sep: name,size,type,mtimeMs,ctimeMs,attr,dim)</label><input id="st-cols" class="chr-input" value="${prefs.columns?.join(',') || 'name,size,type,mtimeMs'}"></div>
     <div class="rrow">${['Confirm before delete', 'Sticky selection', 'Checkbox selection', 'Mirror browse'].map((v, i) => `<label class="chr-check"><input type="checkbox" id="st-${ ['confirm','sticky','ckb','mirror'][i] }"> ${v}</label>`).join('')}</div>
     <div class="field" style="flex:3"><label>ZIP handling</label><select id="st-zip" class="chr-input"><option value="browse">Browse into archive</option><option value="open">Open with system tool</option></select></div>
+    <div class="field" style="flex-direction:column;gap:6px">
+      <label>Default file manager (Windows, per-user)</label>
+      <div class="dm-state" id="st-dm-state">Checking registration…</div>
+      <div class="rrow">
+        <button class="chr-btn primary" id="st-dm-apply">Open folders in this app</button>
+        <button class="chr-btn" id="st-dm-revert">Restore Windows default</button>
+      </div>
+      <div class="dm-note">Registers folders and drives under your user account only — no admin rights. Explorer keeps Win+E, the file dialogs and special folders (This PC, Recycle Bin). The previous default is snapshotted first, so "Restore Windows default" puts it back exactly; values changed later by you or another app are never overwritten, and unregistering runs automatically at uninstall.</div>
+    </div>
+    <div class="rrow" style="align-items:center">
+      <label class="chr-check" style="flex:1"><input type="checkbox" id="st-autoupd"> Check for &amp; download updates automatically</label>
+      <button class="chr-btn" id="st-upd-check">Check now</button>
+      <span id="st-upd-state" class="upd-state"></span>
+    </div>
     <div class="rrow" style="flex-direction:column;gap:4px">
       <button class="chr-btn" id="st-portable">Portable mode: ${app.portable ? 'ON (settings beside exe)' : 'off (enable)'}</button>
       <button class="chr-btn" id="st-keys">Keyboard shortcuts…</button>
@@ -721,6 +735,7 @@ export async function settingsDialog(app) {
     prefs.checkboxSelection = $('#st-ckb', d.el).checked;
     prefs.mirrorBrowse = $('#st-mirror', d.el).checked;
     prefs.zipMode = $('#st-zip', d.el).value;
+    prefs.autoUpdate = $('#st-autoupd', d.el).checked;
     Object.entries(prefs).forEach(([k, v]) => pref(k, v));
     d._close();
     app.reloadTheme();
@@ -733,6 +748,47 @@ export async function settingsDialog(app) {
   };
   $('#st-openflag', d.el).onclick = () => window.x2.openSettingsFolder();
   $('#st-keys', d.el).onclick = () => app.showShortcuts();
+
+  // ---------------- default file manager (per-user folder registration)
+  const dmState = $('#st-dm-state', d.el);
+  const dmApply = $('#st-dm-apply', d.el);
+  const dmRevert = $('#st-dm-revert', d.el);
+  const renderDm = (st) => {
+    if (!st) { dmState.textContent = 'Status unavailable'; return; }
+    if (st.error) { dmState.textContent = st.error; dmApply.disabled = dmRevert.disabled = true; return; }
+    if (!st.supported) { dmState.textContent = 'Folder registration is Windows-only'; dmApply.disabled = dmRevert.disabled = true; return; }
+    if (!st.packaged) { dmState.textContent = 'Available in the installed build (this is a dev run)'; dmApply.disabled = dmRevert.disabled = true; return; }
+    const p = st.parts || {};
+    dmState.textContent = st.state === 'set'
+      ? `Active — folders ${p.directory ? 'on' : 'off'}, drives ${p.drive ? 'on' : 'off'}, background menu ${p.background ? 'on' : 'off'}`
+      : (st.label || 'Not registered');
+    dmApply.disabled = st.state === 'set';
+    dmRevert.disabled = !(st.state === 'set' || st.backup);
+  };
+  window.x2.defmgrStatus().then(renderDm).catch(e => renderDm({ error: String((e && e.message) || e) }));
+  dmApply.onclick = async () => {
+    dmApply.disabled = true;
+    const st = await window.x2.defmgrApply();
+    renderDm(st);
+    if (st?.error) app.toast(st.error, 'err');
+    else app.toast('Folders and drives now open in Xplorer² Modern', 'ok');
+  };
+  dmRevert.onclick = async () => {
+    dmRevert.disabled = true;
+    const st = await window.x2.defmgrRevert();
+    renderDm(st);
+    if (st?.error) app.toast(st.error, 'err');
+    else app.toast(st?.skipped?.length ? 'Reverted — values changed by another app were left alone' : 'Windows default restored', 'ok');
+  };
+
+  // ---------------- updates
+  $('#st-autoupd', d.el).checked = prefs.autoUpdate !== false;
+  $('#st-upd-check', d.el).onclick = async () => {
+    try {
+      const r = await window.x2.updateCheck();
+      $('#st-upd-state', d.el).textContent = r?.state === 'checking' ? 'checking…' : (r?.message || '');
+    } catch (e) { $('#st-upd-state', d.el).textContent = String((e && e.message) || e); }
+  };
 }
 
 // -------------------------------------------------------- folder stats (pie)

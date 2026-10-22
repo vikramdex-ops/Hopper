@@ -5,6 +5,22 @@ const { contextBridge, ipcRenderer } = require('electron');
 let transferCount = 0;
 const listeners = new Set();
 
+// Buffered push events: main may send before the renderer attached handlers
+// (startup --open launches, update checks that finish early).
+const updateSet = new Set(), updateBuf = [];
+const openSet = new Set(), openBuf = [];
+function sub(set, buf, fn) {
+  set.add(fn);
+  for (const m of buf.splice(0)) { try { fn(m); } catch { /* listener error */ } }
+  return () => set.delete(fn);
+}
+function dispatch(set, buf, msg) {
+  if (!set.size) { buf.push(msg); if (buf.length > 24) buf.shift(); return; }
+  for (const l of set) { try { l(msg); } catch { /* listener error must not kill the bridge */ } }
+}
+ipcRenderer.on('x2:update', (e, m) => dispatch(updateSet, updateBuf, m));
+ipcRenderer.on('app:openPath', (e, p) => dispatch(openSet, openBuf, p));
+
 contextBridge.exposeInMainWorld('x2', {
   // settings
   home: () => ipcRenderer.invoke('sys:home'),
@@ -55,6 +71,17 @@ contextBridge.exposeInMainWorld('x2', {
   msgBox: (opts) => ipcRenderer.invoke('dialog:msg', opts),
   drives: () => ipcRenderer.invoke('drives:get'),
   openDev: () => ipcRenderer.invoke('sys:openDev'),
+
+  // default file manager (per-user folder/drive association, Windows)
+  defmgrStatus: () => ipcRenderer.invoke('defmgr:status'),
+  defmgrApply: () => ipcRenderer.invoke('defmgr:apply'),
+  defmgrRevert: () => ipcRenderer.invoke('defmgr:revert'),
+
+  // silent updates
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdate: (fn) => sub(updateSet, updateBuf, fn),
+  onOpenPath: (fn) => sub(openSet, openBuf, fn),
 
   // progress channel
   onProgress: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }
