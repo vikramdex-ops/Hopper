@@ -54,6 +54,7 @@ export class Pane {
     this.app.previewPane.target(this);
     this.app.refreshAddr();    // address bar reflects active tab
     this.app.updateBookmarkStar();
+    if (pref('showPreview')) this.app.previewPane.draw(this, this.view.focusedEntry());
   }
   cwd() { return this.activeTab?.path || 'C:\\'; }
 
@@ -255,19 +256,14 @@ export class Pane {
     if (free != null) foot.appendChild(el('span', '', `${this.cwd().slice(0, 2)}: free ${fmtSize(free)}`));
   }
   async drawTree() {
-    if (!pref('showTree')) return;
-    if (!this.treeEl.innerHTML) await this.buildTreeRoot();
-    await this.updateTreeSel(this.cwd());
-    if (pref('treeFollowsPane') !== false) await this.expandTo(this.cwd());
+    if (!pref('showTree') || !this.tree) return;
+    try {
+      await this.tree.updateSel(this.cwd());
+      if (pref('treeFollowsPane') !== false) await this.tree.expandTo(this.cwd());
+    } catch { /* tree is a convenience, never block navigation */ }
   }
-  async buildTreeRoot() {
-    const root = this.treeEl;
-    root.innerHTML = '';
-    for (let c = 65; c <= 67; c++) { } // placeholder drives A-C; real drives fetched from app
-    void this.app.drives;
-  }
-  async updateTreeSel(p) { /* xxxx? */ }
-  async expandTo(p) { /* implemented in tree.js on renderer level */ }
+  async updateTreeSel(p) { await this.tree?.updateSel(p); }
+  async expandTo(p) { await this.tree?.expandTo(p); }
 }
 
 function keyOfEntryLocal(e) { return e.name.toLowerCase() + (e.isDir ? '/' : ''); }

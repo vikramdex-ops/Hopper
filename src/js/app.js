@@ -378,7 +378,7 @@ class App {
       else if (e.key === 'Tab') {
         e.preventDefault();
         const nxt = this.completionList?.[(this.completionSel ?? -1) + 1];
-        if (nxt) { this.completionSel = (this.completionSel ?? -1) + 1; this.showCompletion(nxt); }
+        if (nxt) { this.showCompletion(nxt); this.applyCompletion(nxt, null); $('#address').value = $('#address').value.replace(/\\$/, nxt.isDir ? '\\' : ''); this.showCompletions(); }
       }
     });
     on(addr, 'input', () => {
@@ -467,8 +467,9 @@ class App {
     if (!v || v.startsWith('>')) return this.hideCompletions();
     const cwd = v.includes('\\') ? v.replace(/\\[^\\]*$/, '') || '\\' : this.active.cwd();
     const last = v.split('\\').pop() || '';
-    window.x2.listDir(cwd.endsWith('\\') || /^[A-Za-z]:$/.test(cwd) ? (cwd.endsWith('\\') ? cwd : cwd + '\\') : cwd).then(entries => {
-      const cands = entries.filter(e => e.name.toLowerCase().startsWith(last.toLowerCase())).slice(0, 200);
+    const dir = cwd.endsWith('\\') || /^[A-Za-z]:$/.test(cwd) ? (cwd.endsWith('\\') ? cwd : cwd + '\\') : cwd;
+    window.x2.listDir(dir).then(entries => {
+      const cands = (entries || []).filter(e => e.name?.toLowerCase().startsWith(last.toLowerCase())).slice(0, 200);
       this.completionList = cands;
       this.completionSel = null;
       const box = $('#completions');
@@ -480,26 +481,23 @@ class App {
         ic.appendChild(icon(iconFor(c), 14));
         it.appendChild(ic);
         it.appendChild(el('span', 'nm', c.name));
-        if (c.isDir) it.appendChild(el('span', 'k', 'folder'));
+        it.appendChild(el('span', 'k', c.isDir ? 'folder' : 'file'));
         on(it, 'mousedown', ev => { ev.preventDefault(); this.applyCompletion(c, cwd); });
         it.onmouseenter = () => { this.completionSel = cands.indexOf(c); $$('#completions .it').forEach(x => x.classList.remove('sel')); it.classList.add('sel'); };
         box.appendChild(it);
       }
-    });
+      this.showCompletion(cands[0]);
+    }).catch(() => this.hideCompletions());
   }
   showCompletion(c) {
-    $$(`#completions .it`).forEach(x => x.classList.remove('sel'));
-    const i = this.completionList.indexOf(c);
-    const it = $('#completions .it:nth-child(' + (i + 1) + ')');
-    void it;
+    if (!c) return;
+    this.completionSel = this.completionList?.indexOf(c) ?? -1;
+    $$('#completions .it').forEach((x, i) => x.classList.toggle('sel', i === this.completionSel));
   }
   applyCompletion(c, cwd) {
-    const base = v => v.replace(/\\[^\\]*\\*$/, '');
     const cur = $('#address').value;
     const stem = cur.includes('\\') ? cur.slice(0, cur.lastIndexOf('\\') + 1) : '';
-    const nv = stem + c.name + (c.isDir ? '\\' : '');
-    $('#address').value = nv;
-    if (!c.isDir) this.nav(this.active, nv);
+    $('#address').value = stem + c.name + (c.isDir ? '\\' : '');
     this.hideCompletions();
   }
   hideCompletions() { $('#completions').classList.add('hidden'); }

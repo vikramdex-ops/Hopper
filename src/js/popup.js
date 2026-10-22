@@ -129,8 +129,8 @@ export function openMenu(spec, pos = {}) {
   if (!m) return;
   closeMenu();
   const model = normalizeMenu(spec);
-  if (model.title) m.appendChild(el('div', 'menu-title', model.title));
   renderMenu(m, model);
+  if (model.title) m.prepend(el('div', 'menu-title', model.title));
   m.classList.add('show');
   m.style.left = '0px';
   m.style.top = '0px';
