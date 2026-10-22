@@ -86,7 +86,7 @@ export class ListView {
           this.pane.colWidths = this.pane.colWidths || {}; this.pane.colWidths[c] = nw;
           $$(`.col[data-c="${c}"] .col-name`, this.root);
         };
-        const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); this.go(); };
+        const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); pref('colWidths', this.pane.colWidths); this.render(); };
         document.addEventListener('mousemove', mm);
         document.addEventListener('mouseup', mu);
       });
