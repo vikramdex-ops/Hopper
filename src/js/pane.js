@@ -113,6 +113,26 @@ export class Pane {
         if (ev.target === x) return;
         await this.activateTab(t);
       });
+      // middle-click closes the tab (Explorer parity)
+      on(tabEl, 'auxclick', ev => { if (ev.button === 1) { ev.preventDefault(); this.closeTab(t); } });
+      // drag a tab to reorder it
+      tabEl.draggable = true;
+      on(tabEl, 'dragstart', ev => { ev.dataTransfer.setData('text/x2tab', t.id); ev.dataTransfer.effectAllowed = 'move'; });
+      on(tabEl, 'dragover', ev => { if (ev.dataTransfer.types.includes('text/x2tab')) ev.preventDefault(); });
+      on(tabEl, 'drop', ev => {
+        const id = ev.dataTransfer?.getData('text/x2tab');
+        if (!id) return;
+        ev.preventDefault(); ev.stopPropagation();
+        const from = this.tabs.findIndex(z => z.id === id);
+        if (from < 0) return;
+        const rect = tabEl.getBoundingClientRect();
+        let to = this.tabs.indexOf(t) + (ev.clientX > rect.left + rect.width / 2 ? 1 : 0);
+        const [moved] = this.tabs.splice(from, 1);
+        if (from < to) to--;
+        this.tabs.splice(to, 0, moved);
+        this.drawTabs();
+        this.app.savePaneStateSoon();
+      });
       on(tabEl, 'contextmenu', ev => this.app.tabCtx(ev, t));
       on(tabEl, 'dblclick', ev => { ev.preventDefault(); this.renameTab(ev, t); });
       this.tabsEl.appendChild(tabEl);

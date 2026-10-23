@@ -2,9 +2,10 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src x2file: data:; media-src x2file:; style-src 'self' 'unsafe-inline'; frame-src x2file: blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src x2file: data: blob:; media-src x2file:; font-src x2file: data:; style-src 'self' 'unsafe-inline'; frame-src x2file: blob:;">
   <title>Xplorer² Modern</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/viewer.css">
 </head>
 <body>
   <div id="titlebar">
@@ -108,6 +109,62 @@
 
   <div id="ctxmenu" role="menu"></div>
   <div id="overlay" class="hidden"></div>
+
+  <!-- Full image viewer (IrfanView-style): zoom, pan, rotate, filmstrip, slideshow -->
+  <div id="viewer" class="hidden" role="dialog" aria-modal="true" aria-label="Image viewer">
+    <div class="vw-top">
+      <div class="vw-id">
+        <span class="vw-ico" id="vw-ico" data-icon="file-image" data-icon-size="16"></span>
+        <div class="vw-titles"><b id="vw-name">—</b><span id="vw-sub"></span></div>
+      </div>
+      <div class="vw-tools" role="toolbar" aria-label="Viewer tools">
+        <button class="vw-btn" data-vw="prev" title="Previous (←)"><span data-icon="chevron-left"></span></button>
+        <button class="vw-btn" data-vw="next" title="Next (→)"><span data-icon="chevron-right"></span></button>
+        <span class="vw-sep"></span>
+        <button class="vw-btn" data-vw="zoom-out" title="Zoom out (−)"><span data-icon="zoom-out"></span></button>
+        <button class="vw-zoomlabel" id="vw-zoomlabel" title="Click for 100%">fit</button>
+        <button class="vw-btn" data-vw="zoom-in" title="Zoom in (+)"><span data-icon="zoom-in"></span></button>
+        <button class="vw-btn" data-vw="fit" title="Fit to window (0)"><span data-icon="fit"></span></button>
+        <button class="vw-btn" data-vw="one" title="Actual size (1)"><span data-icon="one-to-one"></span></button>
+        <span class="vw-sep"></span>
+        <button class="vw-btn" data-vw="rotate-l" title="Rotate left ([)"><span data-icon="rotate-ccw"></span></button>
+        <button class="vw-btn" data-vw="rotate-r" title="Rotate right (])"><span data-icon="rotate-cw"></span></button>
+        <button class="vw-btn" data-vw="flip" title="Flip horizontally (H)"><span data-icon="flip-h"></span></button>
+        <span class="vw-sep"></span>
+        <button class="vw-btn" data-vw="slideshow" title="Slideshow (Space)"><span data-icon="play"></span></button>
+        <button class="vw-btn" data-vw="info" title="Image information (I)"><span data-icon="info"></span></button>
+        <button class="vw-btn" data-vw="fullscreen" title="Fullscreen (F11)"><span data-icon="expand"></span></button>
+        <button class="vw-btn vw-close" data-vw="close" title="Close (Esc)"><span data-icon="close"></span></button>
+      </div>
+    </div>
+    <div class="vw-stage" id="vw-stage">
+      <img id="vw-img" alt="" draggable="false">
+      <div class="vw-empty hidden" id="vw-empty"></div>
+    </div>
+    <div class="vw-hud">
+      <span id="vw-hud-left"></span>
+      <span id="vw-hud-right" class="vw-count"></span>
+    </div>
+    <div class="vw-info hidden" id="vw-info"></div>
+    <div class="vw-film" id="vw-film" aria-label="Filmstrip"></div>
+  </div>
+
+  <!-- Quick Look: Space toggles a large preview of the focused item -->
+  <div id="quicklook" class="hidden" role="dialog" aria-modal="true" aria-label="Quick look">
+    <div class="ql-card">
+      <div class="ql-head">
+        <span class="ql-ico" id="ql-ico" data-icon="file"></span>
+        <div class="ql-title"><b id="ql-name"></b><span id="ql-sub"></span></div>
+        <div class="ql-act">
+          <button class="chr-btn icon-only sm muted" id="ql-reveal" title="Show in folder"><span data-icon="external-link"></span></button>
+          <button class="chr-btn icon-only sm muted" id="ql-open" title="Open with the default app (Enter)"><span data-icon="file-app"></span></button>
+          <button class="chr-btn icon-only sm muted" id="ql-close" title="Close (Esc)"><span data-icon="close"></span></button>
+        </div>
+      </div>
+      <div class="ql-body" id="ql-body"></div>
+      <div class="ql-foot"><span><kbd>Space</kbd> close</span><span><kbd>↑</kbd><kbd>↓</kbd> previous / next</span><span><kbd>Enter</kbd> open</span></div>
+    </div>
+  </div>
   <div id="palette" class="hidden" role="dialog" aria-label="Command palette">
     <div class="pal-head"><span class="ic" data-icon="command" data-icon-size="14"></span><span class="pal-title">Command palette</span><kbd class="pal-kbd">Esc</kbd><button id="pal-close" class="chr-btn icon-only sm muted" title="Close" data-icon="close" data-icon-size="13"></button></div>
     <input class="pal-input chr-input" type="text" placeholder="Type a command…" autocomplete="off" spellcheck="false" aria-label="Command">

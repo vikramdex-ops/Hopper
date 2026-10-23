@@ -36,23 +36,27 @@ keystroke away.
 | &nbsp; | &nbsp; |
 | :-- | :-- |
 | **Dual panes + tabs**<br>Independent history per tab, mirror browsing, stack or vertical split. | **Browser memory**<br>Back, forward and up with dropdown histories plus a recent-locations menu in the address bar. |
-| **Preview that reads everything**<br>Images, video, audio, PDF, text and hex, with a metadata card and a copy button per row. | **Scrap panes**<br>Collect files from anywhere with `Ctrl+S`; a mini-scrap docks inside each pane. |
+| **Preview that reads everything**<br>Markdown, HTML, CSV, JSON, code, fonts, archives, images, video, audio, PDF and hex — plus a Quick Look overlay (`Space`) and an IrfanView-style image viewer (`Ctrl+I`). | **Scrap panes**<br>Collect files from anywhere with `Ctrl+S`; a mini-scrap docks inside each pane. |
 | **Search & duplicates**<br>Wildcard or regex names, content search, size and date filters, duplicate grouping. | **Compare & sync**<br>Colour-coded differences between the two panes, per side, per row. |
 | **Real tools, not menu stubs**<br>Mass rename with live preview, folder sizes and pie, split & merge, ZIP writing, checksums, links, timestamps, attributes, colour tags. | **One path, fourteen shapes**<br>Copy paths as Windows, Unix, quoted, CMD, PowerShell, C#, file URL, relative and more. |
 
 ---
 
-## A tour in ten screens
+## A tour in eleven screens
 
 ### 1. Inspect without opening
 
 <img src="docs/screenshots/02-preview-pane.png" alt="Preview pane with an image and the metadata card" width="100%">
 
-Select a file and the preview pane renders it immediately — images, video, audio,
-PDF, text, hex. The metadata card always shows the **full resource path**, parent
-folder, kind, exact byte count and all three timestamps, each row copyable.
-Media streams through a dedicated `x2file://` handler, so large files and PDFs
-open without loading the whole thing into memory.
+Select a file and the preview pane renders it immediately: **markdown** rendered,
+**HTML** sandboxed, **CSV/TSV** as a real table, **JSON/XML/YAML** syntax-coloured,
+syntax-highlighted source, **fonts** with a live glyph specimen, **archives** with
+their entry list, images, video, audio, PDF and a hex/metadata view for binaries.
+The metadata card always shows the **full resource path**, parent folder, kind,
+exact byte count and all three timestamps, each row copyable. Media streams through
+a dedicated `x2file://` handler, so large files and PDFs open without loading the
+whole thing into memory. Press `Space` for a Quick Look overlay of the focused file
+— arrow keys walk the folder — or `Ctrl+I` for the full image viewer.
 
 <br>
 
@@ -140,15 +144,36 @@ features that make it feel installed rather than downloaded:
 
 ---
 
-## What's new in 1.2.0
+### 11. The image viewer
 
-- **Default file manager** — open folders with Xplorer² Modern from Explorer, Win+R
-  and the file dialogs, with a one-click restore of the Windows default.
-- **Light / dark theme toggle** in the ribbon and settings, persisted per profile.
-- **Silent auto-update** via `electron-updater`, signed-off metadata published with
-  every release.
+<img src="docs/screenshots/11-image-viewer.png" alt="Image viewer with filmstrip, info panel and zoom controls" width="100%">
 
-See [CHANGELOG.md](CHANGELOG.md) for the full history.
+`Ctrl+I` (or *Image viewer* in the context menu) opens the built-in viewer:
+wheel zoom at the cursor, fit / actual-size, 10–1600% with a live percentage, drag
+to pan, `[` / `]` to rotate, a filmstrip of the folder's other images, slideshow,
+fullscreen, and an **Info panel with real EXIF** — camera, lens, exposure, ISO —
+read in the main process. Arrow keys walk the folder and the pane selection follows.
+
+---
+
+## What's new in 1.3.0
+
+- **One title bar, not two** — the window is now frameless on Windows/Linux with a
+  single custom bar: drag anywhere, double-click to maximise, state-aware
+  maximise/restore glyph, Windows-style red close hover. macOS gets the traffic
+  lights inset over the same bar.
+- **Image viewer** (`Ctrl+I`) — zoom, pan, rotate, filmstrip, slideshow, fullscreen
+  and an EXIF info panel.
+- **Quick Look** (`Space`) — instant overlay preview with arrow-key navigation and
+  quick actions, closing with `Escape`.
+- **Rich previews everywhere** — markdown, HTML, CSV/TSV, JSON/XML/YAML, fonts,
+  archives, media and hex all render in the pane, Quick Look and the viewer shell.
+- **Explorer-grade mouse and keyboard parity** — middle-click a folder to open it
+  in a new tab (a file opens with its app), middle-click a tab to close it, drag
+  tabs to reorder, `Ctrl+W` closes a tab, `Alt+D` / `Ctrl+L` focus the address bar.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history (including 1.2.0: default
+file manager, theme toggle, silent auto-update).
 
 ---
 
@@ -180,7 +205,10 @@ Builds are produced by GitHub Actions on every `v*` tag, with the updater metada
 | :-- | :-- |
 | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | switch pane / focus the address bar |
 | <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd> / <kbd>Backspace</kbd> | back / forward / up one level |
-| <kbd>Ctrl</kbd>+<kbd>T</kbd> / <kbd>Ctrl</kbd>+<kbd>F4</kbd> | new tab / close tab |
+| <kbd>Ctrl</kbd>+<kbd>T</kbd> / <kbd>Ctrl</kbd>+<kbd>W</kbd> | new tab / close tab (also <kbd>Ctrl</kbd>+<kbd>F4</kbd>; middle-click a tab closes it) |
+| <kbd>Alt</kbd>+<kbd>D</kbd> / <kbd>Ctrl</kbd>+<kbd>L</kbd> | focus the address bar |
+| <kbd>Space</kbd> | Quick Look the focused file |
+| <kbd>Ctrl</kbd>+<kbd>I</kbd> | open the image viewer |
 | <kbd>Enter</kbd> / <kbd>F2</kbd> / <kbd>Del</kbd> / <kbd>Shift</kbd>+<kbd>Del</kbd> | open / rename / recycle / delete permanently |
 | <kbd>F3</kbd> | filter the current folder (wildcards) |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> / <kbd>Ctrl</kbd>+<kbd>D</kbd> / <kbd>F9</kbd> | find files / duplicates / compare panes |
@@ -245,6 +273,8 @@ src/css/style.css     design system: tokens → .chr-* primitives → chrome →
 src/js/app.js         app shell: panes, commands, palette, context menus, keyboard
 src/js/pane.js        pane, tabs, per-tab history, recent locations
 src/js/views.js       virtualised details / list / thumbnail views
+src/js/preview.js     rich preview renderer (md, html, csv, json, fonts, archives, media)
+src/js/viewer.js      image viewer overlay + Space-bar Quick Look
 src/js/panels.js      preview pane (metadata card) and scrap panes
 src/js/popup.js       one structured popup model shared by menus and the palette
 src/js/icons.js       inline SVG icon set + declarative hydration

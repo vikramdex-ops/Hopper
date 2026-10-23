@@ -5,6 +5,7 @@ import { S, loadStore, pref, persist, flush, defaults } from './store.js';
 import { Pane } from './pane.js';
 import { Tree } from './tree.js';
 import { PreviewPane, Scrap } from './panels.js';
+import { ImageViewer, QuickLook } from './viewer.js';
 import { DEFAULT_COLUMNS, COLUMN_DEFS } from './views.js';
 import * as T from './tools.js';
 import { pathCopyModes, copyPathsAsync, setDefaultModeId, defaultModeId } from './pathcopy.js';
@@ -25,6 +26,9 @@ class App {
     this.searchRootMemory = [];
     this.previewPane = new PreviewPane(this, $('#preview'));
     this.previewHighlight = null;
+    this.windowState = { maximized: false, fullscreen: false };
+    this.viewer = new ImageViewer(this);
+    this.quickLook = new QuickLook(this);
   }
   async boot() {
     await loadStore();
@@ -65,6 +69,7 @@ class App {
     // install shared chrome bindings (ribbon, address bar, bookmark, mirror, status)
     this.wireChrome();
     this.wireSharedChromeBindings();
+    this.wireWindowChrome();
     this.wireKeys();
     this.refreshMirror();
     // drive probe is instant (statfs); re-poll once so background-enriched
@@ -462,6 +467,34 @@ class App {
   minWin() { window.x2.winCmd?.('minimize'); }
   maxWin() { window.x2.winCmd?.('maximize'); }
   closeWin() { flush(); window.x2.winCmd?.('close') || window.close(); }
+
+  /** The window is frameless: the renderer owns the only title bar. */
+  async wireWindowChrome() {
+    const platform = window.x2.platform || 'win32';
+    document.body.classList.add('platform-' + platform);
+    const apply = s => {
+      if (!s) return;
+      this.windowState = { ...this.windowState, ...s };
+      const b = $('#win-max');
+      if (b) {
+        const nm = s.maximized ? 'restore' : 'maximize';
+        const slot = b.querySelector('[data-icon]');
+        if (slot) { slot.dataset.icon = nm; slot.replaceChildren(icon(nm, 13)); }
+        b.title = s.maximized ? 'Restore' : 'Maximize';
+      }
+      this.viewer?.onWindowState(this.windowState);
+    };
+    try { apply(await window.x2.winState()); } catch { /* older preload */ }
+    window.x2.onWindowState?.(apply);
+    const bar = $('#titlebar');
+    on(bar, 'dblclick', e => { if (e.target.closest('button')) return; this.maxWin(); });
+  }
+  openViewer(path) {
+    const target = path || this.active?.view?.focusedEntry()?.path;
+    if (!target) { this.toast('Select an image first'); return; }
+    if (this.quickLook.isOpen()) this.quickLook.close();
+    this.viewer.open(target);
+  }
   showCompletions() {
     const v = $('#address').value;
     if (!v || v.startsWith('>')) return this.hideCompletions();
@@ -634,6 +667,8 @@ class App {
         items: [
           { label: multi ? `Open all ${sel.length}` : 'Open', icon: entry.isDir ? 'folder-open' : 'external-link', key: 'Enter', run: () => multi ? sel.forEach(x => this.openEntry(x)) : this.openEntry(entry) },
           { label: 'Preview', icon: 'eye', key: 'F7', run: () => this.previewPane.show(entry) },
+          { label: 'Quick look', icon: 'eye', key: 'Space', run: () => this.quickLook.open(entry) },
+          ...(isIMAGE({ name: entry.name, isDir: false }) ? [{ label: 'Image viewer', icon: 'file-image', key: 'Ctrl+I', run: () => this.openViewer(entry.path) }] : []),
           { label: 'Show in Explorer', icon: 'folder-open', run: () => X('showInExplorer')(p) }
         ]
       });
@@ -948,6 +983,8 @@ class App {
         break;
       }
       case 'togglePreview': this.setPreview(!pref('showPreview')); break;
+      case 'viewer': this.openViewer(); break;
+      case 'quickLook': this.quickLook.toggle(sel[0] || pane.view.focusedEntry()); break;
       case 'toggleMini': this.toggleMini(pane); break;
       case 'filter': this.startFilter(); break;
       case 'find': T.searchDialog(this); break;
@@ -1219,8 +1256,9 @@ class App {
           { label: 'Back', icon: 'arrow-left', key: 'Alt+←', run: () => pane.back() },
           { label: 'Forward', icon: 'arrow-right', key: 'Alt+→', run: () => pane.fwd() },
           { label: 'Up one level', icon: 'arrow-up', key: 'Backspace', run: () => pane.up() },
-          { label: 'New tab', icon: 'plus', key: 'Ctrl+T', run: () => this.runCmd('newTab') },
-          { label: 'Close tab', icon: 'close', key: 'Ctrl+F4', run: () => this.runCmd('closeTab') },
+          { label: 'New tab', icon: 'plus', key: 'Ctrl+T', hint: 'Middle-click a folder to open it in one', run: () => this.runCmd('newTab') },
+          { label: 'Close tab', icon: 'close', key: 'Ctrl+W', hint: 'Also Ctrl+F4; middle-click a tab', run: () => this.runCmd('closeTab') },
+          { label: 'Focus address bar', icon: 'route', key: 'Alt+D', hint: 'Ctrl+L also works', run: () => { const a = $('#address'); a.focus(); a.select(); } },
           { label: 'Switch pane', icon: 'git-compare', key: 'Tab', run: () => this.switchPane() },
           { label: 'Copy path', icon: 'copy', key: 'Ctrl+P', run: () => this.copyPathsFromSelection() },
           { label: 'Copy path as…', icon: 'copy', run: () => this.showPathCopyPicker(pane) },
@@ -1253,6 +1291,7 @@ class App {
       {
         label: 'View & app', items: [
           { label: 'Cycle view mode (details / list / thumbs)', icon: 'layout-grid', run: () => this.runCmd('viewMode') },
+          { label: 'Image viewer (zoom, rotate, EXIF, slideshow)', icon: 'file-image', key: 'Ctrl+I', run: () => this.runCmd('viewer') },
           { label: 'Toggle folder tree', icon: 'tree', key: 'Ctrl+T', checked: !!pref('showTree'), run: () => this.runCmd('toggleTree') },
           { label: 'Toggle preview pane', icon: 'panel-right', key: 'Ctrl+Alt+Z', checked: !!pref('showPreview'), run: () => this.runCmd('togglePreview') },
           { label: 'Toggle mini-scrap', icon: 'plus-square', key: 'Ctrl+M', run: () => this.runCmd('toggleMini') },
@@ -1328,6 +1367,8 @@ class App {
       if (e.ctrlKey && k === 'F4') { e.preventDefault(); this.runCmd('closeTab'); return; }
       if (e.ctrlKey && k === 'F9') { e.preventDefault(); this.runCmd('sync'); return; }
       if (e.ctrlKey && k === 't' && !e.shiftKey) { e.preventDefault(); this.runCmd('newTab'); return; }
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && k.toLowerCase() === 'w') { e.preventDefault(); this.runCmd('closeTab'); return; }
+      if ((e.altKey && !e.ctrlKey && k.toLowerCase() === 'd') || (e.ctrlKey && !e.altKey && k.toLowerCase() === 'l')) { e.preventDefault(); const a = $('#address'); a.focus(); a.select(); return; }
       if (e.ctrlKey && k === 'T' && e.shiftKey) { e.preventDefault(); this.runCmd('toggleTree'); return; }
       if (e.ctrlKey && k === 'f') { e.preventDefault(); this.runCmd('find'); return; }
       if (e.ctrlKey && k === 'd') { e.preventDefault(); this.runCmd('dupes'); return; }
@@ -1338,6 +1379,7 @@ class App {
       if (e.ctrlKey && k === 'g') { e.preventDefault(); this.runCmd('stats'); return; }
       if (e.ctrlKey && k === 'p') { e.preventDefault(); this.copyPaths(pane.view.selected().map(x => x.path) || [pane.cwd()]); return; }
       if (e.ctrlKey && k === 'q') { e.preventDefault(); this.bookmarkCurrent(); return; }
+      if (!e.shiftKey && !e.altKey && k.toLowerCase() === 'i' && e.ctrlKey) { e.preventDefault(); this.runCmd('viewer'); return; }
       if (e.ctrlKey && k === 'e') { e.preventDefault(); this.runCmd('editor'); return; }
       if (e.ctrlKey && k === '`') { e.preventDefault(); this.runCmd('openTerminal'); return; }
       if (e.ctrlKey && e.altKey && k.toLowerCase() === 'z') { e.preventDefault(); this.runCmd('togglePreview'); return; }
@@ -1367,6 +1409,13 @@ class App {
         e.preventDefault();
         const f = pane.view.focusedEntry();
         if (f) this.openEntry(f);
+        return;
+      }
+      if (k === 'F11') { e.preventDefault(); window.x2.winCmd?.('fullscreen'); return; }
+      if (k === ' ' && !inField) {
+        e.preventDefault();
+        if (this.quickLook.isOpen()) this.quickLook.close();
+        else this.quickLook.open(pane.view.focusedEntry());
         return;
       }
       if (k === 'F12') return; // devtools via default
