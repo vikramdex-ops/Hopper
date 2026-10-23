@@ -8,7 +8,7 @@ dist/
 
 # local/runtime state
 logs/
-screenshots/
+/screenshots/
 x2modern.json
 x2m-portable.flag
 .tmpcheck/

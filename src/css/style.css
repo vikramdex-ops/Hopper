@@ -130,6 +130,13 @@ textarea.chr-input, textarea { height: auto; padding: 7px 9px; resize: vertical;
 .field .v { color: var(--text-dim); font-size: 11.5px; }
 .rrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .rrow > .grow { flex: 1; }
+.fl { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--text-dim); }
+.fl > input, .fl > textarea, .fl > select { width: 100%; }
+textarea:not(.chr-input) {
+  padding: 7px 9px; font-size: 12px; color: var(--text); background: var(--bg3);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); outline: none;
+}
+textarea:not(.chr-input):focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 
 /* ---------------------------------------------------------------- titlebar */
 #titlebar {
@@ -154,8 +161,10 @@ textarea.chr-input, textarea { height: auto; padding: 7px 9px; resize: vertical;
 }
 #ribbon::-webkit-scrollbar { height: 0; }
 .rb-group { display: flex; align-items: center; gap: 2px; }
-#ribbon .sep { width: 1px; height: 24px; background: var(--line); margin: 0 5px; flex: none; }
-.rb { height: 32px; padding: 0 9px; color: var(--text-dim); font-size: 11.5px; gap: 6px; }
+#ribbon .sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; flex: none; }
+/* 7px side padding keeps the full 18-command ribbon inside a 1500px window
+   (the app's default size) instead of clipping the refresh button. */
+.rb { height: 32px; padding: 0 7px; color: var(--text-dim); font-size: 11.5px; gap: 5px; }
 .rb .kbd { display: none; }
 .rb:hover { color: var(--text); }
 .rb.active, .rb.on { color: var(--text); background: var(--sel-solid); border-color: var(--line); }
