@@ -9,6 +9,7 @@ const listeners = new Set();
 // (startup --open launches, update checks that finish early).
 const updateSet = new Set(), updateBuf = [];
 const openSet = new Set(), openBuf = [];
+const winStateSet = new Set(), winStateBuf = [];
 function sub(set, buf, fn) {
   set.add(fn);
   for (const m of buf.splice(0)) { try { fn(m); } catch { /* listener error */ } }
@@ -20,6 +21,7 @@ function dispatch(set, buf, msg) {
 }
 ipcRenderer.on('x2:update', (e, m) => dispatch(updateSet, updateBuf, m));
 ipcRenderer.on('app:openPath', (e, p) => dispatch(openSet, openBuf, p));
+ipcRenderer.on('x2:windowState', (e, s) => dispatch(winStateSet, winStateBuf, s));
 
 contextBridge.exposeInMainWorld('x2', {
   // settings
@@ -67,6 +69,10 @@ contextBridge.exposeInMainWorld('x2', {
   setAttr: (fp, spec) => ipcRenderer.invoke('fs:setAttr', fp, spec),
   zipCreate: (items, outFile, jobId) => ipcRenderer.invoke('archive:zipCreate', items, outFile, jobId),
   winCmd: (cmd) => ipcRenderer.invoke('win:cmd', cmd),
+  winState: () => ipcRenderer.invoke('win:state'),
+  onWindowState: (fn) => sub(winStateSet, winStateBuf, fn),
+  imageInfo: (fp) => ipcRenderer.invoke('fs:imageInfo', fp),
+  platform: process.platform,
   pick: (kind, opts) => ipcRenderer.invoke('dialog:pick', kind, opts),
   msgBox: (opts) => ipcRenderer.invoke('dialog:msg', opts),
   drives: () => ipcRenderer.invoke('drives:get'),

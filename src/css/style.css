@@ -142,7 +142,13 @@ textarea:not(.chr-input):focus { border-color: var(--accent); box-shadow: 0 0 0 
 #titlebar {
   display: flex; align-items: center; height: 34px; flex: none;
   background: var(--bg2); border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag; user-select: none;
 }
+/* Only the buttons opt out of the drag region, so the whole strip moves the
+   window and a double-click maximises it (wired in app.js). */
+#titlebar button, #titlebar input { -webkit-app-region: no-drag; }
+body.platform-darwin #titlebar { padding-left: 72px; }
+body.platform-darwin .tb-right { display: none; }
 #titlebar .tb-left { display: flex; align-items: center; gap: 7px; padding: 0 12px; color: var(--text-dim); font-size: 12px; }
 #titlebar .tb-left b { color: var(--text); font-weight: 600; letter-spacing: .3px; }
 #titlebar .tb-sub { color: var(--text-faint); font-size: 11px; }
@@ -550,3 +556,4 @@ mark.fuzzy-hl { background: color-mix(in srgb, var(--accent) 30%, transparent); 
 .dm-state { padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--bg2); font-size: 12px; color: var(--text-dim); line-height: 1.45; }
 .dm-note { font-size: 11px; line-height: 1.5; color: var(--text-faint); }
 .upd-state { font-size: 11px; color: var(--text-faint); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+

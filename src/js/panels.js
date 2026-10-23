@@ -1,10 +1,9 @@
 // Preview pane + scrap/mini-scrap panels
-import { el, $, on, fmtSize, fmtDate, esc, iconFor, isIMAGE, isVIDEO, isAUDIO, isTEXT, isPDF, parentOf, baseName } from './util.js';
+import { el, $, on, fmtSize, fmtDate, iconFor, isIMAGE, isTEXT, parentOf, baseName } from './util.js';
 import { icon, hydrateIcons } from './icons.js';
 import { typeLabel, catFor } from './filetypes.js';
-import { pref, persist, S } from './store.js';
-
-const previewUrl = p => 'x2file:///p/' + encodeURIComponent(p);
+import { pref } from './store.js';
+import { renderPreview, actionBtn, previewUrl } from './preview.js';
 
 export class PreviewPane {
   constructor(app, rootEl) {
@@ -13,12 +12,14 @@ export class PreviewPane {
     this.paneKey = null;
     this.locked = false;
     this.currentPath = null;
+    this.renderToken = 0;
     this.root.innerHTML = `
       <div class="pv-head">
         <span class="pv-ico" id="pv-ico" data-icon="file"></span>
         <div class="pv-title"><b class="pv-name" id="pv-name"></b><span class="pv-sub" id="pv-sub"></span></div>
         <div class="pv-act">
           <button id="pv-lock" class="chr-btn icon-only sm muted" title="Lock preview to this item"><span data-icon="unlock"></span></button>
+          <button id="pv-quick" class="chr-btn icon-only sm muted" title="Quick look (Space)"><span data-icon="eye"></span></button>
           <button id="pv-copy-path" class="chr-btn icon-only sm muted" title="Copy full path"><span data-icon="copy"></span></button>
           <button id="pv-reveal" class="chr-btn icon-only sm muted" title="Show in Explorer"><span data-icon="external-link"></span></button>
           <button id="pv-editor" class="chr-btn icon-only sm muted" title="Open in text editor"><span data-icon="pencil"></span></button>
@@ -28,6 +29,7 @@ export class PreviewPane {
       <div class="pv-body" id="pv-body"></div>`;
     hydrateIcons(this.root);
     on($('#pv-lock', rootEl), 'click', () => this.setLocked(!this.locked));
+    on($('#pv-quick', rootEl), 'click', () => this.app.quickLook.toggle(this.lastEntry));
     on($('#pv-copy-path', rootEl), 'click', () => {
       if (!this.currentPath) return;
       this.app.copyText(this.currentPath);
@@ -63,6 +65,7 @@ export class PreviewPane {
     this.render(entry);
   }
   clear() {
+    this.renderToken++;
     this.currentPath = null;
     this.lastEntry = null;
     $('#pv-name', this.root).textContent = '';
@@ -72,19 +75,22 @@ export class PreviewPane {
     const body = $('#pv-body', this.root);
     body.replaceChildren(el('div', 'pv-empty', 'Select an item to preview'));
   }
-  render(entry) {
+  async render(entry) {
     if (pref('showPreview') !== true) return;
+    const token = ++this.renderToken;
     const body = $('#pv-body', this.root);
     const nameEl = $('#pv-name', this.root);
     const subEl = $('#pv-sub', this.root);
-    const icoEl = $('#pv-ico', this.root);
     this.lastEntry = entry || null;
     this.currentPath = entry?.path || null;
     nameEl.textContent = entry ? (entry.name || baseName(entry.path)) : '';
     nameEl.title = entry?.path || '';
     subEl.textContent = entry ? typeLabel(entry) : '';
-    const icoEl2 = $('#pv-ico', this.root);
-    if (icoEl2) { icoEl2.replaceChildren(icon(iconFor(entry || {}), 15)); icoEl2.dataset.cat = entry ? catFor(entry) : 'file'; }
+    const icoEl = $('#pv-ico', this.root);
+    if (icoEl) {
+      icoEl.replaceChildren(icon(iconFor(entry || {}), 15));
+      icoEl.dataset.cat = entry ? catFor(entry) : 'file';
+    }
     body.replaceChildren();
 
     if (!entry) {
@@ -92,75 +98,22 @@ export class PreviewPane {
       return;
     }
 
-    if (entry.isDir) {
-      body.appendChild(this.metaCard(entry));
-      const note = el('div', 'pv-empty', 'Folder preview — press Enter or double-click to open.');
-      body.appendChild(note);
-      return;
-    }
-
     body.appendChild(this.metaCard(entry));
 
-    const u = previewUrl(entry.path);
-    if (isIMAGE(entry)) {
-      const wrap = el('div', 'pv-media');
-      const im = el('img');
-      im.src = u;
-      im.alt = entry.name;
-      im.addEventListener('click', () => im.classList.toggle('zoomed'));
-      im.addEventListener('error', () => { wrap.replaceChildren(el('div', 'pv-empty', 'Preview unavailable for this image')); });
-      wrap.appendChild(im);
-      body.appendChild(wrap);
-    } else if (isVIDEO(entry)) {
-      const wrap = el('div', 'pv-media');
-      const v = el('video');
-      v.src = u; v.controls = true; v.preload = 'metadata';
-      wrap.appendChild(v);
-      body.appendChild(wrap);
-    } else if (isAUDIO(entry)) {
-      const wrap = el('div', 'pv-media audio');
-      wrap.appendChild(icon('file-audio', 44));
-      const a = el('audio');
-      a.src = u; a.controls = true;
-      wrap.appendChild(a);
-      body.appendChild(wrap);
-    } else if (isPDF(entry)) {
-      const f = el('iframe');
-      f.src = u;
-      body.appendChild(f);
-    } else if (isTEXT(entry) || entry.size < 512 * 1024) {
-      this.app.readText(entry.path).then(r => {
-        if (!r || this.currentPath !== entry.path) return;
-        if (r.error) { body.appendChild(el('div', 'pv-empty', r.error)); return; }
-        const pre = el('pre');
-        const text = r.text.slice(0, 64 * 1024) + (r.truncated ? '\n…' : '');
-        const hl = this.app.previewHighlight;
-        const hit = hl ? text.toLowerCase().indexOf(String(hl).toLowerCase()) : -1;
-        if (hit >= 0) {
-          pre.appendChild(document.createTextNode(text.slice(0, hit)));
-          const mark = el('mark', 'fuzzy-hl', text.slice(hit, hit + String(hl).length));
-          pre.appendChild(mark);
-          pre.appendChild(document.createTextNode(text.slice(hit + String(hl).length)));
-        } else pre.textContent = text;
-        body.appendChild(el('div', 'pv-note', `${r.encoding || 'text'} · ${fmtSize(r.size)}${r.truncated ? ' · truncated preview' : ''}`));
-        body.appendChild(pre);
-      });
-    } else {
-      this.app.hexOf(entry.path).then(bb => {
-        if (!bb || this.currentPath !== entry.path) return;
-        const pre = el('pre', 'hex');
-        const rows = [];
-        const count = Math.min(Math.floor(bb.length / 16), 2048);
-        for (let i = 0; i < count; i++) {
-          const row = bb.slice(i * 16, i * 16 + 16);
-          const hex = [...row].map(h => String(h).padStart(2, '0')).join(' ').padEnd(16 * 3 - 1, ' ');
-          const asc = [...row].map(h => (h >= 32 && h < 127) ? String.fromCharCode(h) : '·').join('');
-          rows.push((i * 16).toString(16).padStart(8, '0') + '  ' + hex + '  ' + asc);
-        }
-        pre.textContent = rows.join('\n');
-        body.appendChild(pre);
-      });
+    if (!entry.isDir) {
+      const actions = el('div', 'pv-actions');
+      if (isIMAGE(entry)) {
+        actions.appendChild(actionBtn('Open viewer', 'expand', () => this.app.openViewer(entry.path)));
+      }
+      actions.appendChild(actionBtn('Quick look', 'eye', () => this.app.quickLook.open(entry)));
+      actions.appendChild(actionBtn('Default app', 'external-link', () => this.app.openPath(entry.path)));
+      body.appendChild(actions);
     }
+
+    const host = el('div', 'pv-content');
+    body.appendChild(host);
+    await renderPreview(host, entry, this.app, { zoom: true });
+    if (token !== this.renderToken) return;   // selection changed while awaiting
   }
   /** One metadata card: full resource path first, then the facts people ask for. */
   metaCard(entry) {
@@ -318,3 +271,5 @@ export class Scrap {
     this.app.toast('Scrap saved');
   }
 }
+
+export { previewUrl };

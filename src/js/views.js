@@ -42,6 +42,7 @@ export class ListView {
     on(listEl, 'click', e => this._click(e));
     on(listEl, 'dblclick', e => this._dbl(e));
     on(listEl, 'contextmenu', e => { this._md(e); this.pane.app.openCtx(e, this.pane, null); });
+    on(listEl, 'auxclick', e => this._aux(e));
     on(listEl, 'keydown', e => this._key(e));
     listEl.addEventListener('dragstart', e => this._dragstart(e));
     listEl.addEventListener('dragover', e => this._dragover(e));
@@ -300,6 +301,18 @@ export class ListView {
     const app = this.pane.app;
     if (ent.isDir) { await app.nav(this.pane, ent.path); }
     else if (!ent.isDir && !ent.brokenLink) app.openEntry(ent);
+  }
+  async _aux(e) {
+    // Middle-click, like Windows Explorer and FileExplorer: a folder opens in
+    // a new tab here, a file opens with its default app.
+    if (e.button !== 1) return;
+    const row = this._rowOf(e.target);
+    if (!row) return;
+    e.preventDefault();
+    const ent = this.view[+row.dataset.idx];
+    if (!ent) return;
+    if (ent.isDir) await this.pane.addTab(ent.path, true);
+    else if (!ent.brokenLink) this.pane.app.openEntry(ent);
   }
   rangeSelect(a, b) {
     const [s, t] = a < b ? [a, b] : [b, a];

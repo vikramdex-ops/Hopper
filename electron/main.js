@@ -1031,8 +1031,20 @@ function registerIpc() {
     if (!w) return false;
     if (cmd === 'minimize') w.minimize();
     else if (cmd === 'maximize') w.isMaximized() ? w.unmaximize() : w.maximize();
+    else if (cmd === 'fullscreen') w.setFullScreen(!w.isFullScreen());
     else if (cmd === 'close') w.close();
     return true;
+  });
+  ipcMain.handle('win:state', () => {
+    const w = win();
+    return {
+      maximized: !!w?.isMaximized(),
+      fullscreen: !!w?.isFullScreen(),
+      platform: process.platform
+    };
+  });
+  ipcMain.handle('fs:imageInfo', (e, fp) => {
+    try { return imageInfo(fp); } catch (err) { return { error: String(err && err.message || err) }; }
   });
   ipcMain.handle('sys:openDev', () => { win()?.webContents.openDevTools(); });
 
@@ -1078,11 +1090,114 @@ function unifySplashHostProcess() {
 }
 unifySplashHostProcess();
 
+// ---------------------------------------------------------------- image metadata
+/** Minimal EXIF reader: enough for camera, lens, exposure and orientation. */
+function readExif(fp) {
+  let buf;
+  try {
+    const fd = fs.openSync(fp, 'r');
+    buf = Buffer.alloc(Math.min(fs.fstatSync(fd).size, 1024 * 1024));
+    fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+  } catch { return {}; }
+  if (buf.length < 4 || buf[0] !== 0xFF || buf[1] !== 0xD8) return {};
+  let off = 2;
+  let tiff = -1;
+  while (off + 4 < buf.length) {
+    if (buf[off] !== 0xFF) { off++; continue; }
+    const marker = buf[off + 1];
+    if (marker === 0xDA || marker === 0xD9) break;
+    const len = buf.readUInt16BE(off + 2);
+    if (marker === 0xE1 && buf.toString('ascii', off + 4, off + 10) === 'Exif\u0000\u0000') { tiff = off + 10; break; }
+    off += 2 + len;
+  }
+  if (tiff < 0) return {};
+  const le = buf.toString('ascii', tiff, tiff + 2) === 'II';
+  const u16 = o => le ? buf.readUInt16LE(o) : buf.readUInt16BE(o);
+  const u32 = o => le ? buf.readUInt32LE(o) : buf.readUInt32BE(o);
+  if (u16(tiff + 2) !== 42) return {};
+  const out = {};
+  const strings = { 0x010F: 'make', 0x0110: 'model', 0x0131: 'software', 0x9003: 'dateTaken', 0x9004: 'dateDigitised', 0xA434: 'lens' };
+  const numbers = { 0x0112: 'orientation', 0x829D: 'fNumber', 0x8827: 'iso', 0x920A: 'focalLength', 0x9209: 'flash', 0xA002: 'pixelWidth', 0xA003: 'pixelHeight' };
+  const readValue = (entry, kind) => {
+    const type = u16(entry + 2), count = u32(entry + 4);
+    if (kind === 'str') {
+      const size = type === 2 ? count : 4;
+      const at = size > 4 ? tiff + u32(entry + 8) : entry + 8;
+      return buf.toString('utf8', at, at + size).replace(/\u0000+$/, '').trim();
+    }
+    const readNum = () => {
+      if (type === 3) return u16(tiff + u32(entry + 8));
+      if (type === 4) return u32(tiff + u32(entry + 8));
+      if (type === 5) { const at = tiff + u32(entry + 8); return u32(at) / (u32(at + 4) || 1); }
+      if (type === 9) return u32(entry + 8);
+      return null;
+    };
+    if (kind === 'exposure') {
+      if (type === 5) { const at = tiff + u32(entry + 8); const num = u32(at), den = u32(at + 4) || 1; return num < den ? `1/${Math.round(den / num)}s` : `${(num / den).toFixed(1)}s`; }
+      const ms = readNum();
+      return ms != null ? `${ms}s` : null;
+    }
+    return readNum();
+  };
+  const ifd = start => {
+    const entries = u16(start);
+    let at = start + 2;
+    const map = {};
+    for (let i = 0; i < entries; i++, at += 12) {
+      const tag = u16(at);
+      map[tag] = at;
+    }
+    return map;
+  };
+  const ifd0 = ifd(tiff + u32(tiff + 4));
+  for (const [tag, key] of Object.entries(strings)) if (ifd0[tag]) out[key] = readValue(ifd0[tag], 'str');
+  for (const [tag, key] of Object.entries(numbers)) if (ifd0[tag]) out[key] = readValue(ifd0[tag], 'num');
+  if (ifd0[0x8769]) {
+    const sub = ifd(tiff + u32(ifd0[0x8769] + 8));
+    if (sub[0x829A]) out.exposure = readValue(sub[0x829A], 'exposure');
+    for (const [tag, key] of Object.entries(strings)) if (sub[tag] && !out[key]) out[key] = readValue(sub[tag], 'str');
+    for (const [tag, key] of Object.entries(numbers)) if (sub[tag] && out[key] == null) out[key] = readValue(sub[tag], 'num');
+  }
+  if (out.fNumber) out.fNumber = 'f/' + Number(out.fNumber).toFixed(Number(out.fNumber) % 1 ? 1 : 0);
+  if (out.focalLength) out.focalLength = Math.round(out.focalLength) + ' mm';
+  if (out.iso) out.iso = Math.round(out.iso);
+  return out;
+}
+
+function imageInfo(fp) {
+  const ext = path.extname(fp).slice(1).toLowerCase();
+  let width = 0, height = 0;
+  try {
+    const img = nativeImage.createFromPath(fp);
+    if (img && !img.isEmpty()) { const s = img.getSize(); width = s.width; height = s.height; }
+  } catch { /* unsupported by nativeImage */ }
+  const exif = ext === 'jpg' || ext === 'jpeg' || ext === 'tif' || ext === 'tiff' ? readExif(fp) : {};
+  let st = null;
+  try { st = fs.statSync(fp); } catch { }
+  return {
+    width: width || exif.pixelWidth || 0,
+    height: height || exif.pixelHeight || 0,
+    format: ext ? ext.toUpperCase() : '',
+    size: st ? st.size : 0,
+    mtimeMs: st ? st.mtimeMs : 0,
+    exif
+  };
+}
+
 // ---------------------------------------------------------------- window + protocol
 function createWindow() {
+  const isMac = process.platform === 'darwin';
+  // One title bar, owned by the renderer. A native frame above the custom bar
+  // duplicated the app name and the window buttons on Windows/Linux, so the
+  // window is frameless there; macOS keeps its traffic lights inset over our
+  // bar instead of drawing a second strip.
   const w = new BrowserWindow({
-    width: 1500, height: 950, minWidth: 1000, minHeight: 600,
+    width: 1500, height: 950, minWidth: 980, minHeight: 580,
     backgroundColor: '#0f1115',
+    frame: false,
+    ...(isMac ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 13, y: 11 } } : {}),
+    show: false,
     autoHideMenuBar: true,
     icon: path.join(__dirname, '../assets/icon.png'),
     webPreferences: {
@@ -1095,6 +1210,22 @@ function createWindow() {
     }
   });
   Menu.setApplicationMenu(null);
+  w.once('ready-to-show', () => { try { w.show(); } catch { /* torn down */ } });
+
+  // Keep the custom maximise/restore glyph honest: only the main process knows
+  // about snap, Win+Up and the macOS zoom button.
+  const pushWindowState = () => {
+    try {
+      w.webContents.send('x2:windowState', {
+        maximized: w.isMaximized(),
+        fullscreen: w.isFullScreen(),
+        focused: w.isFocused()
+      });
+    } catch { /* window going away */ }
+  };
+  for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'focus', 'blur', 'resize']) w.on(ev, pushWindowState);
+  w.webContents.on('did-finish-load', pushWindowState);
+
   w.webContents.on('console-message', (e, lvl, msg, line, src) => {
     if (process.env.X2M_DEVLOG) console.log(`[rc:${lvl}] ${msg} (${src}:${line})`);
   });

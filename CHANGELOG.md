@@ -4,6 +4,46 @@ All notable changes to Xplorer² Modern are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-10-23
+
+### Added
+- **Image viewer** (`Ctrl+I`, IrfanView-style): wheel zoom at cursor, fit /
+  actual-size, 10–1600% with live percentage, drag-pan, 90° rotate both ways,
+  flip, filmstrip of sibling images, slideshow, fullscreen and an Info panel with
+  real EXIF (camera, lens, exposure, ISO, dimensions) read in the main process.
+  Arrow navigation keeps the pane selection in sync.
+- **Quick Look overlay** (`Space`): instant preview of the focused file using the
+  same rich renderer, arrow keys to walk the folder, quick actions, `Escape` to
+  close.
+- **Rich preview renderer** shared by the pane, Quick Look and the viewer: rendered
+  markdown, sandboxed HTML, CSV/TSV tables, JSON/XML/YAML colouring, font specimens
+  for font files, archive entry listings, and a hex/metadata fallback for binaries.
+- **Explorer parity**: middle-click a folder to open it in a new tab (a file opens
+  with its default app), middle-click a tab to close it, drag tabs to reorder,
+  `Ctrl+W` closes a tab, `Alt+D` / `Ctrl+L` focus the address bar. All documented
+  in the shortcut sheet and the command palette.
+- Wider file-type taxonomy (more image, video, audio, font and source extensions)
+  feeding the Type column, icons, previews and filters.
+
+### Changed
+- **Single custom title bar** on Windows/Linux (`frame: false`): one app name, one
+  set of window buttons, drag anywhere, double-click to maximise, Windows-style red
+  close hover. macOS keeps the native traffic lights inset over the same bar.
+  The maximise/restore glyph now follows real main-process window state (snap,
+  Win+Up, zoom), not a guess.
+- Smoke suite grew to 52 steps covering the viewer, Quick Look and the new mouse /
+  keyboard parity; the README gallery gained an eleventh scene (the image viewer)
+  and all shots now show the new title bar.
+
+## [1.2.0] — 2026-10-23
+
+### Added
+- **Default file manager** (Windows, per-user): registers folders and drives for
+  the current account only, snapshots the previous default first, reverts safely.
+- **Light / dark theme toggle** in the ribbon and settings, persisted per profile.
+- **Silent auto-update** via `electron-updater` with published metadata.
+- Screenshot studio (`npm run shots`) driving the real app over CDP.
+
 ## [1.1.0] — 2026-10-22
 
 ### Added

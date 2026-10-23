@@ -1,7 +1,7 @@
 {
   "name": "xplorer2-modern",
   "productName": "Xplorer2 Modern",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A modern, keyboard-first dual-pane file manager for Windows, macOS and Linux — tabs, folder tree, preview pane, scrap panes, search, duplicates, compare/sync and more.",
   "main": "electron/main.js",
   "homepage": "https://github.com/vikramdex-ops/Xplorer2",

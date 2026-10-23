@@ -126,6 +126,11 @@ function makePlayground() {
   fs.writeFileSync(path.join(PLAY, 'copy-A.bin'), Buffer.alloc(2048, 7));
   fs.writeFileSync(path.join(PLAY, 'copy-B.bin'), Buffer.alloc(2048, 7));
   fs.writeFileSync(path.join(PLAY, 'sample.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+  // richer fixtures for the preview + viewer coverage below
+  fs.writeFileSync(path.join(PLAY, 'second.png'), fs.readFileSync(path.join(PLAY, 'sample.png')));
+  fs.writeFileSync(path.join(PLAY, 'notes.md'), '# Release notes\n\nA **markdown** document with a [link](https://example.com) and `code`.\n\n- one\n- two\n\n| Name | Size |\n| --- | --- |\n| alpha | 12 B |\n');
+  fs.writeFileSync(path.join(PLAY, 'table.csv'), 'name,size,kind\nalpha,12,text\nbeta,11,text\ngamma,8,markdown\n');
+  fs.writeFileSync(path.join(PLAY, 'data.json'), JSON.stringify({ project: 'xplorer2', version: '1.2.0', flags: { preview: true, viewer: true }, count: 3 }, null, 2));
 }
 
 // ---------------------------------------------------------------- steps
@@ -501,6 +506,119 @@ step('preview streams real bytes through the x2file protocol', `
   return img.naturalWidth > 0 ? true : 'naturalWidth=0 src=' + img.src;
 `);
 
+step('markdown preview renders a document', `
+  window.app.setPreview(true);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 350));
+  const row = [...document.querySelectorAll('#pane-L .row')].find(r => r.dataset.key === 'notes.md');
+  if (!row) return 'notes.md row missing';
+  row.click();
+  await new Promise(r => setTimeout(r, 700));
+  const doc = document.querySelector('#preview .pv-doc');
+  if (!doc) return 'no rendered document';
+  const h1 = doc.querySelector('h1');
+  if (!h1 || !/release notes/i.test(h1.textContent)) return 'h1=' + (h1 ? h1.textContent : 'none');
+  if (!doc.querySelector('table')) return 'markdown table not rendered';
+  return true;
+`);
+
+step('csv preview renders a table', `
+  window.app.setPreview(true);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 300));
+  const row = [...document.querySelectorAll('#pane-L .row')].find(r => r.dataset.key === 'table.csv');
+  if (!row) return 'table.csv row missing';
+  row.click();
+  let heads = 0, rows = 0;
+  for (let i = 0; i < 25; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    heads = document.querySelectorAll('#preview .pv-scroll th').length;
+    rows = document.querySelectorAll('#preview .pv-scroll tbody tr').length;
+    if (heads >= 3 && rows === 3) break;
+  }
+  return (heads >= 3 && rows === 3) ? true : 'heads=' + heads + ' rows=' + rows;
+`);
+
+step('json preview highlights keys and values', `
+  window.app.setPreview(true);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 300));
+  const row = [...document.querySelectorAll('#pane-L .row')].find(r => r.dataset.key === 'data.json');
+  if (!row) return 'data.json row missing';
+  row.click();
+  await new Promise(r => setTimeout(r, 600));
+  const keys = document.querySelectorAll('#preview .pv-json .j-key').length;
+  const str = document.querySelectorAll('#preview .pv-json .j-str').length;
+  return (keys >= 4 && str >= 1) ? true : 'keys=' + keys + ' strings=' + str;
+`);
+
+step('Quick Look opens with Space, shows the file, closes with Escape', `
+  window.app.setPreview(true);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 350));
+  const e = window.app.paneL.view.view.find(x => /notes\\.md$/i.test(x.name));
+  if (!e) return 'notes.md not in view';
+  const key = e.name.toLowerCase() + (e.isDir ? '/' : '');
+  window.app.paneL.view.sel = new Set([key]);
+  window.app.paneL.view.focused = key;
+  window.app.paneL.view.render();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 800));
+  const ql = document.querySelector('#quicklook');
+  if (ql.classList.contains('hidden')) return 'quick look did not open';
+  const body = document.querySelector('#ql-body');
+  const name = (document.querySelector('#ql-name') || { textContent: '' }).textContent;
+  if (!/notes\\.md/i.test(name)) return 'name=' + name;
+  if (!body || body.textContent.trim().length < 10) return 'empty quick look body';
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 300));
+  return ql.classList.contains('hidden') ? true : 'Escape did not close quick look';
+`);
+
+step('image viewer opens, zooms, rotates, shows EXIF panel and navigates', `
+  window.app.setPreview(true);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 350));
+  window.app.openViewer(${JSON.stringify(PLAY + '\\\\sample.png')});
+  for (let i = 0; i < 30; i++) {
+    const im = document.querySelector('#vw-img');
+    if (im && im.complete && im.naturalWidth > 0) break;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  const viewer = document.querySelector('#viewer');
+  if (viewer.classList.contains('hidden')) return 'viewer did not open';
+  const before = document.querySelector('#vw-zoomlabel').textContent;
+  document.querySelector('[data-vw="zoom-in"]').click();
+  await new Promise(r => setTimeout(r, 200));
+  const zoomed = document.querySelector('#vw-zoomlabel').textContent;
+  if (!/%$/.test(zoomed)) return 'zoom label=' + zoomed + ' (was ' + before + ')';
+  document.querySelector('[data-vw="rotate-r"]').click();
+  await new Promise(r => setTimeout(r, 200));
+  const rot = document.querySelector('#vw-img').style.transform;
+  if (!/rotate\\(90deg\\)/.test(rot)) return 'transform=' + rot;
+  const count = document.querySelector('#vw-hud-right').textContent;
+  if (!/\\d+\\s*\\/\\s*\\d+/.test(count)) return 'count=' + count;
+  document.querySelector('[data-vw="info"]').click();
+  await new Promise(r => setTimeout(r, 500));
+  const info = document.querySelector('#vw-info');
+  const infoText = info ? info.textContent : '';
+  document.querySelector('[data-vw="next"]').click();
+  await new Promise(r => setTimeout(r, 400));
+  const name = (document.querySelector('#vw-name') || { textContent: '' }).textContent;
+  return (!info.classList.contains('hidden') && /dimensions/i.test(infoText) && /\\.png$/i.test(name))
+    ? true : 'info=' + infoText.slice(0, 80) + ' name=' + name;
+`);
+
+step('image viewer closes and restores the pane', `
+  document.querySelector('[data-vw="close"]').click();
+  await new Promise(r => setTimeout(r, 300));
+  const hidden = document.querySelector('#viewer').classList.contains('hidden');
+  if (!hidden) return 'viewer still open';
+  window.app.setPreview(false);
+  await new Promise(r => setTimeout(r, 200));
+  return true;
+`);
+
 step('browser memory: back/forward/up + recent locations', `
   const p = window.app.paneL;
   p.navigateByPath(${JSON.stringify(PLAY)});
@@ -630,6 +748,63 @@ step('update + defmgr IPC channels answer', `
   const upOk = up.state === 'dev' && /installed build/i.test(up.message || '');
   const stOk = st.supported === true && typeof st.packaged === 'boolean' && typeof st.state === 'string';
   return (upOk && stOk) ? true : 'up=' + JSON.stringify(up) + ' st=' + JSON.stringify(st);
+`);
+
+step('middle-click on a folder opens it in a new tab', `
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 350));
+  const row = [...document.querySelectorAll('#pane-L .row')].find(r => {
+    const e = window.app.paneL.view.view[+r.dataset.idx];
+    return e && e.isDir;
+  });
+  if (!row) return 'no folder row in playground';
+  const ent = window.app.paneL.view.view[+row.dataset.idx];
+  const before = window.app.paneL.tabs.length;
+  row.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+  await new Promise(r => setTimeout(r, 700));
+  const after = window.app.paneL.tabs.length;
+  const cwdOk = (window.app.paneL.cwd() || '').toLowerCase().endsWith(ent.name.toLowerCase());
+  if (after !== before + 1) return 'tabs ' + before + ' -> ' + after;
+  if (!cwdOk) return 'tab opened at ' + window.app.paneL.cwd() + ' expected ' + ent.name;
+  window.app.paneL.closeTab(window.app.paneL.activeTab);
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  return true;
+`);
+
+step('Ctrl+W closes a tab, Alt+D focuses the address bar', `
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await new Promise(r => setTimeout(r, 300));
+  await window.app.paneL.addTab(${JSON.stringify(PLAY)}, true);
+  await new Promise(r => setTimeout(r, 300));
+  const before = window.app.paneL.tabs.length;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 300));
+  const after = window.app.paneL.tabs.length;
+  if (after !== before - 1) return 'Ctrl+W tabs ' + before + ' -> ' + after;
+  document.activeElement?.blur?.();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', altKey: true, bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 120));
+  if (document.activeElement !== document.querySelector('#address')) return 'Alt+D did not focus #address';
+  document.querySelector('#address').blur();
+  return true;
+`);
+
+step('dragging a tab reorders the tab strip', `
+  await window.app.paneL.navigateByPath(${JSON.stringify(PLAY)});
+  await window.app.paneL.addTab(${JSON.stringify(PLAY + '\\\\Docs')}, true);
+  await new Promise(r => setTimeout(r, 400));
+  const ids = window.app.paneL.tabs.map(t => t.id);
+  if (ids.length < 2) return 'need two tabs';
+  const tabs = [...document.querySelectorAll('#pane-L .tab')];
+  const dt = new DataTransfer();
+  tabs[0].dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  const r2 = tabs[1].getBoundingClientRect();
+  const opts = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r2.left + r2.width / 2 + 4, clientY: r2.top + 4 };
+  tabs[1].dispatchEvent(new DragEvent('dragover', opts));
+  tabs[1].dispatchEvent(new DragEvent('drop', opts));
+  await new Promise(r => setTimeout(r, 250));
+  const now = window.app.paneL.tabs.map(t => t.id);
+  return (now.length === ids.length && now[0] === ids[1] && now[1] === ids[0]) ? true : 'order=' + now.join(',') + ' was=' + ids.join(',');
 `);
 
 step('no page exceptions or console errors so far', `

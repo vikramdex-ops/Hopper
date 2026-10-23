@@ -552,6 +552,26 @@ const scenes = [
       await window.app.runCmd('settings');
       await sleep(1200);
     `
+  },
+  {
+    name: '11-image-viewer',
+    setup: `
+      await theme('dark');
+      await reset(${JSON.stringify(P.design)}, ${JSON.stringify(P.assets)});
+      await mode('details');
+      await wantTree(false);
+      await wantPreview(false);
+      await select(/aurora-study\\.png$/);
+      window.app.openViewer();
+      for (let i = 0; i < 40; i++) {
+        const im = document.querySelector('#vw-img');
+        if (im && im.complete && im.naturalWidth > 0) break;
+        await sleep(150);
+      }
+      const info = document.querySelector('[data-vw="info"]');
+      if (info) info.click();
+      await sleep(800);
+    `
   }
 ];
 
