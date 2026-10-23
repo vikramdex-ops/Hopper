@@ -157,6 +157,7 @@ export class ListView {
     if (!spacer) { spacer = el('div', 'spacer'); spacer.style.cssText = 'position:absolute;top:0;left:0;width:100%'; root.appendChild(spacer); }
     spacer.style.height = this.view.length * this.rowH() + 40 + 'px';
     $$('.row', root).forEach(r => r.remove());
+    $$('.empty-note', root).forEach(n => n.remove());
     const frag = document.createDocumentFragment();
     for (let i = start; i < end; i++) {
       const e = this.view[i];

@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="440" viewBox="0 0 1400 440" role="img" aria-label="Xplorer Squared Modern — a dual-pane file manager">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b12"/>
+      <stop offset="0.55" stop-color="#0a1420"/>
+      <stop offset="1" stop-color="#0b1a26"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.65" stop-color="#dbe9f6"/>
+      <stop offset="1" stop-color="#8fb6cf"/>
+    </linearGradient>
+    <linearGradient id="paneA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4ce0c0"/>
+      <stop offset="1" stop-color="#2f9fd0"/>
+    </linearGradient>
+    <linearGradient id="paneB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b06bff"/>
+      <stop offset="1" stop-color="#4f7dff"/>
+    </linearGradient>
+    <linearGradient id="paneC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb45c"/>
+      <stop offset="1" stop-color="#ff6b6b"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#4ce0c0" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#4ce0c0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5b7bff" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#5b7bff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#8fb6cf" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+    <clipPath id="card"><rect x="1" y="1" width="1398" height="438" rx="26"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect x="1" y="1" width="1398" height="438" rx="26" fill="url(#bg)"/>
+    <rect x="1" y="1" width="1398" height="438" rx="26" fill="url(#grid)"/>
+    <circle cx="1215" cy="60" r="330" fill="url(#glowA)"/>
+    <circle cx="200" cy="430" r="300" fill="url(#glowB)"/>
+
+    <!-- wordmark -->
+    <text x="80" y="96" fill="#6f8399" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="600" letter-spacing="3.6">DUAL-PANE FILE MANAGER</text>
+
+    <text x="76" y="196" fill="url(#title)" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="92" font-weight="700" letter-spacing="-2">Xplorer</text>
+    <text x="392" y="152" fill="#4ce0c0" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="44" font-weight="700">2</text>
+
+    <text x="80" y="234" fill="#4ce0c0" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="9">MODERN</text>
+
+    <text x="80" y="282" fill="#a9b8cb" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="21">Two panes. One keyboard. Zero friction.</text>
+
+    <!-- feature chips -->
+    <g font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif" font-size="13" fill="#c8d5e4">
+      <rect x="80" y="326" width="66" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="113" y="348" text-anchor="middle">Tabs</text>
+      <rect x="154" y="326" width="86" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="197" y="348" text-anchor="middle">Preview</text>
+      <rect x="248" y="326" width="76" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="286" y="348" text-anchor="middle">Scrap</text>
+      <rect x="332" y="326" width="96" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="380" y="348" text-anchor="middle">Compare</text>
+      <rect x="436" y="326" width="86" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="479" y="348" text-anchor="middle">Search</text>
+      <rect x="530" y="326" width="126" height="34" rx="17" fill="#ffffff" fill-opacity="0.045" stroke="#24344a"/>
+      <text x="593" y="348" text-anchor="middle">Ctrl + K</text>
+    </g>
+
+    <!-- window mock -->
+    <g>
+      <rect x="760" y="78" width="572" height="296" rx="16" fill="#080e17" stroke="#1f2f46"/>
+      <rect x="760" y="78" width="572" height="34" rx="16" fill="#0d1725"/>
+      <rect x="760" y="98" width="572" height="14" fill="#0d1725"/>
+      <circle cx="786" cy="95" r="4" fill="#2c3d55"/>
+      <circle cx="800" cy="95" r="4" fill="#2c3d55"/>
+      <circle cx="814" cy="95" r="4" fill="#2c3d55"/>
+      <rect x="836" y="88" width="120" height="14" rx="7" fill="#182538"/>
+
+      <!-- toolbar -->
+      <g fill="#1a2739">
+        <rect x="776" y="124" width="52" height="16" rx="8"/>
+        <rect x="834" y="124" width="52" height="16" rx="8"/>
+        <rect x="892" y="124" width="52" height="16" rx="8"/>
+        <rect x="950" y="124" width="52" height="16" rx="8"/>
+        <rect x="1008" y="124" width="52" height="16" rx="8"/>
+      </g>
+      <rect x="776" y="124" width="52" height="16" rx="8" fill="#4ce0c0" fill-opacity="0.18"/>
+
+      <!-- address -->
+      <rect x="776" y="150" width="540" height="20" rx="10" fill="#0f1a29" stroke="#1c2b40"/>
+
+      <!-- left pane -->
+      <rect x="776" y="182" width="262" height="176" rx="10" fill="#0a1320" stroke="#18273a"/>
+      <rect x="776" y="182" width="262" height="22" rx="10" fill="#101c2c"/>
+      <rect x="788" y="190" width="54" height="6" rx="3" fill="#5d7490"/>
+
+      <g>
+        <rect x="776" y="212" width="262" height="20" fill="#4ce0c0" fill-opacity="0.10"/>
+        <rect x="788" y="218" width="13" height="9" rx="2" fill="url(#paneA)"/>
+        <rect x="808" y="219" width="92" height="7" rx="3.5" fill="#9fb4c9"/>
+        <rect x="975" y="219" width="46" height="7" rx="3.5" fill="#3d5570"/>
+
+        <rect x="788" y="242" width="13" height="9" rx="2" fill="url(#paneC)"/>
+        <rect x="808" y="243" width="72" height="7" rx="3.5" fill="#7d93a9"/>
+        <rect x="975" y="243" width="46" height="7" rx="3.5" fill="#33465d"/>
+
+        <rect x="788" y="266" width="13" height="9" rx="2" fill="url(#paneB)"/>
+        <rect x="808" y="267" width="108" height="7" rx="3.5" fill="#7d93a9"/>
+        <rect x="975" y="267" width="46" height="7" rx="3.5" fill="#33465d"/>
+
+        <rect x="788" y="290" width="13" height="9" rx="2" fill="url(#paneA)"/>
+        <rect x="808" y="291" width="84" height="7" rx="3.5" fill="#6b8095"/>
+        <rect x="975" y="291" width="46" height="7" rx="3.5" fill="#2c3d52"/>
+
+        <rect x="788" y="314" width="13" height="9" rx="2" fill="url(#paneC)"/>
+        <rect x="808" y="315" width="98" height="7" rx="3.5" fill="#6b8095"/>
+        <rect x="975" y="315" width="46" height="7" rx="3.5" fill="#2c3d52"/>
+      </g>
+
+      <!-- right pane -->
+      <rect x="1050" y="182" width="266" height="176" rx="10" fill="#0a1320" stroke="#18273a"/>
+      <rect x="1050" y="182" width="266" height="22" rx="10" fill="#101c2c"/>
+      <rect x="1062" y="190" width="44" height="6" rx="3" fill="#5d7490"/>
+
+      <!-- big preview image -->
+      <rect x="1062" y="214" width="118" height="82" rx="8" fill="url(#paneB)"/>
+      <rect x="1062" y="214" width="118" height="82" rx="8" fill="#4ce0c0" fill-opacity="0.08"/>
+      <text x="1121" y="262" fill="#e9f4ff" fill-opacity="0.9" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="9" text-anchor="middle" letter-spacing="1">PREVIEW</text>
+
+      <g fill="#2f435b">
+        <rect x="1192" y="216" width="104" height="6" rx="3"/>
+        <rect x="1192" y="230" width="86" height="6" rx="3"/>
+        <rect x="1192" y="244" width="94" height="6" rx="3"/>
+        <rect x="1192" y="258" width="70" height="6" rx="3"/>
+        <rect x="1192" y="272" width="88" height="6" rx="3"/>
+        <rect x="1192" y="286" width="58" height="6" rx="3"/>
+      </g>
+      <rect x="1062" y="308" width="238" height="8" rx="4" fill="#162333"/>
+      <rect x="1062" y="324" width="176" height="8" rx="4" fill="#14202f"/>
+      <rect x="1062" y="340" width="204" height="8" rx="4" fill="#121d2b"/>
+
+      <!-- status line -->
+      <rect x="776" y="366" width="540" height="1" fill="#18273a"/>
+    </g>
+
+    <!-- version pill -->
+    <g font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12" font-weight="600">
+      <rect x="1184" y="34" width="104" height="28" rx="14" fill="#0e1a27" stroke="#22344b"/>
+      <circle cx="1200" cy="48" r="4" fill="#4ce0c0"/>
+      <text x="1212" y="52" fill="#9fb4c9">v1.2.0</text>
+    </g>
+
+    <!-- hairline -->
+    <rect x="1" y="1" width="1398" height="438" rx="26" fill="none" stroke="#1b2a3e"/>
+  </g>
+</svg>

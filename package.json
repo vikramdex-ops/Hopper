@@ -17,6 +17,7 @@
     "start:debug": "electron . --remote-debugging-port=9222",
     "check": "node tools/check.mjs",
     "smoke": "node tools/smoke.mjs",
+    "shots": "node tools/make-shots.mjs",
     "icons": "node tools/make-icon.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",

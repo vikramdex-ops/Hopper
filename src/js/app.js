@@ -1078,8 +1078,11 @@ class App {
   switchPane() { (this.active === this.paneL ? this.paneR : this.paneL).activate(); }
   toggleMini(pane) {
     pane.miniEl.classList.toggle('hidden');
-    if (!pane.miniEl.classList.contains('hidden')) { this.scrap.minis.add(pane.id); this.scrap.redrawMinis(); }
-    else this.scrap.minis.delete(pane.id);
+    // minis are keyed by the pane element id ('pane-L'), which is what
+    // Scrap.redrawMinis looks up — pane.id alone ('L') matched nothing.
+    const key = pane.root.id;
+    if (!pane.miniEl.classList.contains('hidden')) { this.scrap.minis.add(key); this.scrap.redrawMinis(); }
+    else this.scrap.minis.delete(key);
   }
   startFilter() {
     const fi = $('#filter-input');
