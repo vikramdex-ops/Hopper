@@ -4,11 +4,9 @@
 
 <br>
 
-<a href="https://github.com/vikramdex-ops/Xplorer2/releases/latest"><img src="https://img.shields.io/github/v/release/vikramdex-ops/Xplorer2?style=flat-square&label=release&color=4ce0c0&labelColor=0b1220" alt="Latest release"></a>
 <a href="https://github.com/vikramdex-ops/Xplorer2/actions/workflows/build.yml"><img src="https://github.com/vikramdex-ops/Xplorer2/actions/workflows/build.yml/badge.svg" alt="Build installers"></a>
-<a href="LICENSE"><img src="https://img.shields.io/github/license/vikramdex-ops/Xplorer2?style=flat-square&color=4ce0c0&labelColor=0b1220" alt="MIT licence"></a>
 <img src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-4ce0c0?style=flat-square&labelColor=0b1220" alt="Windows, macOS, Linux">
-<a href="https://github.com/vikramdex-ops/Xplorer2/releases"><img src="https://img.shields.io/github/downloads/vikramdex-ops/Xplorer2/total?style=flat-square&color=4ce0c0&labelColor=0b1220" alt="Downloads"></a>
+<img src="https://img.shields.io/badge/license-MIT-4ce0c0?style=flat-square&labelColor=0b1220" alt="MIT licence">
 
 **Two panes. One keyboard. Zero friction.**
 
@@ -16,7 +14,7 @@ A keyboard-first dual-pane file manager built on Electron — the muscle memory 
 classic xplorer², the finish of a modern desktop app.
 
 <a href="#download"><b>Download</b></a> &nbsp;·&nbsp;
-<a href="#a-tour-in-ten-screens"><b>Tour</b></a> &nbsp;·&nbsp;
+<a href="#a-tour-in-eleven-screens"><b>Tour</b></a> &nbsp;·&nbsp;
 <a href="#keyboard-map"><b>Keyboard</b></a> &nbsp;·&nbsp;
 <a href="#build-from-source"><b>Build</b></a>
 
@@ -144,7 +142,7 @@ features that make it feel installed rather than downloaded:
 
 ---
 
-### 11. The image viewer
+### 10. The image viewer
 
 <img src="docs/screenshots/11-image-viewer.png" alt="Image viewer with filmstrip, info panel and zoom controls" width="100%">
 
