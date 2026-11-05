@@ -27,7 +27,10 @@ await app.evaluate(({ BrowserWindow }) => {
 })
 const ev = (fn, arg) => win.evaluate(fn, arg)
 const wait = (ms) => win.waitForTimeout(ms)
+let demoPeople = null
 const shot = async (name) => {
+  // The LAN process keeps publishing the real (empty) people list; put the demo back.
+  if (demoPeople) await ev((d) => { window.__hopper.peers = d.peers; window.__hopper.lanStatus = { ready: true, enabled: true } }, demoPeople)
   await wait(700)
   await win.screenshot({ path: join(out, `${name}.png`) })
   console.log('  shot', name)
@@ -60,6 +63,7 @@ await ev(({ P }) => {
   h.lanStatus = { ready: true, enabled: true }
   h.updateSettings({ profile: { displayName: 'Asha', email: '', status: 'online' }, pinned: [P, 'H:' + bs + 'Site photos', 'H:' + bs + 'Transmittals'], quickDests: [], officeConfigPath: 'S:' + bs + '_Hopper' + bs + 'office.json' })
 }, { P })
+demoPeople = { peers: await ev(() => window.__hopper.peers) }
 
 await ev(({ lot, demo }) => {
   const h = window.__hopper
@@ -68,10 +72,13 @@ await ev(({ lot, demo }) => {
   void h.panes[1].navigate(demo + 'P12513 Refinery Revamp')
   h.drawer = false
 }, { lot, demo })
-await wait(4000)
+await wait(2000)
+await win.waitForFunction(() => !!document.querySelector('.insp canvas') && !document.querySelector('.insp .spin'), null, { timeout: 300000 })
+await wait(1500)
 await shot('01-workspace-light')
 
 await ev(() => window.__hopper.updateSettings({ theme: 'dark' }))
+await wait(1500)
 await shot('02-workspace-dark')
 await ev(() => window.__hopper.updateSettings({ theme: 'light' }))
 
@@ -109,7 +116,7 @@ await win.keyboard.press('Escape')
 
 // Lot packager
 await ev(() => { void window.__hopper.__dialogs.packager(window.__hopper.panes[0].rows.filter((r) => r.ext === 'pdf').map((r) => r.path)) })
-await win.waitForFunction(() => document.querySelector('.dlg table')?.textContent?.includes('ISO-1001'), null, { timeout: 600000 })
+await win.waitForFunction(() => document.querySelector('.dlg')?.innerText?.includes('ISO-1001_Rev0'), null, { timeout: 600000 })
 await wait(1000)
 await shot('06-packager')
 await ev(() => window.__hopper.dialogs.slice().forEach((d) => window.__hopper.closeDialog(d.id)))

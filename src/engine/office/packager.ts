@@ -12,7 +12,7 @@ import type { JobCtl } from '../jobs'
 import { createArchive } from '../archive'
 import { freeName } from '../fsutil'
 import { checkSegment, officeOf, safeFilePart } from './util'
-import { writePdf, writeXlsx, type TransmittalRow } from './transmittal'
+import type { TransmittalRow } from './transmittal'
 import type { ConventionStatus, PackageSpec, PlanFile, PlanReport } from './types'
 
 const CHUNK = 4 * 1024 * 1024
@@ -177,6 +177,8 @@ export async function runOp(ctx: EngineCtx, ctl: JobCtl, spec: PackageSpec, crea
   const xlsx = join(dir, `${stem}.xlsx`)
   const pdf = join(dir, `${stem}.pdf`)
   ctl.setCurrent(xlsx)
+  // exceljs and pdf-lib load only when a package is actually written, so checking a lot stays fast.
+  const { writePdf, writeXlsx } = await import('./transmittal')
   await writeXlsx(doc, xlsx)
   ctl.setCurrent(pdf)
   await writePdf(doc, pdf)

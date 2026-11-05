@@ -1,25 +1,19 @@
-// Ad-hoc probe: boots the app, opens a folder, prints console errors with stacks.
+// Ad-hoc probe: calls package.plan in the running app and prints the result and timing.
 import { join } from 'node:path'
-import { launch, makeDemo } from './harness.mjs'
+import { launch, makeDemo, WORK } from './harness.mjs'
 
 const demo = await makeDemo()
-const tl = Date.now()
-const { app, win } = await launch()
-console.log('launch ms', Date.now() - tl)
-app.process().stdout.on('data', (d) => process.stdout.write(`[main +${Date.now() - tl}] ${d}`))
-app.process().stderr.on('data', (d) => process.stdout.write(`[main-err +${Date.now() - tl}] ${d}`))
-win.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning') console.log('[console]', m.type(), m.text(), JSON.stringify(m.location()))
-})
-win.on('pageerror', (e) => console.log('[pageerror]', e.stack))
-const t0 = Date.now()
-console.log('engine ping ms', await win.evaluate(async () => { const t = performance.now(); await window.__hopper.__engine('ping'); return Math.round(performance.now() - t) }), 'wall', Date.now() - t0)
-const t = Date.now()
-await win.evaluate((p) => window.__hopper.panes[0].navigate(p), demo)
-console.log('first navigate ms', Date.now() - t)
-const lot = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
-await win.evaluate(({ d, f }) => window.__hopper.panes[0].navigate(d, { select: f }), { d: lot, f: join(lot, 'ISO-1003_Rev2.pdf') })
-await win.waitForTimeout(6000)
-const m = await app.evaluate(({ app }) => app.getAppMetrics().map((p) => `${p.type}${p.serviceName ? `(${p.serviceName})` : ''}=${Math.round(p.memory.workingSetSize / 1024)}MB`))
-console.log(m.join(' '))
+const { app, win } = await launch({ userData: join(WORK, 'userdata-probe') })
+win.on('pageerror', (e) => console.log('[pageerror]', e.message))
+import { execFileSync } from 'node:child_process'
+execFileSync('subst', ['H:', demo])
+process.on('exit', () => { try { execFileSync('subst', ['H:', '/D']) } catch {} })
+const lot = join('H:' + String.fromCharCode(92), 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
+const files = ['ISO-1001_Rev0.pdf', 'ISO-1001_RevA.pdf', 'ISO-1003_Rev2.pdf'].map((f) => join(lot, f))
+win.on('console', (m) => console.log('[console]', m.type(), m.text().slice(0, 300)))
+await win.evaluate((files) => { void window.__hopper.__dialogs.packager(files) }, files)
+for (const ms of [3000, 8000, 20000]) {
+  await win.waitForTimeout(ms)
+  console.log(ms, (await win.evaluate(() => document.querySelector('.dlg')?.innerText ?? 'no dialog')).replace(/\s+/g, ' ').slice(0, 400))
+}
 await app.close()
