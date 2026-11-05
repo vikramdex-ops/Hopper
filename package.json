@@ -1,29 +1,16 @@
 {
-  "name": "xplorer2-modern",
-  "productName": "Xplorer2 Modern",
-  "version": "1.3.0",
-  "description": "A modern, keyboard-first dual-pane file manager for Windows, macOS and Linux — tabs, folder tree, preview pane, scrap panes, search, duplicates, compare/sync and more.",
-  "main": "electron/main.js",
-  "homepage": "https://github.com/vikramdex-ops/Xplorer2",
+  "name": "hopper",
+  "productName": "Hopper",
+  "version": "2.0.0",
+  "description": "Hopper: a fast, Fluent file manager for Windows offices. Dual panes, a real transfer queue, one-key zips, PDF tools and @-mention file sharing over the LAN with Zoho Cliq notifications.",
+  "main": "out/main/index.js",
+  "homepage": "https://vikramdex-ops.github.io/Hopper/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vikramdex-ops/Xplorer2.git"
+    "url": "https://github.com/vikramdex-ops/Hopper.git"
   },
   "bugs": {
-    "url": "https://github.com/vikramdex-ops/Xplorer2/issues"
-  },
-  "scripts": {
-    "start": "electron .",
-    "start:debug": "electron . --remote-debugging-port=9222",
-    "check": "node tools/check.mjs",
-    "smoke": "node tools/smoke.mjs",
-    "shots": "node tools/make-shots.mjs",
-    "icons": "node tools/make-icon.mjs",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "url": "https://github.com/vikramdex-ops/Hopper/issues"
   },
   "author": {
     "name": "Asha",
@@ -31,20 +18,46 @@
     "url": "https://github.com/vikramdex-ops"
   },
   "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "node tools/build-native.mjs && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test tests/unit/",
+    "e2e": "node tests/e2e/run.mjs",
+    "shots": "node tests/e2e/shots.mjs",
+    "icons": "node tools/make-icon.mjs",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --win --x64",
+    "native": "node tools/build-native.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "exceljs": "4.4.0",
+    "pdf-lib": "1.17.1"
+  },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "24.19.2",
+    "electron": "44.10.2",
+    "electron-builder": "26.18.0",
+    "electron-vite": "6.0.0",
+    "pdfjs-dist": "6.5.438",
+    "playwright-core": "1.64.1",
+    "svelte": "5.57.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.6"
   },
   "build": {
-    "appId": "com.vikramdex.xplorer2",
-    "productName": "Xplorer2 Modern",
+    "appId": "com.vikramdex.hopper",
+    "productName": "Hopper",
     "copyright": "Copyright © 2026 Asha",
-    "artifactName": "Xplorer2-Modern-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Hopper-${version}-win-${arch}.${ext}",
     "publish": [
       {
         "provider": "github",
         "owner": "vikramdex-ops",
-        "repo": "Xplorer2",
+        "repo": "Hopper",
         "releaseType": "release"
       }
     ],
@@ -53,15 +66,25 @@
       "buildResources": "build"
     },
     "files": [
-      "electron/**/*",
-      "src/**/*",
-      "assets/**/*",
-      "!**/*.map",
-      "!**/*.md"
+      "out/**/*",
+      "!**/*.map"
     ],
-    "extraMetadata": {
-      "main": "electron/main.js"
-    },
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/7zip",
+        "to": "7zip"
+      },
+      {
+        "from": "native/bin",
+        "to": "native",
+        "filter": [
+          "HopperShell.exe"
+        ]
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
       "verifyUpdateCodeSignature": false,
@@ -86,41 +109,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Xplorer2 Modern",
+      "shortcutName": "Hopper",
       "deleteAppDataOnUninstall": false,
       "differentialPackage": true,
       "include": "build/installer.nsh"
-    },
-    "mac": {
-      "icon": "build/icon.png",
-      "category": "public.app-category.utilities",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "icon": "build/icon.png",
-      "category": "Utility",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
     }
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.9"
   }
 }

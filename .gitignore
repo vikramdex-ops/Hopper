@@ -1,25 +1,13 @@
-# dependencies
 node_modules/
-
-# build output
+out/
 release/
 dist/
 *.log
-
-# local/runtime state
-logs/
+.tmp/
 /screenshots/
-x2modern.json
-x2m-portable.flag
-.tmpcheck/
-
-# OS cruft
+tests/e2e/.artifacts/
+native/bin/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# tool metadata
 .freebuff/
-
-# session scratch (debug scripts created during investigation)
-tools/dbg-*.mjs
