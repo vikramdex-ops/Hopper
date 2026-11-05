@@ -1,0 +1,346 @@
+/* Hopper design tokens: Fluent 2 / Windows 11. Light and dark follow the OS unless set. */
+:root {
+  --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+
+  --row: 32px;
+  --title-h: 48px;
+  --ease: cubic-bezier(0, 0, 0, 1);
+  --fast: 120ms;
+  --mid: 200ms;
+
+  --accent: #005fb8;
+  --accent-hover: #0067c0;
+  --on-accent: #ffffff;
+
+  /* light */
+  --bg: #f3f3f3;
+  --bg-solid: #f3f3f3;
+  --layer: rgba(255, 255, 255, 0.5);
+  --layer-solid: #fbfbfb;
+  --card: rgba(255, 255, 255, 0.7);
+  --card-solid: #ffffff;
+  --flyout: rgba(252, 252, 252, 0.96);
+  --stroke: rgba(0, 0, 0, 0.0578);
+  --stroke-2: rgba(0, 0, 0, 0.1);
+  --stroke-strong: rgba(0, 0, 0, 0.16);
+  --divider: rgba(0, 0, 0, 0.0803);
+  --text: rgba(0, 0, 0, 0.896);
+  --text-2: rgba(0, 0, 0, 0.6063);
+  --text-3: rgba(0, 0, 0, 0.4458);
+  --hover: rgba(0, 0, 0, 0.0373);
+  --press: rgba(0, 0, 0, 0.0241);
+  --sel: color-mix(in srgb, var(--accent) 14%, transparent);
+  --sel-strong: color-mix(in srgb, var(--accent) 22%, transparent);
+  --control: rgba(255, 255, 255, 0.7);
+  --control-hover: rgba(249, 249, 249, 0.5);
+  --control-stroke: rgba(0, 0, 0, 0.0578);
+  --control-stroke-bottom: rgba(0, 0, 0, 0.1622);
+  --input: rgba(255, 255, 255, 0.7);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
+  --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.04);
+  --ok: #0f7b0f;
+  --warn: #9d5d00;
+  --bad: #c42b1c;
+  --info: #005fb8;
+  --scrim: rgba(0, 0, 0, 0.3);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --accent: #60cdff;
+  --accent-hover: #5ab6e2;
+  --on-accent: #000000;
+  --bg: #202020;
+  --bg-solid: #202020;
+  --layer: rgba(58, 58, 58, 0.3);
+  --layer-solid: #272727;
+  --card: rgba(255, 255, 255, 0.0512);
+  --card-solid: #2b2b2b;
+  --flyout: rgba(44, 44, 44, 0.97);
+  --stroke: rgba(255, 255, 255, 0.0698);
+  --stroke-2: rgba(255, 255, 255, 0.0837);
+  --stroke-strong: rgba(255, 255, 255, 0.14);
+  --divider: rgba(255, 255, 255, 0.0837);
+  --text: #ffffff;
+  --text-2: rgba(255, 255, 255, 0.786);
+  --text-3: rgba(255, 255, 255, 0.5442);
+  --hover: rgba(255, 255, 255, 0.0605);
+  --press: rgba(255, 255, 255, 0.0419);
+  --sel: color-mix(in srgb, var(--accent) 18%, transparent);
+  --sel-strong: color-mix(in srgb, var(--accent) 28%, transparent);
+  --control: rgba(255, 255, 255, 0.0605);
+  --control-hover: rgba(255, 255, 255, 0.0837);
+  --control-stroke: rgba(255, 255, 255, 0.0698);
+  --control-stroke-bottom: rgba(255, 255, 255, 0.0698);
+  --input: rgba(255, 255, 255, 0.0605);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.26), 0 0 2px rgba(0, 0, 0, 0.3);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.37), 0 2px 21px rgba(0, 0, 0, 0.37);
+  --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.13);
+  --ok: #6ccb5f;
+  --warn: #fce100;
+  --bad: #ff99a4;
+  --info: #60cdff;
+  --scrim: rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+/* Windows 10 has no Mica: paint solid surfaces instead of translucent ones. */
+:root[data-mica='off'] {
+  --layer: var(--layer-solid);
+  --card: var(--card-solid);
+}
+
+:root[data-density='compact'] {
+  --row: 26px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/20px var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+:root[data-mica='on'] body {
+  background: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--sel-strong);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+  border: 4px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--text) 45%, transparent);
+  border-width: 3px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- primitives ------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--control-stroke);
+  border-bottom-color: var(--control-stroke-bottom);
+  background: var(--control);
+  color: var(--text);
+  white-space: nowrap;
+  cursor: default;
+  transition: background var(--fast) var(--ease);
+}
+.btn:hover {
+  background: var(--control-hover);
+}
+.btn:active {
+  background: var(--press);
+  color: var(--text-2);
+}
+.btn:disabled {
+  color: var(--text-3);
+  pointer-events: none;
+}
+.btn.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: color-mix(in srgb, white 8%, transparent);
+  border-bottom-color: rgba(0, 0, 0, 0.4);
+}
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+.btn.primary:disabled {
+  background: var(--stroke-strong);
+  color: var(--text-3);
+  border-color: transparent;
+}
+.btn.danger {
+  color: var(--bad);
+}
+.btn.subtle {
+  background: transparent;
+  border-color: transparent;
+}
+.btn.subtle:hover {
+  background: var(--hover);
+}
+.btn.subtle:active {
+  background: var(--press);
+}
+.btn.icon {
+  width: 32px;
+  padding: 0;
+}
+.btn.sm {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.btn.icon.sm {
+  width: 28px;
+}
+
+.input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--control-stroke);
+  border-bottom: 1px solid var(--control-stroke-bottom);
+  background: var(--input);
+  outline: none;
+  min-width: 0;
+  user-select: text;
+}
+.input:focus {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0;
+  background: var(--card-solid);
+}
+textarea.input {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+}
+select.input {
+  padding-right: 4px;
+}
+
+.check {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  cursor: default;
+}
+.check input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.kbd {
+  font: 12px/16px var(--font);
+  color: var(--text-3);
+}
+
+.caption {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-2);
+}
+
+.title {
+  font: 600 20px/28px var(--font-display);
+}
+
+.subtitle {
+  font: 600 14px/20px var(--font);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-lg);
+}
+
+.divider {
+  height: 1px;
+  background: var(--divider);
+  margin: 4px 0;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+  }
+}
