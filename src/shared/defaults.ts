@@ -37,9 +37,9 @@ export function defaultSettings(home: string, docs: string): Settings {
     columns: [
       { id: 'name', width: 320, visible: true },
       { id: 'rev', width: 64, visible: false },
-      { id: 'size', width: 96, visible: true },
+      { id: 'size', width: 84, visible: true },
       { id: 'type', width: 140, visible: true },
-      { id: 'mtime', width: 150, visible: true },
+      { id: 'mtime', width: 142, visible: true },
       { id: 'ctime', width: 150, visible: false },
       { id: 'attrs', width: 64, visible: false }
     ],

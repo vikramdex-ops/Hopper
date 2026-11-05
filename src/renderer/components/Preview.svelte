@@ -115,10 +115,17 @@
     }
   }
 
+  let drawSeq = 0
   async function drawPdf(my: number) {
     if (!pdfDoc || !canvas || my !== token) return
-    renderTask?.cancel()
+    const seq = ++drawSeq
+    // pdf.js cancels asynchronously; the canvas is free only once the old task has settled.
+    const prev = renderTask
+    prev?.cancel()
+    await prev?.promise.catch(() => {})
+    if (seq !== drawSeq || !pdfDoc || !canvas) return
     const pg = await pdfDoc.getPage(page)
+    if (seq !== drawSeq || !canvas) return
     const vp0 = pg.getViewport({ scale: 1 })
     const width = canvas.parentElement?.clientWidth ?? 300
     const scale = (width / vp0.width) * window.devicePixelRatio
@@ -126,8 +133,6 @@
     canvas.width = vp.width
     canvas.height = vp.height
     canvas.style.width = `${vp.width / window.devicePixelRatio}px`
-    // One render per canvas at a time: cancel the previous page before drawing the next.
-    renderTask?.cancel()
     const task = pg.render({ canvasContext: canvas.getContext('2d')!, viewport: vp, canvas })
     renderTask = task
     try {

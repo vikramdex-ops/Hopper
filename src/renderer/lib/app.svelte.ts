@@ -231,7 +231,11 @@ export class App {
     return this.settings?.indexRoots.length ? this.settings.indexRoots : this.defaultIndexRoots()
   }
 
+  /** set by the screenshot studio so demo drives are not replaced by the real ones */
+  freezeDrives = false
+
   async refreshDrives() {
+    if (this.freezeDrives) return
     try {
       this.drives = await host.shell.drives()
     } catch {

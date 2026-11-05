@@ -13,8 +13,9 @@ export function fmtSize(n: number, dir = false) {
 
 export const fmtRate = (bps: number) => (bps > 0 ? `${fmtSize(Math.round(bps))}/s` : '')
 
-const dtf = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-const tf = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+// Compact, unambiguous dates for the file list: "05 Nov 2026 17:19" (engineering offices mix locales).
+const dtf = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const tf = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 export function fmtDate(ms: number) {
   if (!ms) return ''
@@ -24,7 +25,7 @@ export function fmtDate(ms: number) {
   const y = new Date(now)
   y.setDate(now.getDate() - 1)
   if (d.toDateString() === y.toDateString()) return `Yesterday ${tf.format(d)}`
-  return dtf.format(d)
+  return dtf.format(d).replace(',', '')
 }
 
 export const fmtDateFull = (ms: number) => (ms ? new Date(ms).toLocaleString() : '')

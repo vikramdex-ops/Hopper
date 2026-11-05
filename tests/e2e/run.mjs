@@ -147,6 +147,23 @@ await step('context menu on a file', async () => {
   await win.keyboard.press('Escape')
 })
 
+for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', 'office'], ['shortcuts'], ['share'], ['copyTo'], ['zip'], ['massRename'], ['folderSize'], ['checksum'], ['selectPattern'], ['template'], ['packager'], ['pdf'], ['dupes'], ['compare'], ['workspaces'], ['undoHistory'], ['people']]) {
+  await step(`dialog ${name}${arg ? ` (${arg})` : ''} opens`, async () => {
+    const lot = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
+    await ev(({ d }) => window.__hopper.panes[0].navigate(d), { d: lot })
+    await ev(() => { const p = window.__hopper.panes[0]; p.selectWhere((r) => r.ext === 'pdf') ; p.focus = p.rows.findIndex((r) => r.ext === 'pdf') })
+    await ev(({ name, arg }) => { void window.__hopper.__dialogs[name](...(arg ? [arg] : [])) }, { name, arg })
+    await until(() => !!document.querySelector('.dlg'), null, 20000)
+    await win.waitForTimeout(700)
+    await win.screenshot({ path: join(shots, `dlg-${name}${arg ? '-' + arg : ''}.png`) })
+    await win.keyboard.press('Escape')
+    await until(() => !document.querySelector('.dlg'), null, 5000).catch(async () => {
+      // dialogs with unsaved-change prompts: close everything
+      await ev(() => window.__hopper.dialogs.slice().reverse().forEach((d) => window.__hopper.closeDialog(d.id)))
+    })
+  })
+}
+
 await step('memory stays reasonable', async () => {
   const m = await app.evaluate(async ({ app }) => app.getAppMetrics().map((p) => ({ type: p.type, name: p.name ?? p.serviceName ?? '', kb: p.memory.workingSetSize })))
   const total = m.reduce((a, p) => a + p.kb, 0)

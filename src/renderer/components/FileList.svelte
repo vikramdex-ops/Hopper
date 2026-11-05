@@ -366,7 +366,7 @@
 </script>
 
 <div
-  class="list {view}"
+  class="list v-{view}"
   class:drop-here={dropHere}
   bind:this={scroller}
   bind:clientHeight={height}
@@ -580,7 +580,7 @@
     border-radius: var(--r-sm);
     color: var(--text);
   }
-  .details .row {
+  .v-details .row {
     right: 0;
     display: grid;
     grid-template-columns: var(--grid);
@@ -610,7 +610,7 @@
     border-radius: 2px;
     background: var(--accent);
   }
-  .grid .row.sel.focus::before {
+  .v-grid .row.sel.focus::before {
     display: none;
   }
   .row.cut,
@@ -695,14 +695,14 @@
     color: var(--text-3);
     display: flex;
   }
-  .list.list .row {
+  .v-list .row {
     display: flex;
     align-items: center;
   }
-  .list.list .cell.name {
+  .v-list .cell.name {
     width: 100%;
   }
-  .grid .row {
+  .v-grid .row {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -754,7 +754,7 @@
     outline: none;
     user-select: text;
   }
-  .grid .rename {
+  .v-grid .rename {
     width: 100%;
     flex: none;
     text-align: center;
