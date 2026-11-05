@@ -30,10 +30,24 @@ const wait = (ms) => win.waitForTimeout(ms)
 let demoPeople = null
 const shot = async (name) => {
   // The LAN process keeps publishing the real (empty) people list; put the demo back.
-  if (demoPeople) await ev((d) => { window.__hopper.peers = d.peers; window.__hopper.lanStatus = { ready: true, enabled: true } }, demoPeople)
+  if (demoPeople) await ev((d) => { window.__hopper.peers = d.peers; window.__hopper.groups = d.groups; window.__hopper.lanStatus = { ready: true, enabled: true } }, demoPeople)
   await wait(700)
   await win.screenshot({ path: join(out, `${name}.png`) })
   console.log('  shot', name)
+}
+// Focused crop of one UI element (dialog, drawer, menu) with a little breathing room.
+const crop = async (name, selector, { pad = 28, maxH = 0, extendLeft = 0 } = {}) => {
+  if (demoPeople) await ev((d) => { window.__hopper.peers = d.peers; window.__hopper.groups = d.groups; window.__hopper.lanStatus = { ready: true, enabled: true } }, demoPeople)
+  await wait(700)
+  const box = await win.locator(selector).first().boundingBox()
+  if (!box) throw new Error(`no ${selector} for ${name}`)
+  const vw = await ev(() => [innerWidth, innerHeight])
+  const x = Math.max(0, box.x - pad - extendLeft)
+  const y = Math.max(0, box.y - pad)
+  const w = Math.min(vw[0] - x, box.width + pad * 2 + extendLeft)
+  const h = Math.min(vw[1] - y, (maxH || box.height) + pad * 2)
+  await win.screenshot({ path: join(out, `${name}.png`), clip: { x, y, width: w, height: h } })
+  console.log('  crop', name)
 }
 const lot = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
 
@@ -63,7 +77,7 @@ await ev(({ P }) => {
   h.lanStatus = { ready: true, enabled: true }
   h.updateSettings({ profile: { displayName: 'Vikram', email: '', status: 'online' }, pinned: [P, 'H:' + bs + 'Site photos', 'H:' + bs + 'Transmittals'], quickDests: [], officeConfigPath: 'S:' + bs + '_Hopper' + bs + 'office.json' })
 }, { P })
-demoPeople = { peers: await ev(() => window.__hopper.peers) }
+demoPeople = await ev(() => ({ peers: window.__hopper.peers, groups: window.__hopper.groups }))
 
 await ev(({ lot, demo }) => {
   const h = window.__hopper
@@ -86,11 +100,13 @@ await ev(() => window.__hopper.updateSettings({ theme: 'light' }))
 await ev(() => {
   const p = window.__hopper.panes[0]
   p.selectWhere((r) => /ISO-100[1-3]/.test(r.name))
+  window.__hopper.groups = [{ id: 'piping', name: 'Piping team', members: ['arun', 'priya', 'ravi'] }]
   window.__hopper.__dialogs.share(['arun', 'group:piping'])
 })
 await wait(900)
 await win.keyboard.type('@pri')
 await shot('03-share-mention')
+await crop('f-share', '.dlg')
 await win.keyboard.press('Escape')
 
 // Transfer queue with live-looking jobs
@@ -107,11 +123,13 @@ await ev(() => {
   h.drawer = true
 })
 await shot('04-transfers')
+await crop('f-transfers', '.drawer', { pad: 12 })
 await ev(() => { window.__hopper.drawer = false; window.__hopper.jobs = []; window.__hopper.shares = {} })
 
 // Zip presets
 await ev(() => { void window.__hopper.__dialogs.zip() })
 await shot('05-zip')
+await crop('f-zip', '.dlg')
 await win.keyboard.press('Escape')
 
 // Lot packager
@@ -119,11 +137,13 @@ await ev(() => { void window.__hopper.__dialogs.packager(window.__hopper.panes[0
 await win.waitForFunction(() => document.querySelector('.dlg')?.innerText?.includes('ISO-1001_Rev0'), null, { timeout: 600000 })
 await wait(1000)
 await shot('06-packager')
+await crop('f-packager', '.dlg', { maxH: 560 })
 await ev(() => window.__hopper.dialogs.slice().forEach((d) => window.__hopper.closeDialog(d.id)))
 
 // Revisions grouped
 await ev(() => window.__hopper.updateSettings({ groupRevisions: true }))
 await shot('07-revisions')
+await crop('f-revisions', '.pane-slot', { pad: 8, maxH: 520 })
 await ev(() => window.__hopper.updateSettings({ groupRevisions: false }))
 
 // Command palette
@@ -131,6 +151,15 @@ await win.locator('.list').first().focus()
 await win.keyboard.press('Control+K')
 await win.keyboard.type('zip')
 await shot('08-palette')
+await crop('f-palette', '.pal', { pad: 24 })
+await win.keyboard.press('Escape')
+
+// Context menu with the Windows menu one click away
+await ev((p) => window.__hopper.panes[0].navigate(p), lot)
+await wait(1500)
+await win.locator('.list .row').nth(3).click({ button: 'right' })
+await wait(600)
+await crop('f-context', '.menu', { pad: 20, extendLeft: 260 })
 await win.keyboard.press('Escape')
 
 // Home

@@ -2,7 +2,8 @@
   "name": "hopper",
   "productName": "Hopper",
   "version": "2.0.0",
-  "description": "Hopper: a fast, Fluent file manager for Windows offices. Dual panes, a real transfer queue, one-key zips, PDF tools and @-mention file sharing over the LAN with Zoho Cliq notifications.",
+  "private": true,
+  "description": "Hopper: the internal file manager of Dexterity Design Services Private Limited. Dual panes, a transfer queue, one-key zips, PDF and lot tools, and @mention file sharing over the office LAN with Zoho Cliq notifications.",
   "main": "out/main/index.js",
   "homepage": "https://vikramdex-ops.github.io/Hopper/",
   "repository": {
@@ -13,11 +14,9 @@
     "url": "https://github.com/vikramdex-ops/Hopper/issues"
   },
   "author": {
-    "name": "Vikram",
-    "email": "vikramdex@gmail.com",
-    "url": "https://github.com/vikramdex-ops"
+    "name": "Dexterity Design Services Private Limited"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "node tools/build-native.mjs && electron-vite build",
@@ -49,9 +48,9 @@
     "vite": "8.3.6"
   },
   "build": {
-    "appId": "com.vikramdex.hopper",
+    "appId": "com.dexterity.hopper",
     "productName": "Hopper",
-    "copyright": "Copyright © 2026 Vikram",
+    "copyright": "Copyright © 2026 Dexterity Design Services Private Limited. All rights reserved.",
     "artifactName": "Hopper-${version}-win-${arch}.${ext}",
     "publish": [
       {
@@ -83,6 +82,10 @@
         "filter": [
           "HopperShell.exe"
         ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
       }
     ],
     "win": {
