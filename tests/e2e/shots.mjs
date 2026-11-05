@@ -123,7 +123,9 @@ await ev(() => {
   h.drawer = true
 })
 await shot('04-transfers')
+await ev(() => { const d = document.querySelector('.drawer'); d.style.maxWidth = '760px' })
 await crop('f-transfers', '.drawer', { pad: 12 })
+await ev(() => { document.querySelector('.drawer').style.maxWidth = '' })
 await ev(() => { window.__hopper.drawer = false; window.__hopper.jobs = []; window.__hopper.shares = {} })
 
 // Zip presets
