@@ -10,7 +10,7 @@ export async function open(url: string) {
     ready = true
   }
   // Range requests through hopper://file keep big drawings from loading whole.
-  const task = getDocument({ url, disableAutoFetch: true, disableStream: false, isEvalSupported: false, enableXfa: false })
+  const task = getDocument({ url, disableAutoFetch: true, disableStream: false, enableXfa: false })
   const doc = await task.promise
   return { doc, close: () => void task.destroy() }
 }

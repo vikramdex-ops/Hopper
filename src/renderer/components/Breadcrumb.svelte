@@ -17,11 +17,17 @@
   let hot = $state(-1)
   let dropIdx = $state(-1)
   let bar: HTMLDivElement | undefined = $state()
+  let clipped = $state(false)
 
   // Long paths: keep the current folder in view (the start of the path scrolls off).
   $effect(() => {
     void crumbs
-    if (bar && !editing) queueMicrotask(() => bar && (bar.scrollLeft = bar.scrollWidth))
+    if (bar && !editing)
+      queueMicrotask(() => {
+        if (!bar) return
+        bar.scrollLeft = bar.scrollWidth
+        clipped = bar.scrollLeft > 0
+      })
   })
 
   interface Crumb {
@@ -156,7 +162,7 @@
   }
 </script>
 
-<div class="crumbs" bind:this={bar} class:editing role="navigation" onclick={(e) => e.target === e.currentTarget && startEdit()} onkeydown={() => {}}>
+<div class="crumbs" bind:this={bar} class:editing class:clipped role="navigation" onclick={(e) => e.target === e.currentTarget && startEdit()} onkeydown={() => {}}>
   {#if editing}
     <input
       bind:this={input}
@@ -212,6 +218,10 @@
     border: 1px solid var(--control-stroke);
     position: relative;
     overflow: hidden;
+  }
+  .crumbs.clipped:not(.editing) {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 28px);
+    mask-image: linear-gradient(to right, transparent 0, black 28px);
   }
   .crumbs.editing {
     overflow: visible;

@@ -117,7 +117,7 @@ export async function launch({ userData = join(WORK, 'userdata'), fresh = true, 
   const app = await electron.launch({
     executablePath: createRequire(join(root, 'package.json'))('electron'),
     // Chromium's sandbox can't start child processes from an exe on a network share (U:).
-    args: [root, ...(/^[a-zA-Z]:/.test(root) && process.env.HOPPER_SANDBOX !== '1' ? ['--no-sandbox'] : [])],
+    args: [root, ...(/^[a-zA-Z]:/.test(root) && process.env.HOPPER_SANDBOX !== '1' ? ['--no-sandbox'] : []), ...(env.HOPPER_SCALE ? [`--force-device-scale-factor=${env.HOPPER_SCALE}`] : [])],
     cwd: root,
     env: { ...process.env, HOPPER_USER_DATA: userData, TEMP: temp, TMP: temp, ...env }
   })

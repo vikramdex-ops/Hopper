@@ -169,6 +169,13 @@
     font-size: 12px;
     color: var(--text-2);
     border-top: 1px solid var(--divider);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .status > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
   .selinfo {
     color: var(--text);

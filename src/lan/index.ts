@@ -100,7 +100,8 @@ async function resolveIdentity() {
     }
     helper = { user, displayName: '', host: hostname(), domain: process.env.USERDOMAIN ?? '' }
   }
-  ctx.me.user = helper.user.toLowerCase()
+  // HOPPER_LAN_USER lets two instances on one PC act as two people (tests only).
+  ctx.me.user = (process.env.HOPPER_LAN_USER || helper.user).toLowerCase()
   ctx.me.host = helper.host || hostname()
   ctx.me.domain = helper.domain
 }
