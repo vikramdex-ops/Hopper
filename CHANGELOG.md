@@ -112,7 +112,7 @@ A ground-up rebuild, renamed **Hopper**. Windows 10/11 only.
 - `Archive selection…` now really creates ZIP files (built-in ZIP writer).
 - Missing IPC handlers: window controls, terminal-here, captured commands,
   timestamp/attribute writes, open-with.
-- README, changelog, shipping checklist, MIT licence.
+- README, changelog, shipping checklist.
 - GitHub Actions CI (static checks) and a matrix installer workflow that publishes
   Windows NSIS/portable, macOS dmg/zip and Linux AppImage/deb to Releases.
 - Dependency-free icon generator (`tools/make-icon.mjs`) producing PNG + ICO.

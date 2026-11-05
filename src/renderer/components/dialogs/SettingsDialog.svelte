@@ -865,6 +865,7 @@
           <div class="title">Hopper</div>
           <div class="caption">Version {app.info?.version ?? '?'}{app.info?.packaged ? '' : ' (development build)'}{app.info?.portable ? ' · portable' : ''}</div>
           <div class="caption">Electron {app.info?.electron ?? '?'} · Chrome {app.info?.chrome ?? '?'}</div>
+          <div class="caption">© 2026 Dexterity Design Services Private Limited. Internal software for Dexterity staff; all rights reserved.</div>
         </div>
 
         <h3 class="subtitle">Updates</h3>
@@ -877,9 +878,10 @@
         </div>
         {@render toggle('Update automatically', 'Downloads in the background and installs when you quit. Takes effect at the next start.', s.autoUpdate, (v) => set({ autoUpdate: v }))}
 
-        <h3 class="subtitle">Project</h3>
+        <h3 class="subtitle">Help</h3>
         <div class="row">
-          <button type="button" class="btn" onclick={() => host.shell.openExternal('https://github.com/vikramdex-ops/Hopper')}><Icon name="link" /> Hopper on GitHub</button>
+          <button type="button" class="btn" onclick={() => host.shell.openExternal('https://vikramdex-ops.github.io/Hopper/')}><Icon name="link" /> Hopper website</button>
+          <button type="button" class="btn" onclick={() => host.shell.openExternal('https://github.com/vikramdex-ops/Hopper/releases')}><Icon name="download" /> Releases</button>
         </div>
       {/if}
     </div>

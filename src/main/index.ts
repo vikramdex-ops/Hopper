@@ -13,7 +13,7 @@ import { trace } from '@shared/trace'
 trace('main module loaded')
 
 registerSchemes()
-app.setAppUserModelId('com.vikramdex.hopper')
+app.setAppUserModelId('com.dexterity.hopper')
 // Keep Chromium's own caches off the system drive when a portable/data dir is requested.
 if (process.env.HOPPER_USER_DATA) app.setPath('userData', process.env.HOPPER_USER_DATA)
 

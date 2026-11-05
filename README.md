@@ -4,9 +4,11 @@
 
 # Hopper
 
-**The office file manager for Windows.**
+**The internal file manager of Dexterity Design Services Private Limited.**
 Dual panes, a real transfer queue, one-key zips, PDF and lot tools —
-and file sharing to colleagues over the LAN with an `@mention`.
+and file sharing to colleagues over the office LAN with an `@mention`.
+
+<sub>Internal software · © 2026 Dexterity Design Services Private Limited · all rights reserved</sub>
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
@@ -18,7 +20,7 @@ and file sharing to colleagues over the LAN with an `@mention`.
 
 <img src="docs/screenshots/01-workspace-light.png" alt="Hopper with two panes, a lot of isometric drawings and a PDF preview" width="100%">
 
-Hopper is built for drawing offices that live in shared folders: send a lot to three
+Hopper is built for how Dexterity works — drawing lots in shared folders: send a lot to three
 colleagues without writing three messages, zip 2 GB before the coffee is ready, and never
 wonder whether a copy over the network really finished.
 
@@ -33,23 +35,23 @@ wonder whether a copy over the network really finished.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/03-share-mention.png" alt="Share dialog with @ mentions"><br><sub><b>Share with <code>@</code>.</b> People and groups, a note, optional zip and a Cliq DM.</sub></td>
-<td width="50%"><img src="docs/screenshots/04-transfers.png" alt="Transfer queue"><br><sub><b>The transfer queue.</b> Speed, ETA, pause and resume for everything.</sub></td>
+<td width="50%"><img src="docs/screenshots/f-share.png" alt="Share dialog with @ mentions"><br><sub><b>Share with <code>@</code>.</b> People and groups, a note, optional zip and a Cliq DM.</sub></td>
+<td width="50%"><img src="docs/screenshots/f-transfers.png" alt="Transfer queue"><br><sub><b>The transfer queue.</b> Speed, ETA, pause and resume for everything.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/06-packager.png" alt="Lot packager"><br><sub><b>Lot packager.</b> Convention check, revisions, transmittal, zip.</sub></td>
-<td><img src="docs/screenshots/05-zip.png" alt="Compress dialog with presets"><br><sub><b>Presets.</b> One key for the zip you make every day.</sub></td>
+<td><img src="docs/screenshots/f-packager.png" alt="Lot packager"><br><sub><b>Lot packager.</b> Convention check, revisions, transmittal, zip.</sub></td>
+<td><img src="docs/screenshots/f-zip.png" alt="Compress dialog with presets"><br><sub><b>Presets.</b> One key for the zip you make every day.</sub></td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/02-workspace-dark.png" alt="Dark theme"><br><sub><b>Dark theme</b> that follows Windows.</sub></td>
-<td><img src="docs/screenshots/08-palette.png" alt="Command palette"><br><sub><b>Command palette</b> (<code>Ctrl+K</code>) for every action.</sub></td>
+<td><img src="docs/screenshots/f-palette.png" alt="Command palette"><br><sub><b>Command palette</b> (<code>Ctrl+K</code>) for every action.</sub></td>
 </tr>
 </table>
 
 ## What's new in 2.0
 
-Hopper 2.0 is a ground-up rebuild of *Xplorer² Modern* 1.x, renamed because xplorer² is
-another company's product.
+Hopper 2.0 is a ground-up rebuild of the earlier internal *Xplorer² Modern* 1.x, renamed
+because xplorer² is another company's product.
 
 - New architecture: the window never waits on the disk. File work runs in a separate engine
   process, sharing in a LAN process, and a small native Windows helper does fast listings,
@@ -68,9 +70,10 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Download
 
-Get the latest **`Hopper-<version>-win-x64.exe`** from
-[Releases](https://github.com/vikramdex-ops/Hopper/releases/latest) (Windows 10 and 11, x64).
-A portable `.zip` is published alongside it.
+Dexterity staff: get the latest **`Hopper-<version>-win-x64.exe`** from
+[Releases](https://github.com/vikramdex-ops/Hopper/releases/latest) (Windows 10 and 11, x64)
+or the [Hopper website](https://vikramdex-ops.github.io/Hopper/). A portable `.zip` is
+published alongside it.
 
 The installer is per-user (no admin needed) and updates itself silently in the background.
 Builds are not code-signed yet, so SmartScreen may ask you to confirm the first time;
@@ -114,7 +117,7 @@ Details, groups, naming conventions and revision rules: [docs/OFFICE-SETUP.md](d
 | `Ctrl+J` | transfers |
 | `Ctrl+,` / `F1` | settings / all shortcuts |
 
-## Build from source
+## Build from source (maintainers)
 
 Requirements: Windows 10/11, Node.js 24, and the .NET Framework 4.8 compiler that ships with
 Windows (used for the native helper).
@@ -161,7 +164,11 @@ only handles OS integration. Heavy libraries (PDF, Excel) load the first time th
 
 ## Licence
 
-MIT © 2026 Asha. 7-Zip is © Igor Pavlov, distributed under the GNU LGPL with the unRAR
-restriction (see `vendor/7zip/License.txt`). Hopper is an independent project and is not
-affiliated with zabkat's xplorer², Microsoft, Zoho or RARLAB. Screenshots use generated demo
-content and demo colleagues.
+**Proprietary — internal use only.** Hopper is © 2026 Dexterity Design Services Private Limited.
+All rights reserved. It is provided for use by the company's staff and authorised contractors;
+no licence is granted to anyone else to use, copy, modify or distribute it. See [LICENSE](LICENSE).
+
+Third-party components keep their own licences: 7-Zip is © Igor Pavlov under the GNU LGPL with
+the unRAR restriction (`vendor/7zip/License.txt`); Electron and the npm packages in
+`package.json` are under their respective open-source licences. Hopper is not affiliated with
+zabkat's xplorer², Microsoft, Zoho or RARLAB. Screenshots use demo data and demo colleagues.
