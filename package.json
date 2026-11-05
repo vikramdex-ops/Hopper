@@ -23,7 +23,7 @@
     "build": "node tools/build-native.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test tests/unit/",
+    "test": "node --test --no-warnings \"tests/unit/*.test.mjs\"",
     "e2e": "node tests/e2e/run.mjs",
     "shots": "node tests/e2e/shots.mjs",
     "icons": "node tools/make-icon.mjs",
