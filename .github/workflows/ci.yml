@@ -31,4 +31,4 @@ jobs:
       - name: Bundle
         run: npx electron-vite build
       - name: Unit tests
-        run: node --test --no-warnings tests/unit/
+        run: node --test --no-warnings "tests/unit/*.test.mjs"
