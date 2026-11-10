@@ -126,19 +126,24 @@ function fakeJobs() {
 }
 
 let undoRecords = 0
-function engine({ user = 'asha', displayName = 'Asha K', store = STORE, enabled = true, fetchImpl } = {}) {
+function engine({ user = 'asha', displayName = 'Asha K', store = STORE, enabled = true, fetchImpl, share = {}, dataDir = path.join(WORK, 'userdata-' + user) } = {}) {
   const jobs = fakeJobs()
   const ctx = {
-    office: { publicShare: { enabled, store, pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 } },
+    office: { publicShare: { enabled, store, pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7, minFreeGB: 0, ...share } },
+    dataDir,
     settings: { officeConfigPath: path.join(WORK, 'office.json'), profile: { displayName }, archivePresets: [] },
     jobs,
     sevenZip: path.join(root, 'vendor', '7zip', '7z.exe'),
     undo: { record: () => undoRecords++ },
     emit() {}
   }
-  const h = E.pubshareHandlers(ctx, { user: () => ({ user, host: 'PC-TEST-07' }), ...(fetchImpl ? { fetch: fetchImpl } : {}) })
+  fs.mkdirSync(dataDir, { recursive: true })
+  const events = []
+  ctx.emit = (name, data) => events.push({ name, data })
+  const h = E.pubshareHandlers(ctx, { user: () => ({ user, host: 'PC-TEST-07' }), watch: false, ...(fetchImpl ? { fetch: fetchImpl } : {}) })
   return {
     h,
+    events,
     jobs,
     async create(spec) {
       const r = await h['pubshare.create'](spec)
@@ -966,6 +971,114 @@ await check('clean-up: deletes expired, revoked and abandoned shares — and not
   return `removed ${removed.length}, kept ${Object.keys(kept).length}${junction ? ', junction skipped' : ' (junction could not be created here)'}`
 })
 
+await check('instant link: a finished zip on the server\'s own drive is linked, not copied; an in-place edit of the original is refused, never served', async () => {
+  const src = putFile('linked/Deliverable P10001.zip', 3_000_000)
+  const before = fs.readFileSync(src)
+  const s = await hopper.create({ paths: [src], title: 'Linked', days: 1 })
+  ok(typeof s.manifest.files[0].mtime === 'number', 'manifest records the modified time of a linked file')
+  ok(/linked, no copy/.test(s.info.title), 'the job says it was linked')
+  eq(s.manifest.files[0].sha256, sha(before))
+  const dl = await request(`/d/${s.id}/0`)
+  eq(sha(dl.body), sha(before), 'download is the original bytes')
+  // the two names are one file: prove it, then prove the guard
+  fs.appendFileSync(src, 'EDITED IN PLACE')
+  eq(fs.statSync(path.join(STORE, s.id, 'data', '0')).size, before.length + 15, 'same file under both names')
+  const r = await getJson(`/d/${s.id}/0`)
+  eq(r.status, 409)
+  eq(r.json.error, 'changed')
+  eq((await request(`/d/${s.id}/0`, { method: 'HEAD' })).status, 409)
+  // same size, later time (a tool rewrote it in place)
+  fs.writeFileSync(src, before)
+  fs.utimesSync(src, new Date(), new Date(Date.now() + 60_000))
+  eq((await getJson(`/d/${s.id}/0`)).status, 409, 'same size but a different modified time is refused too')
+  // revoking the link removes the store's name only; the original stays
+  await hopper.h['pubshare.revoke'](s.id)
+  ok(fs.existsSync(src) && fs.readFileSync(src).equals(before), 'original untouched by revoke')
+  // files that are still being worked on (not archives/PDFs) and multi-file links are always copied
+  const doc = putFile('linked/working.dwg', 50_000)
+  const c = await hopper.create({ paths: [doc], title: 'Copied', days: 1 })
+  eq(c.manifest.files[0].mtime, undefined)
+  fs.appendFileSync(doc, 'later edit')
+  eq((await request(`/d/${c.id}/0`)).body.length, 50_000, 'a copy is not affected by later edits')
+})
+
+await check('disk guard: new links are refused when the store drive would drop below the reserve; status reports free space', async () => {
+  const st = await hopper.h['pubshare.status']()
+  ok(st.freeBytes > 0, 'free space reported')
+  eq(st.minFreeBytes, 0)
+  const tight = engine({ share: { minFreeGB: st.freeBytes / 2 ** 30 + 1 } })
+  const before = (await fsp.readdir(STORE)).length
+  const r = await tight.h['pubshare.create']({ paths: [putFile('tiny2.txt', 5)], title: 'No room', days: 1 })
+  const err = await tight.jobs.wait(r.jobId).then(() => null, (e) => e)
+  ok(/nearly full: .* free, and client links must leave/.test(err?.message ?? ''), err?.message)
+  ok(/Revoke old links/.test(err.message), 'says what to do')
+  eq((await fsp.readdir(STORE)).length, before, 'nothing was written')
+  eq((await getJson(`/api/s/${r.id}`)).status, 404)
+  const def = await engine({ share: { minFreeGB: undefined } }).h['pubshare.status']()
+  eq(def.minFreeBytes, 5 * 2 ** 30, 'default reserve is 5 GB')
+})
+
+await check('download notices: first and later completed downloads of my links are announced once each; other people\'s and old ones are not', async () => {
+  const me = engine({ user: 'notify-me', dataDir: path.join(WORK, 'userdata-notify') })
+  const a = await me.create({ paths: [putFile('notice-a.bin', 20_000)], title: 'Lot 07', days: 1, zip: null })
+  const other = await engine({ user: 'someone-else' }).create({ paths: [putFile('notice-b.bin', 20_000)], title: 'Not mine', days: 1, zip: null })
+  eq(await me.h['pubshare.checkDownloads'](), 0, 'nothing yet')
+  await request(`/d/${a.id}/0`, { headers: { Range: 'bytes=0-99' } })
+  await request(`/d/${other.id}/0`)
+  await app.flushStats()
+  eq(await me.h['pubshare.checkDownloads'](), 0, 'a partial read and a colleague\'s link are not news')
+  await request(`/d/${a.id}/0`)
+  await app.flushStats()
+  eq(await me.h['pubshare.checkDownloads'](), 1)
+  const ev = me.events.filter((e) => e.name === 'pubshare-download')
+  eq(ev.length, 1)
+  eq(ev[0].data.title, 'Lot 07')
+  eq(ev[0].data.first, true)
+  eq(ev[0].data.downloads, 1)
+  ok(Math.abs(ev[0].data.at - Date.now()) < 20_000, 'time of the download')
+  eq(await me.h['pubshare.checkDownloads'](), 0, 'not announced twice')
+  await request(`/d/${a.id}/0`)
+  await request(`/d/${a.id}/0`)
+  await app.flushStats()
+  eq(await me.h['pubshare.checkDownloads'](), 1, 'two more downloads, one notice')
+  eq(me.events.at(-1).data.downloads, 3)
+  eq(me.events.at(-1).data.first, false)
+  // Hopper restarted: counts are remembered, nothing is announced again
+  const again = engine({ user: 'notify-me', dataDir: path.join(WORK, 'userdata-notify') })
+  eq(await again.h['pubshare.checkDownloads'](), 0)
+  // a fresh PC (no memory) records existing downloads silently
+  const fresh = engine({ user: 'notify-me', dataDir: path.join(WORK, 'userdata-notify-fresh') })
+  eq(await fresh.h['pubshare.checkDownloads'](), 0)
+  await request(`/d/${a.id}/0`)
+  await app.flushStats()
+  eq(await fresh.h['pubshare.checkDownloads'](), 1, 'and announces the next one')
+})
+
+await check('bandwidth limit: one download is held to the limit, two share it, the bytes are unchanged; health reports it', async () => {
+  const srv = S.createShareServer(serverConfig({ bandwidth: { mbps: 16, officeMbps: 0 }, logDir: path.join(WORK, 'logs-bw') })) // 2 MB/s
+  const port = await srv.listen()
+  const s = await hopper.create({ paths: [putFile('bw.bin', 6 << 20)], title: 'BW', days: 1, zip: null })
+  const want = sha(fs.readFileSync(path.join(SRC, 'bw.bin')))
+  const timed = async (ip) => {
+    const t0 = Date.now()
+    const r = await request(`/d/${s.id}/0`, { port, headers: { 'CF-Connecting-IP': ip } })
+    eq(sha(r.body), want, 'bytes intact through the throttle')
+    return (r.body.length / ((Date.now() - t0) / 1000)) / 1e6
+  }
+  const one = await timed('203.0.113.1')
+  ok(one > 1.4 && one < 2.5, `one download at ${one.toFixed(2)} MB/s (limit 2)`)
+  eq(srv.health().limitMbps, 16)
+  const [a, b] = await Promise.all([timed('203.0.113.2'), timed('203.0.113.3')])
+  ok(a > 0.7 && a < 1.4 && b > 0.7 && b < 1.4, `two downloads at ${a.toFixed(2)} and ${b.toFixed(2)} MB/s (1 each)`)
+  for (let i = 0; i < 30 && srv.health().downloadsToday < 3; i++) await sleep(100) // the server books a download just after the client has its last byte
+  ok(srv.health().bytesToday >= 18 << 20 && srv.health().downloadsToday === 3, JSON.stringify(srv.health()))
+  srv.setBandwidth({ mbps: 0, officeMbps: 0 })
+  const free = await timed('203.0.113.4')
+  ok(free > 4, `limit removed live: ${free.toFixed(1)} MB/s`)
+  await srv.close(300)
+  return `limit 2.00 MB/s -> single ${one.toFixed(2)}, pair ${a.toFixed(2)} + ${b.toFixed(2)}, unlimited ${free.toFixed(0)} MB/s`
+})
+
 await check('rate limits: API and file requests per client per minute, 429 with Retry-After, other clients unaffected', async () => {
   const srv = S.createShareServer(serverConfig({ apiPerMinutePerIp: 30, filePerMinutePerIp: 50, logDir: path.join(WORK, 'logs-rate') }))
   const port = await srv.listen()
@@ -1096,7 +1209,8 @@ await check('server process: killed mid-download, restarted, download resumed; u
   eq(await run.exited, 0, 'clean exit')
   const st = JSON.parse(await fsp.readFile(path.join(STORE, s.id, 'stats.json'), 'utf8'))
   // the killed process took its unsaved counters with it (at most a few seconds' worth); everything since is on disk
-  ok(st.downloads === 2 && st.started === 2, `stats flushed on exit: ${JSON.stringify({ d: st.downloads, s: st.started })}`)
+  // (the "started" of the killed download is on disk only if a periodic save happened to run before the kill)
+  ok(st.downloads === 2 && (st.started === 2 || st.started === 3), `stats flushed on exit: ${JSON.stringify({ d: st.downloads, s: st.started })}`)
   return `cut at ${first.body.length} bytes`
 })
 

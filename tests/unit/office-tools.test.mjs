@@ -203,7 +203,7 @@ test('package.run copies, writes the transmittal and archives', async () => {
   await fsp.utimes(files[0], when, when)
   const spec = {
     files, outDir: out, name: 'LOT-07', conventionId: 'iso', copy: true, zip: true,
-    transmittal: { number: 'DDS/TR/0042', project: 'P12513', client: 'FST', to: 'Client QA', from: 'Dexterity', purpose: 'For approval', date: '05-Nov-2026', notes: 'Second lot.\nBack-checked.' }
+    transmittal: { number: 'DDS/TR/0042', project: 'P10001', client: 'FST', to: 'Client QA', from: 'Dexterity', purpose: 'For approval', date: '05-Nov-2026', notes: 'Second lot.\nBack-checked.' }
   }
   const info = await wait(packager.run(ctx, spec))
   const lot = join(out, 'LOT-07')

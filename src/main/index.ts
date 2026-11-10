@@ -1,6 +1,7 @@
 // Hopper main process: window, tray, protocols, IPC and the background processes.
 // Nothing here reads file contents or blocks; heavy work lives in engine/lan utility processes.
 import { app, BrowserWindow, Menu, nativeTheme, screen, shell, Tray, utilityProcess } from 'electron'
+import { sendToWindow } from './ctx'
 import { applyTheme, connectPorts, ctx, overlayColors, paths, pushOfficeToUtilities, res } from './ctx'
 import { release } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,7 @@ import { registerIpc } from './ipc'
 import { OfficeStore, SettingsStore } from './store'
 import { HopperShell } from '@shared/hshell'
 import { initUpdater } from './updater'
+import { initShareHost, shareHostActive, shareHostRunning, stopShareHost } from './sharehost'
 import { trace } from '@shared/trace'
 trace('main module loaded')
 
@@ -64,7 +66,7 @@ function onUtilityMessage(name: string, msg: any) {
   if (msg?.type === 'office-request') {
     pushOfficeToUtilities()
   } else if (msg?.type === 'attention') {
-    if (ctx.win && !ctx.win.isFocused()) ctx.win.flashFrame(true)
+    if (ctx.win && !ctx.win.isDestroyed() && !ctx.win.isFocused()) ctx.win.flashFrame(true)
   }
 }
 
@@ -129,12 +131,16 @@ function createWindow() {
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
-  win.on('maximize', () => win.webContents.send('hopper:win', { maximized: true }))
-  win.on('unmaximize', () => win.webContents.send('hopper:win', { maximized: false }))
+  win.on('maximize', () => sendToWindow('hopper:win', { maximized: true }))
+  win.on('unmaximize', () => sendToWindow('hopper:win', { maximized: false }))
   win.on('focus', () => win.flashFrame(false))
+  win.on('closed', () => {
+    if (ctx.win === win) ctx.win = undefined
+  })
   win.on('close', (e) => {
     // Stay in the tray so colleagues can still send files.
-    if (!ctx.quitting && ctx.settings.data.lan.enabled && ctx.settings.data.keepInTray !== false) {
+    // …and, on the PC that hosts Dexterity Share, so clients can keep downloading.
+    if (!ctx.quitting && (ctx.settings.data.lan.enabled || shareHostActive()) && ctx.settings.data.keepInTray !== false) {
       e.preventDefault()
       win.hide()
     }
@@ -156,7 +162,7 @@ function createTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open Hopper', click: show },
-      { label: 'Open Inbox', click: () => { show(); ctx.win?.webContents.send('hopper:open', ctx.settings.data.inboxDir) } },
+      { label: 'Open Inbox', click: () => { show(); sendToWindow('hopper:open', ctx.settings.data.inboxDir) } },
       { type: 'separator' },
       { label: 'Quit Hopper', click: () => { ctx.quitting = true; app.quit() } }
     ])
@@ -170,7 +176,7 @@ app.on('second-instance', (_e, argv) => {
     if (ctx.win.isMinimized()) ctx.win.restore()
     ctx.win.show()
     ctx.win.focus()
-    for (const p of ps) ctx.win.webContents.send('hopper:open', p)
+    for (const p of ps) sendToWindow('hopper:open', p)
   }
 })
 
@@ -184,7 +190,7 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = ctx.settings.data.theme
   nativeTheme.on('updated', () => {
     applyTheme()
-    ctx.win?.webContents.send('hopper:theme', { dark: nativeTheme.shouldUseDarkColors })
+    sendToWindow('hopper:theme', { dark: nativeTheme.shouldUseDarkColors })
   })
   Menu.setApplicationMenu(null)
   handleProtocol()
@@ -192,6 +198,7 @@ app.whenReady().then(async () => {
   ctx.engine = startUtility('engine')
   ctx.lan = startUtility('lan')
   pushOfficeToUtilities()
+  initShareHost()
   createWindow()
   ctx.tray = createTray()
   if (ctx.settings.data.autoUpdate && app.isPackaged) void initUpdater()
@@ -202,7 +209,15 @@ app.on('before-quit', () => {
   ctx.settings?.flushSync()
 })
 
+let shareStopping = false
 app.on('will-quit', (e) => {
+  // The share server first: it stops the tunnel and lets a running client download finish its chunk.
+  if (shareHostRunning() && !shareStopping) {
+    e.preventDefault()
+    shareStopping = true
+    void stopShareHost().then(() => app.quit())
+    return
+  }
   ctx.shell?.dispose()
   ctx.engine?.kill()
   // Let the LAN process say "bye" so colleagues see us go offline at once.

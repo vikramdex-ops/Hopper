@@ -48,7 +48,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=
 const site = { config: {}, extra: new Map() }
 const siteServer = http.createServer(async (req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0])
-  if (p === '/share/config.json') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(site.config))
+  if (p === '/share/config.json') return site.config === null ? res.writeHead(404).end('not found') : res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(site.config))
   if (site.extra.has(p)) return res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify(site.extra.get(p)))
   const file = path.join(SITE, p.endsWith('/') ? p + 'index.html' : p)
   if (!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return res.writeHead(404).end('not found')
@@ -135,7 +135,7 @@ async function everywhere(name, hash, { wait = settled, darkToo = false, after }
 
 console.log(`Dexterity Share page test — screenshots in ${SHOTS}`)
 
-const single = await makeShare({ title: 'P12513 Lot 07 — as-built isometrics, Rev B', message: 'Dear Mr Rao,\n\nPlease find the Lot 07 isometrics (rev B) with the comment register.\nKindly confirm receipt.', files: [['P12513_Lot-07_Isometrics_RevB.zip', 734 * 1048576 + 1234]], sparse: true })
+const single = await makeShare({ title: 'P10001 Lot 07 — as-built isometrics, Rev B', message: 'Dear Mr Rao,\n\nPlease find the Lot 07 isometrics (rev B) with the comment register.\nKindly confirm receipt.', files: [['P10001_Lot-07_Isometrics_RevB.zip', 734 * 1048576 + 1234]], sparse: true })
 const multi = await makeShare({ title: 'Stress report and marked-up drawings', message: 'Updated after Thursday’s review call.', days: 14, files: [['Stress report C-204 rev 2.pdf', 2_400_000], ['P&ID markups (client comments).pdf', 5_100_000], ['Pipe rack 3 — general arrangement.dwg', 1_800_000], ['Line list and comment register.xlsx', 240_000], ['Site photos.zip', 9_300_000]] })
 const locked = await makeShare({ title: 'Tender package — confidential', files: [['Tender documents.zip', 3_000_000]], password: 'k7Hd-Qm3x-9TpW', days: 3 })
 const small = await makeShare({ title: 'Small real file', files: [['Transmittal TR-0041.pdf', 1_500_000]], days: 30 })
@@ -143,7 +143,7 @@ const soon = await makeShare({ title: 'Expires this evening', files: [['notes.tx
 const minutes = await makeShare({ title: 'Expires in minutes', files: [['notes.txt', 'hello']], expiresAt: Date.now() + 25 * 60e3 })
 const expired = await makeShare({ title: 'Old', files: [['old.txt', 'x']], expiresAt: Date.now() - 3600e3 })
 const hostile = await makeShare({ title: '<img src=x onerror=alert(1)><script>alert(2)</script>', message: '<b onmouseover=alert(3)>bold?</b>\n"><svg onload=alert(4)>', sender: '<i>Mallory</i>', files: [['<img src=x onerror=alert(5)>.pdf', 'x'], ['"><script>alert(6)</script>.zip', 'y']] })
-const longNames = await makeShare({ title: 'A_very_long_title_without_any_spaces_to_break_on_P12513_REFINERY_REVAMP_PIPING_ASBUILT_ISOMETRICS_LOT_07_REVISION_B_FINAL_ISSUED_FOR_CONSTRUCTION', sender: 'Venkatasubramanian Balasubramaniam-Krishnamurthy', files: [['P12513-REFINERY-REVAMP-PIPING-ASBUILT-ISOMETRICS-LOT-07-REVISION-B-FINAL-ISSUED-FOR-CONSTRUCTION-WITH-COMMENT-REGISTER.zip', 1000], ['図面 – Übersicht ✓ नक्शा.pdf', 2000]] })
+const longNames = await makeShare({ title: 'A_very_long_title_without_any_spaces_to_break_on_P10001_REFINERY_REVAMP_PIPING_ASBUILT_ISOMETRICS_LOT_07_REVISION_B_FINAL_ISSUED_FOR_CONSTRUCTION', sender: 'Venkatasubramanian Balasubramaniam-Krishnamurthy', files: [['P10001-REFINERY-REVAMP-PIPING-ASBUILT-ISOMETRICS-LOT-07-REVISION-B-FINAL-ISSUED-FOR-CONSTRUCTION-WITH-COMMENT-REGISTER.zip', 1000], ['図面 – Übersicht ✓ नक्शा.pdf', 2000]] })
 
 await check('loading skeleton', async () => {
   for (const mobile of [false, true]) {
@@ -162,7 +162,7 @@ await check('single file: title, sender, message, size, expiry, download button'
   await everywhere('02-single', single.id, { darkToo: true })
   const { page, ctx } = await open(single.id)
   await settled(page)
-  eq(await page.textContent('h1'), 'P12513 Lot 07 — as-built isometrics, Rev B')
+  eq(await page.textContent('h1'), 'P10001 Lot 07 — as-built isometrics, Rev B')
   ok((await page.textContent('.from')).includes('Asha Krishnan sent you a file'))
   eq(await page.textContent('.avatar'), 'VK')
   ok((await page.textContent('.message')).includes('Kindly confirm receipt.'))
@@ -471,7 +471,7 @@ await check('server unreachable: friendly state, countdown, automatic recovery w
   app = S.createShareServer(shareCfg(PORT))
   await app.listen()
   await page.waitForSelector('.file', { timeout: 20000 }) // no click needed
-  eq(await page.textContent('h1'), 'P12513 Lot 07 — as-built isometrics, Rev B')
+  eq(await page.textContent('h1'), 'P10001 Lot 07 — as-built isometrics, Rev B')
   // offline browser
   const off = await open(single.id)
   await settled(off.page)
@@ -548,6 +548,102 @@ await check('quick-tunnel pointer: stale address skipped, signed pointer accepte
   } finally {
     site.config = { base: BASE, pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'] }
   }
+})
+
+await check('self-contained links (#id.gist.key): the page needs no office config; gist file and gist API both work; a swapped key, a wrong fingerprint and an unsigned pointer are refused', async () => {
+  const { privateKey, publicJwk } = V.loadPointerKey(path.join(WORK, 'gist-state'))
+  const kh = V.keyHash(publicJwk)
+  const gist = crypto.randomBytes(16).toString('hex')
+  const pointer = V.buildPointer(BASE, privateKey, undefined, publicJwk)
+  const serveGist = (p, raw = true, api = true) => {
+    if (raw) site.extra.set(`/gistraw/${gist}/pointer.json`, p)
+    else site.extra.delete(`/gistraw/${gist}/pointer.json`)
+    if (api) site.extra.set(`/gistapi/${gist}`, { id: gist, files: { 'pointer.json': { filename: 'pointer.json', content: JSON.stringify(p, null, 2) } } })
+    else site.extra.delete(`/gistapi/${gist}`)
+  }
+  // the only thing config.json does here is point the test at local stand-ins for GitHub's two hosts
+  const local = { base: '', pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'], gistRaw: SITE_ORIGIN + '/gistraw/', gistApi: SITE_ORIGIN + '/gistapi/' }
+  const title = async (frag) => {
+    const { page, ctx } = await open(frag)
+    await settled(page)
+    const t = await page.textContent('h1')
+    await ctx.close()
+    return t
+  }
+  try {
+    site.config = local
+    serveGist(pointer)
+    eq(await title(`${small.id}.${gist}.${kh}`), 'Small real file', 'gist file')
+    serveGist(pointer, false, true)
+    eq(await title(`${small.id}.${gist}.${kh}`), 'Small real file', 'gist API only')
+    serveGist(V.buildPointer('http://127.0.0.1:9', privateKey, new Date(Date.now() - 600e3).toISOString(), publicJwk), true, false)
+    site.extra.set(`/gistapi/${gist}`, { id: gist, files: { 'pointer.json': { content: JSON.stringify(pointer) } } })
+    eq(await title(`${small.id}.${gist}.${kh}`), 'Small real file', 'stale gist file, current API')
+    // someone who can edit the gist swaps in their own key and address
+    const evil = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' })
+    const { x, y } = evil.publicKey.export({ format: 'jwk' })
+    serveGist(V.buildPointer(BASE, evil.privateKey, undefined, { kty: 'EC', crv: 'P-256', x, y }))
+    eq(await title(`${small.id}.${gist}.${kh}`), "We can't reach our file server right now", 'pointer signed with a key the link does not name')
+    serveGist({ v: 2, base: BASE, updated: new Date().toISOString(), key: publicJwk })
+    eq(await title(`${small.id}.${gist}.${kh}`), "We can't reach our file server right now", 'unsigned pointer')
+    serveGist({ ...pointer, base: 'http://127.0.0.1:9' })
+    eq(await title(`${small.id}.${gist}.${kh}`), "We can't reach our file server right now", 'address changed after signing')
+    serveGist(pointer)
+    eq(await title(`${small.id}.${gist}.${'0'.repeat(20)}`), "We can't reach our file server right now", 'link with another fingerprint')
+    eq(await title(`${small.id}.${gist}`), 'This page needs your download link', 'half a pointer reference is not a link')
+    // old-format links keep working beside the new ones
+    site.config = { ...local, base: BASE }
+    eq(await title(small.id), 'Small real file', 'old link, fixed base')
+    // the page stays on the right link while downloading and the password token is per link id
+    const { page, ctx } = await open(`${small.id}.${gist}.${kh}`)
+    await settled(page)
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('.btn.primary.lg')])
+    const to = path.join(WORK, 'dl-selfcontained.bin')
+    await download.saveAs(to)
+    eq(sha(await fsp.readFile(to)), small.manifest.files[0].sha256)
+    await shot(page, '20-self-contained-link-desktop')
+    await ctx.close()
+    // with no config.json at all on the page host
+    site.config = null
+    const requests = []
+    const n = await open('')
+    n.page.on('request', (r) => requests.push(r.url()))
+    await n.page.goto(PAGE + '#' + `${small.id}.${gist}.${kh}`)
+    await settled(n.page)
+    ok(requests.some((u) => u === `https://gist.githubusercontent.com/raw/${gist}/pointer.json`), 'asks GitHub\'s gist file host first: ' + requests.filter((u) => !u.startsWith(SITE_ORIGIN)).join(' '))
+    ok(requests.some((u) => u === `https://api.github.com/gists/${gist}`), 'then the gist API')
+    ok(!requests.some((u) => u.startsWith(SITE_ORIGIN) && u.includes(gist)), 'the pointer reference is not sent to the page host')
+    await n.ctx.close()
+  } finally {
+    site.config = { base: BASE, pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'] }
+  }
+})
+
+await check('a file changed after sharing, and a used-up download limit, are explained on the page', async () => {
+  const s = await makeShare({ title: 'Changed later', files: [['Report.pdf', 5000]] })
+  const m = JSON.parse(await fsp.readFile(path.join(s.dir, 'manifest.json'), 'utf8'))
+  m.files[0].mtime = Date.now() - 86400e3
+  await fsp.writeFile(path.join(s.dir, 'manifest.json'), JSON.stringify(m))
+  const { page, ctx } = await open(s.id)
+  await settled(page)
+  await page.click('.btn.primary.lg')
+  await page.waitForSelector('.note.warn')
+  ok((await page.textContent('.note.warn')).includes('changed on our side after the link was made'), await page.textContent('.note.warn'))
+  await shot(page, '21-changed-after-sharing-desktop')
+  await ctx.close()
+  const once = await makeShare({ title: 'Once only', files: [['Once.pdf', 5000]] })
+  const mm = JSON.parse(await fsp.readFile(path.join(once.dir, 'manifest.json'), 'utf8'))
+  mm.maxDownloads = 1
+  await fsp.writeFile(path.join(once.dir, 'manifest.json'), JSON.stringify(mm))
+  const o = await open(once.id)
+  await settled(o.page)
+  await Promise.all([o.page.waitForEvent('download'), o.page.click('.btn.primary.lg')])
+  await sleep(600)
+  await o.page.click('.btn.primary.lg')
+  await o.page.waitForSelector('.note.warn')
+  ok((await o.page.textContent('.note.warn')).includes('number of downloads the sender allowed'), await o.page.textContent('.note.warn'))
+  eq(await o.page.textContent('h1'), 'Once only', 'the page stays put')
+  await o.ctx.close()
 })
 
 await check('keyboard and assistive basics: skip link, labelled controls, live regions, theme switch, reduced motion', async () => {

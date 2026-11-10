@@ -20,7 +20,8 @@ export function officeHandlers(ctx: EngineCtx) {
     'pdf.rotate': async (path: string, pages: number[] | 'all', degrees: RotateDegrees, out: string) => (await pdfMod()).rotate(ctx, path, pages, degrees, out),
     'pdf.reorder': async (path: string, order: number[], out: string) => (await pdfMod()).reorder(ctx, path, order, out),
     'templates.list': () => templates.list(ctx),
-    'templates.create': (template: string | FolderTemplate, destDir: string, vars?: TemplateVars) => templates.create(ctx, template, destDir, vars ?? {}),
+    'templates.create': (template: string | FolderTemplate, destDir: string, vars?: TemplateVars | Record<string, unknown>) => templates.create(ctx, template, destDir, vars ?? {}),
+    'templates.preview': (template: string | FolderTemplate, destDir: string, inputs?: Record<string, unknown>) => templates.preview(ctx, template, destDir, inputs ?? {}),
     'package.plan': async (spec: Partial<PackageSpec> & { files: string[] }) => (await pkgMod()).plan(ctx, spec),
     'package.run': async (spec: PackageSpec) => (await pkgMod()).run(ctx, spec),
     'revisions.rules': (): RevisionRules => officeOf(ctx).revisions

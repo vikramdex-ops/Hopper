@@ -66,7 +66,7 @@ test('share kinds from the wire', () => {
 })
 
 test('links must be absolute Windows paths', () => {
-  assert.deepEqual(P.parseLink({ path: '\\\\server\\share\\P12513\\02_Working' }), { path: '\\\\server\\share\\P12513\\02_Working', dir: true })
+  assert.deepEqual(P.parseLink({ path: '\\\\server\\share\\P10001\\02_Working' }), { path: '\\\\server\\share\\P10001\\02_Working', dir: true })
   assert.deepEqual(P.parseLink({ path: 'U:\\Projects\\a.pdf', dir: false }), { path: 'U:\\Projects\\a.pdf', dir: false })
   assert.deepEqual(P.parseLink({ path: '  D:\\x  ' }), { path: 'D:\\x', dir: true })
   for (const path of ['relative\\path', '..\\up', 'https://example.com/x', 'file:///c:/x', '\\\\server', '\\\\server\\share\\..\\other', 'C:\\a\u0000b', 'C:\\a|b', '', 'x'.repeat(2000)]) {
@@ -85,10 +85,10 @@ test('reply ids', () => {
 test('announcements are cleaned', () => {
   const a = P.cleanAnnouncement({
     id: 'mabc123-0a1b2c3d',
-    title: '  P12513 folder is\nalmost full ',
+    title: '  P10001 folder is\nalmost full ',
     body: 'Back up locally.\r\nClean old exports.\u0007',
     level: 'urgent',
-    path: '\\\\server\\share\\P12513',
+    path: '\\\\server\\share\\P10001',
     expires: 1900000000000,
     at: 1800000000000,
     by: 'Asha',
@@ -98,14 +98,14 @@ test('announcements are cleaned', () => {
   })
   assert.deepEqual(a, {
     id: 'mabc123-0a1b2c3d',
-    title: 'P12513 folder is almost full',
+    title: 'P10001 folder is almost full',
     body: 'Back up locally.\nClean old exports.',
     level: 'urgent',
     at: 1800000000000,
     by: 'asha',
     byName: 'Asha',
     host: 'WS-030',
-    path: '\\\\server\\share\\P12513',
+    path: '\\\\server\\share\\P10001',
     expires: 1900000000000
   })
   assert.equal(P.cleanAnnouncement({ id: 'x', title: 't', by: 'a', at: 1 }), null) // id too short

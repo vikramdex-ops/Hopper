@@ -11,7 +11,10 @@
   import { fingerprintOf, lanx, toUnc, validKey } from '../../lib/lan2.svelte'
   import { basename, fmtAgo, fmtDateFull, plural } from '../../lib/format'
   import { DEFAULT_PRESETS } from '@shared/defaults'
+  import { dialogs } from '../../lib/commands'
   import { groupRevisions, splitExt } from '@shared/revisions'
+  import { BUILTIN_TEMPLATES } from '@shared/project-template'
+  import { expandTree, inputsOf, isTree, validateTemplate } from '@shared/template-model'
   import type { ArchivePreset, IndexStatus, OfficeConfig, Peer, QuickDest, Settings } from '@shared/types'
 
   let { section, close }: { section?: string; close: (v?: unknown) => void } = $props()
@@ -214,6 +217,15 @@
   }
 
   let shareStatus = $state('')
+  async function checkShare() {
+    shareStatus = 'Checking…'
+    try {
+      const r = await engine.call('pubshare.status')
+      shareStatus = !r.enabled ? 'Not switched on' : !r.storeOk ? `Store folder not reachable: ${r.storeError ?? r.store}` : r.healthy ? `Share server online${r.server?.host ? ` on ${r.server.host}` : ''}` : (r.healthError ?? 'Share server not answering')
+    } catch (e: any) {
+      shareStatus = String(e?.message ?? e)
+    }
+  }
 
   function tidy(c: OfficeConfig): OfficeConfig {
     const lines = (a: string[]) => a.map((x) => x.trim()).filter(Boolean)
@@ -393,6 +405,43 @@
   }
 
   const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+
+  // ---- folder templates: structured ones are edited as JSON (everything but id and name) ----
+  let tplErrors = $state<Record<string, string[]>>({})
+  const TREE_KEYS = ['description', 'root', 'numbering', 'subLabel', 'inputs', 'tree', 'blocks'] as const
+  function treeJson(t: OfficeConfig['templates'][number]) {
+    const o: Record<string, unknown> = {}
+    for (const k of TREE_KEYS) if (t[k] !== undefined) o[k] = t[k]
+    return JSON.stringify(o, null, 2)
+  }
+  function setTreeJson(t: OfficeConfig['templates'][number], text: string) {
+    let o: any
+    try {
+      o = JSON.parse(text)
+    } catch (e: any) {
+      tplErrors[t.id] = [`Not valid JSON: ${e.message}`]
+      return
+    }
+    const next = { id: t.id, name: t.name, folders: [], ...o }
+    const errs = o && typeof o === 'object' && Array.isArray(o.tree) ? validateTemplate(next) : ['The JSON needs a "tree" list']
+    tplErrors[t.id] = errs
+    if (errs.length) return
+    for (const k of TREE_KEYS) delete (t as any)[k]
+    Object.assign(t, o, { folders: [] })
+  }
+  /** the tree with sample values in the required fields, for the editor's preview */
+  function samplePreview(t: OfficeConfig['templates'][number]) {
+    const tt = $state.snapshot(t) as OfficeConfig['templates'][number]
+    const sample: Record<string, unknown> = {}
+    for (const i of inputsOf(tt)) if (i.required && (i.kind === 'text' || i.kind === 'list')) sample[i.id] = i.placeholder && !/one per line/i.test(i.placeholder) ? i.placeholder : 'Sample'
+    const e = expandTree(tt, sample)
+    return { errors: e.errors, count: e.folders.length, depth: e.folders.reduce((m, f) => Math.max(m, f.length), 0), lines: e.folders.filter((f) => f.length <= 3).map((f) => '  '.repeat(f.length - 1) + f.at(-1)) }
+  }
+  function copyBuiltin(b: (typeof BUILTIN_TEMPLATES)[number]) {
+    const c = structuredClone($state.snapshot(b)) as OfficeConfig['templates'][number]
+    delete c.builtin
+    draft!.templates.push({ ...c, id: uid('t'), name: `${b.name} (office copy)` })
+  }
 
   function addMember(gid: string) {
     const g = draft?.groups.find((x) => x.id === gid)
@@ -917,25 +966,20 @@
           </div>
 
           <h3 class="subtitle">Dexterity Share (client links)</h3>
-          <div class="caption">Staff create a download link for a client; the files stay on the office server. IT installs the server part once: see docs/DEXTERITY-SHARE-IT.md.</div>
+          <div class="caption">Staff send a client a download link; the files stay on one office PC that is always on. Set it up once, on that PC.</div>
+          <div class="row">
+            <button type="button" class="btn primary" onclick={async () => { await dialogs.shareServer?.(); await loadOffice(); void checkShare() }}><Icon name="cloud" /> Set up…</button>
+            <button type="button" class="btn" onclick={checkShare}>Check</button>
+            <span class="caption ellipsis" title={shareStatus}>{shareStatus || (draft.publicShare?.enabled ? (draft.publicShare.host?.pc ? `On · share server: ${draft.publicShare.host.pc}` : 'On') : 'Not set up yet')}</span>
+          </div>
           {#if draft.publicShare}
-            <label class="check"><input type="checkbox" bind:checked={draft.publicShare.enabled} /> Let staff create client links</label>
             <div class="grid2">
-              <label class="field"><span>Store folder <span class="caption">(empty = PublicShares beside office.json)</span></span>
-                <input class="input" bind:value={draft.publicShare.store} spellcheck="false" placeholder="PublicShares beside office.json" /></label>
+              <label class="check"><input type="checkbox" bind:checked={draft.publicShare.enabled} /> Let staff create client links</label>
               <label class="field"><span>Default expiry</span>
                 <select class="input" bind:value={draft.publicShare.defaultDays}>
                   {#each [1, 3, 7, 14, 30, 60, 90] as d (d)}<option value={d}>{d} day{d > 1 ? 's' : ''}</option>{/each}
                 </select></label>
             </div>
-            <label class="field"><span>Client page address</span>
-              <input class="input" bind:value={draft.publicShare.pageUrl} spellcheck="false" /></label>
-            <div class="row">
-              <button type="button" class="btn" onclick={async () => { shareStatus = 'Checking…'; try { const r = await engine.call('pubshare.status'); shareStatus = !r.storeOk ? `Store folder not reachable: ${r.storeError ?? r.store}` : r.healthy ? 'Server is running and reachable from the internet.' : r.base ? `Store is fine, but the server did not answer: ${r.healthError ?? 'no reply'}` : 'Store is fine. The server part is not installed or has not started yet.' } catch (e) { shareStatus = String((e as Error).message) } }}><Icon name="refresh" /> Check server</button>
-              <span class="caption ellipsis" title={shareStatus}>{shareStatus}</span>
-            </div>
-          {:else}
-            <button type="button" class="btn" onclick={() => (draft.publicShare = { enabled: false, store: '', pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 })}>Set up Dexterity Share</button>
           {/if}
 
           <h3 class="subtitle">Zoho Cliq bot</h3>
@@ -975,7 +1019,13 @@
           <div><button type="button" class="btn" onclick={() => draft!.groups.push({ id: uid('g'), name: 'New group', members: [] })}><Icon name="plus" /> Add group</button></div>
 
           <h3 class="subtitle">Folder templates</h3>
-          <div class="caption">One folder per line, "/" for subfolders. {'{name}'}, {'{date}'} and {'{project}'} are filled in when the template is used.</div>
+          <div class="caption">Simple templates: one folder per line, "/" for subfolders; {'{name}'}, {'{date}'} and {'{project}'} are filled in when the template is used. Structured templates (inputs, conditions, automatic numbering) are edited as JSON; start from a copy of a built-in one.</div>
+          <div class="row wrap">
+            <span class="caption">Built in:</span>
+            {#each BUILTIN_TEMPLATES as b (b.id)}
+              <button type="button" class="btn sm" title={b.description ?? ''} onclick={() => copyBuiltin(b)}><Icon name="duplicate" /> Copy “{b.name}” to edit</button>
+            {/each}
+          </div>
           {#each draft.templates as t, ti (t.id)}
             <div class="box">
               <div class="row">
@@ -984,7 +1034,17 @@
                 <button type="button" class="btn subtle icon sm" aria-label="Move down" disabled={ti === draft.templates.length - 1} onclick={() => moveIn(draft!.templates, ti, 1)}><Icon name="chevronDown" /></button>
                 <button type="button" class="btn subtle icon sm" aria-label="Remove template" onclick={() => draft!.templates.splice(ti, 1)}><Icon name="delete" /></button>
               </div>
-              <textarea class="input mono" rows={Math.min(8, Math.max(3, t.folders.length + 1))} value={t.folders.join('\n')} spellcheck="false" onchange={(e) => (t.folders = e.currentTarget.value.split(/\r?\n/))}></textarea>
+              {#if isTree(t)}
+                {@const pv = samplePreview(t)}
+                <textarea class="input mono" rows={14} value={treeJson(t)} spellcheck="false" aria-label={`${t.name} as JSON`} onchange={(e) => setTreeJson(t, e.currentTarget.value)}></textarea>
+                {#each tplErrors[t.id] ?? [] as m (m)}<div class="caption bad"><Icon name="error" size={12} /> {m}</div>{/each}
+                {#if !(tplErrors[t.id] ?? []).length}
+                  <div class="caption">{pv.errors.length ? pv.errors[0] : `With default inputs: ${plural(pv.count, 'folder')}, depth ${pv.depth}. First three levels:`}</div>
+                  {#if !pv.errors.length}<pre class="input mono tplpv">{pv.lines.join('\n')}</pre>{/if}
+                {/if}
+              {:else}
+                <textarea class="input mono" rows={Math.min(8, Math.max(3, t.folders.length + 1))} value={t.folders.join('\n')} spellcheck="false" onchange={(e) => (t.folders = e.currentTarget.value.split(/\r?\n/))}></textarea>
+              {/if}
             </div>
           {/each}
           <div><button type="button" class="btn" onclick={() => draft!.templates.push({ id: uid('t'), name: 'New template', folders: [] })}><Icon name="plus" /> Add template</button></div>
@@ -1544,5 +1604,20 @@
   .foot {
     flex: 1;
     align-self: center;
+  }
+  .tplpv {
+    max-height: 180px;
+    overflow: auto;
+    margin: 0;
+    padding: 6px 10px;
+    height: auto;
+    font-size: 12px;
+    white-space: pre;
+  }
+  .caption.bad {
+    color: var(--bad);
+  }
+  .row.wrap {
+    flex-wrap: wrap;
   }
 </style>

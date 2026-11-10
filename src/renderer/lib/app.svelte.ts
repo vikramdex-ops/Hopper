@@ -73,6 +73,7 @@ export class App {
   lanStatus = $state<any>(null)
   incoming = $state.raw<any[]>([])
   toasts = $state<Toast[]>([])
+  clientDownloads = $state.raw<{ id: string; title: string; downloads: number; first: boolean; at: number }[]>([])
   // raw: dialog props must stay plain objects (they are sent over IPC, which cannot clone proxies)
   dialogs = $state.raw<DialogEntry[]>([])
   menu = $state<{ x: number; y: number; items: MenuItem[]; native?: string[] } | null>(null)
@@ -144,6 +145,12 @@ export class App {
     })
     engine.on('jobs', (list: JobInfo[]) => (this.jobs = list))
     engine.on('job-finished', (j: JobInfo) => this.onJobFinished(j))
+    // Dexterity Share: a client finished downloading one of my links
+    engine.on('pubshare-download', (d: { id: string; title: string; downloads: number; first: boolean; at: number }) => {
+      this.clientDownloads = [d, ...this.clientDownloads].slice(0, 100)
+      const when = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(d.at))
+      this.toast('success', `Your client downloaded ${d.title}`, `${when}${d.downloads > 1 ? ` · ${d.downloads} downloads so far` : ''}`, [{ label: 'My client links', run: () => void import('./commands').then((m) => m.dialogs.publicLinks?.()) }], true)
+    })
     engine.on('conflict', (c: Conflict) => (this.conflicts = [...this.conflicts, c]))
     engine.on('undo', (l: UndoRecord[]) => (this.undoList = l))
     engine.on('dir-changed', ({ path }: { path: string }) => {

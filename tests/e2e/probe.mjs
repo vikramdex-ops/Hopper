@@ -8,7 +8,7 @@ win.on('pageerror', (e) => console.log('[pageerror]', e.message))
 import { execFileSync } from 'node:child_process'
 execFileSync('subst', ['H:', demo])
 process.on('exit', () => { try { execFileSync('subst', ['H:', '/D']) } catch {} })
-const lot = join('H:' + String.fromCharCode(92), 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
+const lot = join('H:' + String.fromCharCode(92), 'P10001 Refinery Revamp', '02_Working', 'Lot 07')
 const files = ['ISO-1001_Rev0.pdf', 'ISO-1001_RevA.pdf', 'ISO-1003_Rev2.pdf'].map((f) => join(lot, f))
 win.on('console', (m) => console.log('[console]', m.type(), m.text().slice(0, 300)))
 await win.evaluate((files) => { void window.__hopper.__dialogs.packager(files) }, files)

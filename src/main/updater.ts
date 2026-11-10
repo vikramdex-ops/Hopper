@@ -1,14 +1,14 @@
 // Silent updates from GitHub Releases: check in the background, download, apply on quit.
 import type { AppUpdater } from 'electron-updater'
 import { app } from 'electron'
-import { ctx } from './ctx'
+import { ctx, sendToWindow } from './ctx'
 
 let state: { status: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'none' | 'error' | 'unavailable'; version?: string; percent?: number; error?: string } = {
   status: 'idle'
 }
 
 function send() {
-  ctx.win?.webContents.send('hopper:update', state)
+  sendToWindow('hopper:update', state)
 }
 
 /** Plain words for the failures people actually meet; the raw text is kept for anything else. */
@@ -16,6 +16,7 @@ function friendly(e: unknown) {
   const m = String((e as Error)?.message ?? e)
   if (/ENOTFOUND|EAI_AGAIN|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ENETUNREACH|ETIMEDOUT|ERR_CONNECTION|ECONNRESET|ERR_NETWORK/i.test(m)) return 'No connection to the update server. Hopper will try again later.'
   if (/latest\.yml|404|Cannot find.*release|No published versions/i.test(m)) return 'No update information is published yet. Hopper will try again later.'
+  if (/app-update\.yml/i.test(m)) return 'This copy of Hopper was not installed with the installer, so it cannot update itself. Install Hopper from the download page to get updates.'
   if (/403|rate limit/i.test(m)) return 'The update server is busy. Hopper will try again later.'
   return m.split('\n')[0].slice(0, 200)
 }

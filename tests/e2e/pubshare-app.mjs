@@ -40,7 +40,7 @@ const api = `http://127.0.0.1:${port}`
 let created
 
 await check('Hopper creates a link for a folder (zipped) with a password', async () => {
-  created = await win.evaluate((p) => window.__hopper.__engine('pubshare.create', { paths: [p], title: 'Lot 07 isometrics', message: 'For review', days: 3, password: 'correct horse 42', zip: {} }), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07'))
+  created = await win.evaluate((p) => window.__hopper.__engine('pubshare.create', { paths: [p], title: 'Lot 07 isometrics', message: 'For review', days: 3, password: 'correct horse 42', zip: {} }), join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07'))
   await win.waitForFunction((id) => window.__hopper.jobs.some((j) => j.id === id && ['done', 'failed', 'cancelled'].includes(j.state)), created.jobId, { timeout: 180000 })
   const job = await win.evaluate((id) => window.__hopper.jobs.find((j) => j.id === id), created.jobId)
   if (job.state !== 'done') throw new Error(`job ${job.state}: ${job.error}`)

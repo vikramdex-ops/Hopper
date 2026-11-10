@@ -9,7 +9,7 @@ import fs, { promises as fsp } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Log, loadConfig } from './server.mjs'
+import { Log, loadConfig, createShareServer } from './server.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -35,9 +35,18 @@ export function normalizeBase(base) {
 
 const pointerMessage = (base, updated) => Buffer.from(`dxshare-pointer-v1\n${base}\n${updated}`)
 
-/** {v, base, updated, sig}: signed with the server's private key so a stolen GitHub token alone cannot redirect clients. */
-export function buildPointer(base, privateKey, updated = new Date().toISOString()) {
-  const p = { v: 1, base, updated }
+/** Short fingerprint of the pointer's public key; it travels inside every client link. */
+export function keyHash(jwk) {
+  return crypto.createHash('sha256').update(`${jwk.x}.${jwk.y}`).digest('hex').slice(0, 20)
+}
+
+/**
+ * {v, base, updated, sig[, key]}: signed with the server's private key so a stolen GitHub token alone
+ * cannot redirect clients. With `publicJwk` the pointer carries its own public key; the page accepts
+ * it only if the key's fingerprint matches the one in the client's link.
+ */
+export function buildPointer(base, privateKey, updated = new Date().toISOString(), publicJwk = null) {
+  const p = publicJwk ? { v: 2, base, updated, key: publicJwk } : { v: 1, base, updated }
   if (privateKey) p.sig = crypto.sign('sha256', pointerMessage(base, updated), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url')
   return p
 }
@@ -99,6 +108,63 @@ export async function publishPointer({ api = 'https://api.github.com', repo, bra
   throw new Error(last)
 }
 
+const GH_HEADERS = (token) => ({ Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'dexterity-share', 'Content-Type': 'application/json' })
+export const GIST_FILE = 'pointer.json'
+
+/**
+ * Who does this token belong to, and may it edit gists? Classic tokens list their scopes; a token
+ * with more than "gist" works but is more than this job needs, so that is reported too.
+ */
+export async function checkGistToken({ api = 'https://api.github.com', token, fetchImpl = fetch }) {
+  if (!token || /\s/.test(token)) throw new Error('That does not look like a token. Paste the whole token, with no spaces.')
+  let r
+  try {
+    r = await fetchImpl(`${api}/user`, { headers: GH_HEADERS(token), signal: AbortSignal.timeout(20000) })
+  } catch {
+    throw new Error('GitHub could not be reached. Check this PC\'s internet connection and try again.')
+  }
+  if (r.status === 401) throw new Error('GitHub does not accept this token. It may be mistyped, expired or deleted: create a new one and paste it again.')
+  if (!r.ok) throw new Error(`GitHub answered ${r.status}. Try again in a minute.`)
+  const login = (await r.json()).login
+  const header = r.headers.get('x-oauth-scopes')
+  const scopes = header == null ? null : header.split(',').map((x) => x.trim()).filter(Boolean)
+  if (scopes && !scopes.includes('gist')) throw new Error('This token is not allowed to edit gists. Create a new token with only the "gist" box ticked.')
+  return { login, scopes, extra: scopes ? scopes.filter((x) => x !== 'gist') : [] }
+}
+
+/** Create the (unlisted) gist that will hold the pointer. Returns its id. */
+export async function createPointerGist({ api = 'https://api.github.com', token, pointer, fetchImpl = fetch }) {
+  const r = await fetchImpl(`${api}/gists`, {
+    method: 'POST',
+    headers: GH_HEADERS(token),
+    signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({ description: 'Dexterity Share: current address of the office share server (written by Hopper; do not edit)', public: false, files: { [GIST_FILE]: { content: JSON.stringify(pointer, null, 2) + '\n' } } })
+  })
+  if (r.status === 403 || r.status === 404) throw new Error('This token is not allowed to create gists. Create a new token with only the "gist" box ticked.')
+  if (r.status !== 201) throw new Error(`GitHub answered ${r.status} when creating the gist. Try again in a minute.`)
+  const id = (await r.json()).id
+  if (!/^[0-9a-f]{20,40}$/.test(id ?? '')) throw new Error('GitHub returned an unexpected gist id.')
+  return id
+}
+
+/** Write the pointer into the gist. Returns 'unchanged' or 'published'. */
+export async function publishGistPointer({ api = 'https://api.github.com', gistId, token, pointer, fetchImpl = fetch }) {
+  if (!/^[0-9a-f]{20,40}$/.test(gistId ?? '')) throw new Error('The pointer gist id is not valid')
+  const url = `${api}/gists/${gistId}`
+  const cur = await fetchImpl(url, { headers: GH_HEADERS(token), signal: AbortSignal.timeout(20000) })
+  if (cur.status === 404) throw new Error('The pointer gist no longer exists (or this token cannot see it). Run the Dexterity Share setup again.')
+  if (cur.status === 401) throw new Error('GitHub no longer accepts the saved token. Paste a new one in the Dexterity Share setup.')
+  if (!cur.ok) throw new Error(`GitHub answered ${cur.status} reading the pointer`)
+  try {
+    const old = JSON.parse((await cur.json()).files?.[GIST_FILE]?.content ?? 'null')
+    if (old && old.base === pointer.base && JSON.stringify(old.key ?? null) === JSON.stringify(pointer.key ?? null)) return 'unchanged'
+  } catch {}
+  const r = await fetchImpl(url, { method: 'PATCH', headers: GH_HEADERS(token), signal: AbortSignal.timeout(20000), body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(pointer, null, 2) + '\n' } } }) })
+  if (r.status === 403 || r.status === 404) throw new Error('The saved token may not edit the pointer gist. It must belong to the account that owns the gist and have the "gist" permission.')
+  if (!r.ok) throw new Error(`GitHub answered ${r.status} writing the pointer`)
+  return 'published'
+}
+
 export function loadSupervisorConfig(file, env = process.env) {
   const raw = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) : {}
   const server = loadConfig(file, env)
@@ -122,7 +188,9 @@ export function loadSupervisorConfig(file, env = process.env) {
   const g = raw.pointer?.github
   const pointer = g?.repo
     ? { api: g.api || 'https://api.github.com', repo: g.repo, branch: g.branch || 'main', file: g.path || 'pointer.json', tokenFile: path.resolve(dir, g.tokenFile || 'pointer-token.txt') }
-    : null
+    : raw.pointer?.gist?.id
+      ? { kind: 'gist', api: raw.pointer.gist.api || 'https://api.github.com', gistId: raw.pointer.gist.id, tokenFile: path.resolve(dir, raw.pointer.gist.tokenFile || 'pointer-token.txt') }
+      : null
   return { file: path.resolve(file), server, tunnel, pointer }
 }
 
@@ -159,12 +227,24 @@ export class Supervisor {
     this.timer = null
     this.backoff = { server: 1000, tunnel: 2000 }
     this.events = [] // for tests and --check
+    this.app = null
+    this.health = null
+    this.serverLog = deps.serverLog
+    this.serverError = ''
+    this.getToken = deps.getToken ?? null
+    this.onChange = deps.onChange ?? (() => {})
+    this.baseSince = 0
+    this.pointerError = ''
+    this.tunnelError = ''
   }
 
   note(event, data = {}) {
     this.events.push({ event, ...data })
     if (this.events.length > 500) this.events.shift()
     this.log.info(event, data)
+    try {
+      this.onChange(event, data)
+    } catch {}
     this.echo(`${event}${Object.keys(data).length ? ' ' + JSON.stringify(data) : ''}`)
   }
 
@@ -175,6 +255,22 @@ export class Supervisor {
   // ---- share server ---------------------------------------------------------
   startServer() {
     if (this.stopping) return
+    if (this.cfg.inProcess) {
+      // Hopper hosts the server inside its own share process: no second program to start.
+      const app = createShareServer(this.cfg.server, { log: this.serverLog })
+      app.listen().then(
+        () => {
+          this.app = app
+          this.note('server-listening', { port: this.cfg.server.port })
+        },
+        (e) => {
+          this.serverError = e.code === 'EADDRINUSE' ? `Port ${this.cfg.server.port} is already in use on this PC` : String(e.message)
+          this.note('server-start-failed', { message: this.serverError })
+          if (!this.stopping) setTimeout(() => this.startServer(), 15000).unref?.()
+        }
+      )
+      return
+    }
     const started = Date.now()
     const child = spawn(process.execPath, ['--no-warnings', path.join(HERE, 'server.mjs')], {
       env: { ...process.env, DXSHARE_CONFIG: this.cfg.file, DXSHARE_PARENT_PID: String(process.pid) },
@@ -185,6 +281,7 @@ export class Supervisor {
     const out = (d) => String(d).split(/\r?\n/).filter(Boolean).forEach((l) => this.note('server-out', { line: l.slice(0, 300) }))
     child.stdout.on('data', out)
     child.stderr.on('data', out)
+    child.on('message', (m) => m?.type === 'health' && (this.health = m.health))
     child.on('error', (e) => this.note('server-spawn-failed', { message: e.message }))
     child.on('exit', (code) => {
       if (this.server === child) this.server = null
@@ -244,7 +341,8 @@ export class Supervisor {
     const proto = t.protocol ? ['--protocol', t.protocol] : []
     const args = t.mode === 'quick' ? ['tunnel', '--no-autoupdate', ...proto, '--url', `http://127.0.0.1:${this.cfg.server.port}`] : ['tunnel', '--no-autoupdate', ...proto, 'run']
     const env = { ...process.env }
-    if (t.mode === 'named' && t.tokenFile) {
+    if (t.mode === 'named' && t.token) env.TUNNEL_TOKEN = t.token // handed over in memory by Hopper
+    else if (t.mode === 'named' && t.tokenFile) {
       // passed in the environment, not on the command line, so it never shows in the process list
       try {
         env.TUNNEL_TOKEN = fs.readFileSync(t.tokenFile, 'utf8').trim()
@@ -281,7 +379,10 @@ export class Supervisor {
     }
     child.stdout.on('data', onData)
     child.stderr.on('data', onData)
-    child.on('error', (e) => this.note('tunnel-spawn-failed', { message: e.code === 'ENOENT' ? `cloudflared not found at ${exe}` : e.message }))
+    child.on('error', (e) => {
+      this.tunnelError = e.code === 'ENOENT' ? `cloudflared not found at ${exe}` : e.message
+      this.note('tunnel-spawn-failed', { message: this.tunnelError })
+    })
     child.on('close', (code) => {
       if (this.tunnel !== child) return
       this.tunnel = null
@@ -334,6 +435,8 @@ export class Supervisor {
     }
     this.verified = true
     this.fails = 0
+    this.baseSince = Date.now()
+    this.tunnelError = ''
     this.note('public-address-verified', { base })
     this.pointerDirty = true
     await this.syncPointer()
@@ -346,28 +449,38 @@ export class Supervisor {
     if (!p || !this.pointerDirty || !this.base || !this.verified) return
     let token
     try {
-      token = fs.readFileSync(p.tokenFile, 'utf8').trim()
+      token = this.getToken ? await this.getToken() : fs.readFileSync(p.tokenFile, 'utf8').trim()
       if (!token) throw new Error('empty')
     } catch {
-      this.note('pointer-token-missing', { file: path.basename(p.tokenFile) })
+      this.pointerError = 'No GitHub token is saved for the pointer'
+      this.note('pointer-token-missing', {})
       return
     }
     try {
       this.pointerKey ??= loadPointerKey(this.cfg.server.stateDir)
-      const pointer = buildPointer(this.base, this.pointerKey.privateKey)
-      const r = await publishPointer({ ...p, token, pointer, fetchImpl: this.fetch })
+      let r
+      if (p.kind === 'gist') {
+        const pointer = buildPointer(this.base, this.pointerKey.privateKey, undefined, this.pointerKey.publicJwk)
+        r = await publishGistPointer({ api: p.api, gistId: p.gistId, token, pointer, fetchImpl: this.fetch })
+      } else {
+        const pointer = buildPointer(this.base, this.pointerKey.privateKey)
+        r = await publishPointer({ ...p, token, pointer, fetchImpl: this.fetch })
+      }
       this.pointerDirty = false
+      this.pointerError = ''
       this.note('pointer-' + r, { base: this.base })
     } catch (e) {
       // stays dirty: the next check tries again
-      this.note('pointer-failed', { message: String(e.message).replace(token, '***') })
+      this.pointerError = String(e.message).split(token).join('***')
+      this.note('pointer-failed', { message: this.pointerError })
     }
   }
 
   /** _server.json in the store: Hopper reads it over the office network to show "server online". */
   async heartbeat(extra = {}) {
     const file = path.join(this.cfg.server.store, '_server.json')
-    const body = JSON.stringify({ v: 1, base: this.verified ? this.base : null, mode: this.cfg.tunnel.mode, healthy: this.verified && this.fails === 0, updated: Date.now(), ...extra })
+    const health = this.app ? this.app.health() : this.health
+    const body = JSON.stringify({ v: 1, base: this.verified ? this.base : null, mode: this.cfg.tunnel.mode, healthy: this.verified && this.fails === 0, updated: Date.now(), baseSince: this.verified ? this.baseSince : null, host: this.cfg.hostName ?? null, ...(health ?? {}), ...extra })
     try {
       await fsp.writeFile(file + '.tmp', body)
       await fsp.rename(file + '.tmp', file)
@@ -414,6 +527,10 @@ export class Supervisor {
       t.kill()
       await Promise.race([gone, sleep(5000)])
       fs.rmSync(path.join(this.cfg.server.stateDir, 'cloudflared.pid'), { force: true })
+    }
+    if (this.app) {
+      await this.app.close().catch(() => {})
+      this.app = null
     }
     const s = this.server
     if (s) {
@@ -491,6 +608,7 @@ async function main() {
 
 function isMain() {
   try {
+    if (path.basename(process.argv[1] ?? '') !== 'supervisor.mjs') return false // bundled into Hopper: never self-start
     return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
   } catch {
     return false

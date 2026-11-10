@@ -31,6 +31,7 @@ export function defaultSettings(home: string, docs: string): Settings {
     confirmPermanentDelete: true,
     inspector: true,
     sidebarWidth: 232,
+    sidebarCollapsed: false,
     inspectorWidth: 320,
     groupRevisions: false,
     thumbSize: 96,
@@ -74,12 +75,9 @@ export function defaultOffice(): OfficeConfig {
     publicShare: { enabled: false, store: '', pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 },
     cliq: { enabled: false, endpoint: 'https://cliq.zoho.in/api/v2/bots/hopper/message', zapikey: '' },
     groups: [],
+    // The "Dexterity project" and "Issue / submission pack" templates are built in
+    // (src/shared/project-template.ts) and listed before these; admins can copy them here to edit.
     templates: [
-      {
-        id: 'project',
-        name: 'Project folder',
-        folders: ['01_Incoming', '02_Working', '03_Outgoing', '04_Transmittals', '05_References', '06_Correspondence']
-      },
       {
         id: 'lot',
         name: 'Lot folder',

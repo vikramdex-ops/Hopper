@@ -89,15 +89,15 @@ export async function makeDemo() {
     }
     return Buffer.from(await doc.save())
   }
-  mk('P12513 Refinery Revamp/01_Incoming')
-  mk('P12513 Refinery Revamp/03_Outgoing')
-  mk('P12513 Refinery Revamp/05_References')
+  mk('P10001 Refinery Revamp/01_Incoming')
+  mk('P10001 Refinery Revamp/03_Outgoing')
+  mk('P10001 Refinery Revamp/05_References')
   for (const [n, revs] of [['ISO-1001', ['A', 'B', '0']], ['ISO-1002', ['A', 'B']], ['ISO-1003', ['0', '1', '2']], ['ISO-1004', ['A']], ['ISO-1005', ['B', 'C']]]) {
-    for (const r of revs) put(`P12513 Refinery Revamp/02_Working/Lot 07/${n}_Rev${r}.pdf`, await pdf(`${n} Rev ${r}`, 1 + (n.charCodeAt(7) % 3)))
+    for (const r of revs) put(`P10001 Refinery Revamp/02_Working/Lot 07/${n}_Rev${r}.pdf`, await pdf(`${n} Rev ${r}`, 1 + (n.charCodeAt(7) % 3)))
   }
-  put('P12513 Refinery Revamp/02_Working/Lot 07/Comment register.csv', 'S.No,Drawing,Rev,Comment,Status\n1,ISO-1001,B,Add weld no.,Open\n2,ISO-1002,B,Check support SP-14,Closed\n3,ISO-1003,2,Flange rating,Open\n')
-  put('P12513 Refinery Revamp/02_Working/Lot 07/notes.md', '# Lot 07\n\nBack-check due **Friday**.\n\n- ISO-1001 rev 0 issued\n- ISO-1005 waiting on stress\n')
-  put('P12513 Refinery Revamp/README.txt', 'Project P12513 — refinery revamp, piping as-builts.\r\n')
+  put('P10001 Refinery Revamp/02_Working/Lot 07/Comment register.csv', 'S.No,Drawing,Rev,Comment,Status\n1,ISO-1001,B,Add weld no.,Open\n2,ISO-1002,B,Check support SP-14,Closed\n3,ISO-1003,2,Flange rating,Open\n')
+  put('P10001 Refinery Revamp/02_Working/Lot 07/notes.md', '# Lot 07\n\nBack-check due **Friday**.\n\n- ISO-1001 rev 0 issued\n- ISO-1005 waiting on stress\n')
+  put('P10001 Refinery Revamp/README.txt', 'Project P10001 — refinery revamp, piping as-builts.\r\n')
   const hues = [[200, 260], [20, 60], [140, 190], [300, 340], [40, 10], [180, 220]]
   hues.forEach(([a, b], i) => put(`Site photos/IMG_${2040 + i}.png`, png(640, 420, a, b)))
   put('Site photos/survey-notes.txt', 'Pipe rack 3 — clearance checked.\r\n')

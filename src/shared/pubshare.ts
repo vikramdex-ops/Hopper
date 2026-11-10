@@ -11,7 +11,68 @@ export interface PublicShareConfig {
   pageUrl: string
   /** default expiry in days (one of EXPIRY_DAYS) */
   defaultDays: number
+  /**
+   * Where client pages find the share server (set by the setup wizard): the id of the GitHub gist
+   * that holds the signed address, and the fingerprint of the key that signs it. Not secrets.
+   */
+  pointer?: { gist: string; key: string }
+  /** refuse new links when the store's drive has less free space than this (GB; default 5) */
+  minFreeGB?: number
+  /** Windows account + PC that hosts the share server (information for colleagues) */
+  host?: { user: string; pc: string }
 }
+
+/** Per-PC settings of the PC that hosts the share server (Settings.shareServer; never in office.json). */
+export interface ShareServerSettings {
+  enabled: boolean
+  /** full path of cloudflared.exe ('' = the copy Hopper downloaded) */
+  cloudflaredPath: string
+  /** 'quick' = free Cloudflare quick tunnel + pointer; 'named' = Cloudflare tunnel token; 'external' = own address */
+  mode: 'quick' | 'named' | 'external'
+  /** fixed public address for 'named' and 'external' */
+  publicBase: string
+  port: number
+  /** total upload limit in Mbit/s (0 = no limit) and an optional lower one for office hours */
+  bandwidth: { mbps: number; officeMbps: number; officeDays: number[]; officeFrom: string; officeTo: string }
+}
+
+export const DEFAULT_SHARE_SERVER: ShareServerSettings = {
+  enabled: false,
+  cloudflaredPath: '',
+  mode: 'quick',
+  publicBase: '',
+  port: 47880,
+  bandwidth: { mbps: 0, officeMbps: 0, officeDays: [1, 2, 3, 4, 5, 6], officeFrom: '09:00', officeTo: '19:00' }
+}
+
+/** What the share process reports to the setup wizard and Settings. */
+export interface ShareServerState {
+  /** this PC's name */
+  pc: string
+  enabled: boolean
+  running: boolean
+  /** the store folder exists and is writable */
+  storeOk: boolean
+  storeError?: string
+  serverOk: boolean
+  serverError?: string
+  cloudflared: { path: string; found: boolean; version?: string }
+  tunnel: { mode: string; base: string | null; verified: boolean; since: number | null; error?: string }
+  pointer: { gist: string | null; key: string | null; hasToken: boolean; published: boolean; error?: string }
+  health?: ShareServerHealth | null
+}
+
+export interface ShareServerHealth {
+  uptimeSec: number
+  activeDownloads: number
+  bytesToday: number
+  downloadsToday: number
+  freeBytes: number | null
+  totalBytes: number | null
+  limitMbps: number
+}
+
+export const DEFAULT_MIN_FREE_GB = 5
 
 export const EXPIRY_DAYS = [1, 3, 7, 14, 30, 60, 90] as const
 export const DEFAULT_EXPIRY_DAYS = 7
@@ -27,6 +88,8 @@ export interface ShareFile {
   size: number
   /** lower-case hex */
   sha256: string
+  /** set when the file was linked (not copied) into the store: the server refuses it if it changes */
+  mtime?: number
 }
 
 export interface PasswordVerifier {
@@ -118,6 +181,13 @@ export interface PublicShareStatus {
   /** /healthz answered through the public address */
   healthy: boolean
   healthError?: string
+  /** from the server's heartbeat file */
+  server?: Partial<ShareServerHealth> & { mode?: string; baseSince?: number | null; host?: string | null }
+  /** free space on the store's drive as this PC sees it, and the configured minimum */
+  freeBytes?: number
+  minFreeBytes?: number
+  /** the pointer is configured, so links carry everything the client page needs */
+  selfContained: boolean
 }
 
 export const isShareId = (s: unknown): s is string => typeof s === 'string' && SHARE_ID_RE.test(s)
@@ -128,11 +198,25 @@ export function normalizeDays(days: unknown, fallback: number = DEFAULT_EXPIRY_D
   return ok(n) ? n : ok(fallback) ? fallback : DEFAULT_EXPIRY_DAYS
 }
 
-/** "<page>#<id>": the id sits in the fragment, so it never reaches the page host's logs. */
-export function shareUrl(pageUrl: string | undefined, id: string) {
+export const GIST_ID_RE = /^[0-9a-f]{20,40}$/
+export const KEY_HASH_RE = /^[0-9a-f]{20}$/
+
+/**
+ * "<page>#<id>" or, when the office has a pointer, "<page>#<id>.<gist>.<key fingerprint>".
+ * Everything sits in the fragment, so none of it reaches the page host's logs; with the pointer
+ * reference the page needs no per-office configuration at all.
+ */
+export function shareUrl(pageUrl: string | undefined, id: string, pointer?: { gist: string; key: string } | null) {
   let base = (pageUrl || DEFAULT_PAGE_URL).trim().replace(/[#?].*$/, '')
   if (!/\/$/.test(base) && !/\.html?$/i.test(base)) base += '/'
-  return `${base}#${id}`
+  const ref = pointer && GIST_ID_RE.test(pointer.gist) && KEY_HASH_RE.test(pointer.key) ? `.${pointer.gist}.${pointer.key}` : ''
+  return `${base}#${id}${ref}`
+}
+
+/** Split a link fragment into its parts; null when it is not a Dexterity Share link. */
+export function parseShareRef(fragment: string) {
+  const m = /^([a-z2-7]{26})(?:\.([0-9a-f]{20,40})\.([0-9a-f]{20}))?$/.exec(fragment.replace(/^#\/?/, ''))
+  return m ? { id: m[1], gist: m[2] ?? null, key: m[3] ?? null } : null
 }
 
 const B32 = 'abcdefghijklmnopqrstuvwxyz234567'

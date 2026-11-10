@@ -4,14 +4,15 @@ Use Dexterity Share when a deliverable is too big for e-mail. Hopper puts the fi
 office server and gives you a link; the client opens it in any browser, anywhere, and downloads.
 Nothing is uploaded to WeTransfer or similar sites.
 
-(It needs a one-time setup by IT: [DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md).)
+(It needs a one-time, three-step setup on one office PC that stays on:
+[DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md).)
 
 ## Send
 
 1. In Hopper, select the files, a folder or a zip.
 2. Choose **Create client link**.
 3. Fill in:
-   - **Title** — the client sees this as the heading, e.g. *P12513 Lot 07 isometrics, rev B*.
+   - **Title** — the client sees this as the heading, e.g. *J999 Lot 07 isometrics, rev B*.
    - **Message** (optional) — shown on the page and included in the e-mail text.
    - **Link expires after** — 1, 3, 7, 14, 30, 60 or 90 days. After that the link stops working
      and the copy on the server is deleted a day later.
@@ -50,7 +51,18 @@ A Dexterity Share page with your name, the title and message, the file list with
 the link expires. One button downloads. If the office server is briefly unreachable (power or
 internet), the page says so and retries by itself; the link is not lost.
 
+**You are told when the client downloads.** Hopper shows "Your client downloaded Lot 07
+(17 Nov, 14:02)" within a couple of minutes of each completed download, and lists it under Activity.
+
 ## Good to know
+
+- A single finished file (zip, 7z, rar, PDF…) that is already on the office server is shared
+  **instantly**, without copying. Do not edit that file afterwards: if it changes, the client is
+  told "this file was changed after it was shared" and you create a new link.
+- If the server is nearly full, Hopper refuses new links and says so. Revoke links you no longer
+  need under **My client links**.
+- Links work only while the office share-server PC is on. If a client reports "can't reach our file
+  server", check the dot in **My client links** and tell whoever looks after Hopper.
 
 - Anyone who has the link can download until it expires. For confidential lots, set a password
   and a short expiry.

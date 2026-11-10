@@ -6,7 +6,7 @@ import http from 'node:http'
 import fs, { promises as fsp } from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
-import { pipeline } from 'node:stream'
+import { pipeline, Transform } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 export const ID_RE = /^[a-z2-7]{26}$/
@@ -42,7 +42,67 @@ export const DEFAULTS = {
   cleanupMinutes: 60,
   shutdownGraceSeconds: 10,
   logMaxMB: 10,
-  logKeep: 5
+  logKeep: 5,
+  /**
+   * Upload speed limit for all downloads together, in megabits per second (0 = no limit).
+   * officeMbps (if set) applies instead during office hours, so client downloads do not slow the office.
+   */
+  bandwidth: { mbps: 0, officeMbps: 0, officeDays: [1, 2, 3, 4, 5, 6], officeFrom: '09:00', officeTo: '19:00' }
+}
+
+/** The limit in bytes per second that applies at `date` (0 = unlimited). */
+export function currentLimit(bw, date = new Date()) {
+  if (!bw) return 0
+  const total = Math.max(0, Number(bw.mbps) || 0)
+  const office = Math.max(0, Number(bw.officeMbps) || 0)
+  let mbps = total
+  if (office > 0) {
+    const mins = (t, d) => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(t ?? ''))
+      return m ? Number(m[1]) * 60 + Number(m[2]) : d
+    }
+    const now = date.getHours() * 60 + date.getMinutes()
+    const days = Array.isArray(bw.officeDays) ? bw.officeDays : [1, 2, 3, 4, 5, 6]
+    const from = mins(bw.officeFrom, 540)
+    const to = mins(bw.officeTo, 1140)
+    if (days.includes(date.getDay()) && now >= from && now < to) mbps = total > 0 ? Math.min(total, office) : office
+  }
+  return Math.round((mbps * 1_000_000) / 8)
+}
+
+/**
+ * Paces one download. `share()` returns this stream's bytes-per-second allowance right now
+ * (the total limit divided by the number of downloads), or 0 for "no limit".
+ */
+export class Throttle extends Transform {
+  constructor(share, now = () => Date.now()) {
+    super({ highWaterMark: 256 * 1024 })
+    this.share = share
+    this.now = now
+    this.nextAt = 0
+  }
+  _transform(chunk, _enc, cb) {
+    let off = 0
+    const step = () => {
+      if (this.destroyed) return
+      if (off >= chunk.length) return cb()
+      const rate = this.share()
+      if (!(rate > 0)) {
+        this.push(off ? chunk.subarray(off) : chunk)
+        return cb()
+      }
+      // slices of about a tenth of a second keep the flow smooth at any limit
+      const n = Math.min(chunk.length - off, Math.max(1024, Math.min(65536, Math.ceil(rate / 10))))
+      const t = this.now()
+      const wait = this.nextAt - t
+      if (wait > 4) return void setTimeout(step, Math.min(wait, 1000))
+      this.push(chunk.subarray(off, off + n))
+      off += n
+      this.nextAt = Math.max(t - 250, this.nextAt) + (n / rate) * 1000
+      step()
+    }
+    step()
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -135,6 +195,7 @@ export function validateManifest(m, id) {
   if (!Array.isArray(m.files) || m.files.length < 1 || m.files.length > MAX_FILES) return null
   for (const f of m.files) {
     if (!f || !str(f.name, 255) || !f.name || !Number.isSafeInteger(f.size) || f.size < 0 || !/^[0-9a-f]{64}$/.test(f.sha256 ?? '')) return null
+    if (f.mtime != null && !(typeof f.mtime === 'number' && Number.isFinite(f.mtime) && f.mtime >= 0)) return null
   }
   if (m.password != null && !validVerifier(m.password)) return null
   if (m.maxDownloads != null && !(Number.isSafeInteger(m.maxDownloads) && m.maxDownloads >= 0)) return null
@@ -283,6 +344,7 @@ const ERROR_TEXT = {
   limit: ['This file has reached its download limit', 'Please ask the sender for a new link.'],
   busy: ['The server is busy right now', 'Please go back and try again in a minute.'],
   unavailable: ['This file is temporarily unavailable', 'Please try again in a few minutes or contact the sender.'],
+  changed: ['This file was changed after it was shared', 'Please ask the sender for a new link.'],
   rate_limited: ['Too many requests', 'Please wait a minute and try again.']
 }
 
@@ -309,6 +371,17 @@ export function createShareServer(config, hooks = {}) {
   let storeOk = true
   let closing = false
   let inflight = 0
+  const startedAt = Date.now()
+  let bandwidth = cfg.bandwidth
+  let today = { day: new Date().toDateString(), bytes: 0, downloads: 0 }
+  let free = null
+  const countToday = (bytes, done) => {
+    const d = new Date().toDateString()
+    if (d !== today.day) today = { day: d, bytes: 0, downloads: 0 }
+    today.bytes += bytes
+    if (done) today.downloads++
+  }
+  const refreshFree = () => fsp.statfs(store).then((v) => (free = { free: v.bavail * v.bsize, total: v.blocks * v.bsize }), () => (free = null))
   const timers = []
 
   function loadSecret() {
@@ -581,7 +654,16 @@ export function createShareServer(config, hooks = {}) {
     try {
       fh = await fsp.open(full, 'r')
       const st = await fh.stat()
-      if (!st.isFile() || st.size !== file.size) throw Object.assign(new Error('size mismatch'), { code: 'ESIZE' })
+      if (!st.isFile() || st.size !== file.size || (file.mtime != null && Math.abs(st.mtimeMs - file.mtime) > 2500)) {
+        // A file linked (not copied) into the store shares its bytes with the original: if someone
+        // edited the original in place, what we hold is no longer what was checksummed. Never serve it.
+        if (st.isFile() && file.mtime != null) {
+          await fh.close().catch(() => {})
+          log.warn('payload-changed', { id: id.slice(0, 6), n })
+          return send(req, res, 409, { error: 'changed' })
+        }
+        throw Object.assign(new Error('size mismatch'), { code: 'ESIZE' })
+      }
     } catch (e) {
       await fh?.close().catch(() => {})
       log.error('payload-unavailable', { id: id.slice(0, 6), n, code: e.code })
@@ -662,6 +744,7 @@ export function createShareServer(config, hooks = {}) {
       const left = (perIp.get(ip) ?? 1) - 1
       if (left > 0) perIp.set(ip, left)
       else perIp.delete(ip)
+      countToday(sent, !err && sent === length && end === size - 1)
       s.data.bytes += sent
       s.data.files[n].bytes += sent
       if (!err && sent === length && end === size - 1) {
@@ -679,9 +762,15 @@ export function createShareServer(config, hooks = {}) {
       res.end()
       return done(null)
     }
-    const rs = fh.createReadStream({ start, end, highWaterMark: 1 << 20 })
-    rs.on('data', (c) => (sent += c.length))
-    pipeline(rs, res, done) // pipeline applies backpressure and closes the file on every outcome
+    const limited = currentLimit(bandwidth) > 0
+    const rs = fh.createReadStream({ start, end, highWaterMark: limited ? 256 * 1024 : 1 << 20 })
+    // every download gets an equal part of the limit; with no limit the throttle passes data straight through
+    const pace = new Throttle(() => {
+      const total = currentLimit(bandwidth)
+      return total > 0 ? Math.max(8192, total / Math.max(1, active.size)) : 0
+    })
+    pace.on('data', (c) => (sent += c.length))
+    pipeline(rs, pace, res, done) // pipeline applies backpressure and closes the file on every outcome
   }
 
   function preflight(req, res, methods, headers) {
@@ -769,6 +858,14 @@ export function createShareServer(config, hooks = {}) {
     config: cfg,
     cleanup,
     flushStats,
+    /** Live numbers for the heartbeat file (never sent to clients). */
+    health() {
+      countToday(0, false)
+      return { uptimeSec: Math.round((Date.now() - startedAt) / 1000), activeDownloads: active.size, bytesToday: today.bytes, downloadsToday: today.downloads, freeBytes: free?.free ?? null, totalBytes: free?.total ?? null, limitMbps: Math.round((currentLimit(bandwidth) * 8) / 10000) / 100 }
+    },
+    setBandwidth(b) {
+      bandwidth = b
+    },
     get activeDownloads() {
       return active.size
     },
@@ -785,6 +882,8 @@ export function createShareServer(config, hooks = {}) {
       timers.push(setInterval(() => void flushStats(), cfg.statsFlushMs ?? 5000))
       timers.push(setInterval(() => void cleanup(), cfg.cleanupMinutes * 60_000))
       timers.push(setInterval(() => fsp.access(store).then(() => (storeOk = true), () => (storeOk = false)), 30_000))
+      timers.push(setInterval(() => void refreshFree(), 60_000))
+      void refreshFree()
       for (const t of timers) t.unref()
       void cleanup()
       log.info('listening', { port: server.address().port, store: path.basename(store) })
@@ -846,6 +945,7 @@ async function main() {
   try {
     const port = await app.listen()
     console.log(`Dexterity Share: listening on http://127.0.0.1:${port}`)
+    if (process.send) setInterval(() => process.connected && process.send({ type: 'health', health: app.health() }), 20_000).unref()
   } catch (e) {
     console.error(`Dexterity Share: cannot start: ${e.message}`)
     process.exit(e.code === 'EADDRINUSE' ? 3 : 2)
@@ -855,6 +955,7 @@ async function main() {
 // Compared through realpath: on a mapped network drive Node reports the module under its UNC name.
 function isMain() {
   try {
+    if (path.basename(process.argv[1] ?? '') !== 'server.mjs') return false // bundled into Hopper: never self-start
     return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
   } catch {
     return false

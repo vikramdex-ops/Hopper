@@ -25,11 +25,19 @@ export const ctx: {
   pendingOpen: string[]
 } = {} as any
 
+/** Send to the window if it still exists; a no-op during shutdown. */
+export function sendToWindow(channel: string, data: unknown) {
+  const win = ctx.win
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+  win.webContents.send(channel, data)
+}
+
 /** Give the renderer a direct MessagePort to each utility process. */
 export function connectPorts() {
   trace('connecting ports')
-  const wc = ctx.win?.webContents
-  if (!wc) return
+  if (!ctx.win || ctx.win.isDestroyed()) return
+  const wc = ctx.win.webContents
+  if (wc.isDestroyed()) return
   for (const name of ['engine', 'lan'] as const) {
     const child = ctx[name]
     if (!child) continue
@@ -40,7 +48,11 @@ export function connectPorts() {
 }
 
 
+/** Others that want to know when settings or the office config change (the Dexterity Share host). */
+export const officeListeners: (() => void)[] = []
+
 export function pushOfficeToUtilities() {
+  for (const fn of officeListeners) fn()
   for (const name of ['engine', 'lan'] as const) {
     // the key the LAN really uses (shared config, else the joined one) and where announcements live
     ctx[name]?.postMessage({ type: 'office', office: effectiveOffice(), settings: ctx.settings.data, officePath: ctx.office.loadedFrom })

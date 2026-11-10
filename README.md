@@ -5,14 +5,14 @@
 # Hopper
 
 **The internal file manager of Dexterity Design Services Private Limited.**
-Dual panes, a real transfer queue, one-key zips, PDF and lot tools —
-and file sharing to colleagues over the office LAN with an `@mention`.
+Dual panes, a real transfer queue, one-key zips, viewers, lot and project-folder tools —
+file sharing to colleagues over the office LAN with an `@mention`, and download links for clients.
 
 <sub>Internal software · © 2026 Dexterity Design Services Private Limited · all rights reserved</sub>
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-20) ·
+[What's new](#whats-new-in-22) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -21,37 +21,67 @@ and file sharing to colleagues over the office LAN with an `@mention`.
 <img src="docs/screenshots/01-workspace-light.png" alt="Hopper with two panes, a lot of isometric drawings and a PDF preview" width="100%">
 
 Hopper is built for how Dexterity works — drawing lots in shared folders: send a lot to three
-colleagues without writing three messages, zip 2 GB before the coffee is ready, and never
-wonder whether a copy over the network really finished.
+colleagues without writing three messages, send it to the client with one link, zip 2 GB before
+the coffee is ready, and never wonder whether a copy over the network really finished.
 
 ## Highlights
 
 | | |
 | :-- | :-- |
-| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. A Zoho Cliq DM tells each person what arrived. | **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. |
-| **A real transfer queue** — every copy, move, zip and share runs in the background with speed, ETA, pause/resume and one conflict prompt with *apply to all*. Moves on the same drive are instant. Optional checksum verify. Survives flaky network shares. | **Explorer-grade** — the real Windows clipboard (copy here, paste in Explorer and back), drag files out to Explorer, Outlook or Cliq, the full Windows context menu one click away, Properties, Recycle Bin restore and `Ctrl+Z` undo for copy, move, rename, new and delete. |
-| **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Folder templates for projects and lots. | **Revision-aware** — `ISO-1001_RevA / RevB / Rev0` group under the latest; out-of-sequence or unknown orders are flagged for a manual check, never guessed. Rules live in the shared office config. |
-| **Find it instantly** — a background index of your drives answers as you type; content search on demand; duplicates by content. | **Fluent and fast** — Windows 11 look (Mica, light and dark), real Windows file icons and thumbnails, virtualised lists that stay smooth at 100,000 items, workspaces and live-updating folders. |
+| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page. Expiry of 1–90 days, optional password and download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. |
+| **Viewers** — PDF (continuous scroll, `Ctrl`+wheel zoom), Excel, Word, the preview saved in DWG files, MicroStation V7 drawings (`.dgn`, `.i01`…) with zoom, pan and levels, and SmartSketch `.sha` details. No design software needed. | **Project folders** — the *Dexterity project* template asks for job number, name, type, 3D platform, disciplines, sub-projects, areas and review gates, shows the exact tree first and never overwrites. A second template makes a dated issue pack. |
+| **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **A real transfer queue** — every copy, move, zip and share runs in the background with speed, ETA, pause/resume and one conflict prompt with *apply to all*. Same-drive moves are instant. Optional checksum verify. Survives flaky network shares. |
+| **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Revisions (`RevA / RevB / Rev0`) group under the latest; unknown orders are flagged, never guessed. | **Hopper's own, top to bottom** — its own context menu, Properties, Open with and folder picker; nothing is handed to Windows Explorer. Path Copy (UNC, Internet, Samba forms), Recycle Bin restore, `Ctrl+Z` undo, the Windows clipboard both ways and drag-out to Outlook or Cliq. |
+| **Find it instantly** — a background index of your drives answers as you type; content search on demand; duplicates by content. | **Fluent and fast** — Windows 11 look (Mica, light and dark), a Home start page, drives with "free of total", a sidebar that collapses to a rail (`Ctrl+Shift+B`), announcements, workspaces and lists that stay smooth at 100,000 items. |
 
 <table>
 <tr>
 <td width="50%"><img src="docs/screenshots/f-share.png" alt="Share dialog with @ mentions"><br><sub><b>Share with <code>@</code>.</b> People and groups, a note, optional zip and a Cliq DM.</sub></td>
-<td width="50%"><img src="docs/screenshots/f-transfers.png" alt="Transfer queue"><br><sub><b>The transfer queue.</b> Speed, ETA, pause and resume for everything.</sub></td>
+<td width="50%"><img src="docs/screenshots/f-clientlink.png" alt="Client link ready"><br><sub><b>Client link.</b> The link, the password and the e-mail text with the expiry date.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/f-packager.png" alt="Lot packager"><br><sub><b>Lot packager.</b> Convention check, revisions, transmittal, zip.</sub></td>
+<td><img src="docs/screenshots/f-clientlinks.png" alt="My client links"><br><sub><b>My client links.</b> Opened, downloaded, days left; extend or revoke.</sub></td>
+<td><img src="docs/screenshots/f-person.png" alt="Person panel"><br><sub><b>Person panel.</b> Messages, files, folder links and requests with one colleague.</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/f-viewer.png" alt="Workbook in the document viewer"><br><sub><b>Viewers.</b> A workbook in the full-window viewer; PDF, Word, DWG previews and MicroStation drawings open the same way.</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/f-template.png" alt="Project folder template with a live tree preview"><br><sub><b>Project folders.</b> Fill in the job, see the exact tree, create it.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/f-transfers.png" alt="Transfer queue"><br><sub><b>The transfer queue.</b> Speed, ETA, pause and resume for everything.</sub></td>
 <td><img src="docs/screenshots/f-zip.png" alt="Compress dialog with presets"><br><sub><b>Presets.</b> One key for the zip you make every day.</sub></td>
 </tr>
 <tr>
+<td><img src="docs/screenshots/f-packager.png" alt="Lot packager"><br><sub><b>Lot packager.</b> Convention check, revisions, transmittal, zip.</sub></td>
+<td><img src="docs/screenshots/f-pathcopy.png" alt="Context menu with Path Copy"><br><sub><b>Path Copy.</b> Hopper's own menu, with every path form.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/f-home.png" alt="Home page"><br><sub><b>Home.</b> Recent folders, pinned, Inbox, people and low-disk warnings.</sub></td>
 <td><img src="docs/screenshots/02-workspace-dark.png" alt="Dark theme"><br><sub><b>Dark theme</b> that follows Windows.</sub></td>
-<td><img src="docs/screenshots/f-palette.png" alt="Command palette"><br><sub><b>Command palette</b> (<code>Ctrl+K</code>) for every action.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.2
+
+- **Dexterity Share sets itself up.** No separate server software: the office admin chooses
+  *Set up Dexterity Share on this PC…* (Settings → Office) and completes three steps — use this
+  PC, download the tunnel program, paste a GitHub token with only the *gist* permission — then
+  *Test from the internet*. Details: [IT guide](docs/DEXTERITY-SHARE-IT.md).
+- Client links are self-contained. A **bandwidth limit** (with a separate office-hours limit)
+  is shared equally between downloads, a **disk guard** refuses links that would leave the store
+  below its reserve (5 GB by default), and a **download notice** tells you when a client
+  downloads. A finished archive or PDF already on the store's drive is linked instantly.
+- **Project folder generator**: the *Dexterity project* template with a live tree preview, plus
+  a dated issue / submission pack. Templates are editable in Settings.
+- **Sidebar**: every drive shows "free of total", and the sidebar collapses to a rail
+  (button, View menu or `Ctrl+Shift+B`).
 
 ## What's new in 2.1
 
 - **Dexterity Share** — client download links served from the office server, with expiry,
-  password and a branded page ([staff guide](docs/DEXTERITY-SHARE.md), [IT guide](docs/DEXTERITY-SHARE-IT.md)).
+  password, download limit and a branded page ([staff guide](docs/DEXTERITY-SHARE.md)).
 - **Person panel, folder links and announcements** over the office network.
 - **Path Copy** menu (UNC, Internet and Samba forms) and Hopper's own Properties, Open with and
   folder picker — nothing is handed to Windows Explorer.
@@ -92,18 +122,22 @@ Builds are not code-signed yet, so SmartScreen may ask you to confirm the first 
 
 ## Setting it up for an office
 
-Sharing needs a one-time setup by whoever looks after the office PCs — about five minutes:
+A one-time setup, about five minutes:
 
 1. Install Hopper on each PC.
-2. On one PC: **Settings → Office**, point *Office config file* at a shared folder every PC can
-   reach (default `\\10.0.0.2\office-share\_Hopper\office.json`), click
-   **Generate** for the office key and **Save to server**.
-3. On each PC: **Settings → Sharing → Allow through Windows Firewall** (asks for admin once),
-   and fill in your name and Zoho email under *Profile*.
-4. Optional: create the Cliq bot and paste its endpoint and key in **Settings → Office** —
-   see [docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md).
+2. **Office admin** (only the admin can do this): **Settings → Office**, point *Office config
+   file* at a shared folder every PC can reach, create the office key and **Save to server**.
+3. **Everyone else joins**: automatically from the shared config, from an invite the admin sends
+   over the network (**Invite PCs**), or by pasting the key. Then **Settings → Sharing → Allow
+   through Windows Firewall** (asks for admin once) and fill in your name and Zoho email.
+4. Optional: the Cliq bot ([docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)), groups, folder templates,
+   naming conventions and revision rules.
+5. Optional, for client links: on one office PC that stays on, the admin runs **Set up Dexterity
+   Share on this PC…** (Settings → Office → Dexterity Share). See
+   [docs/DEXTERITY-SHARE-IT.md](docs/DEXTERITY-SHARE-IT.md); how staff use it is in
+   [docs/DEXTERITY-SHARE.md](docs/DEXTERITY-SHARE.md).
 
-Details, groups, naming conventions and revision rules: [docs/OFFICE-SETUP.md](docs/OFFICE-SETUP.md).
+Details: [docs/OFFICE-SETUP.md](docs/OFFICE-SETUP.md).
 
 ## Keyboard
 
@@ -115,12 +149,16 @@ Details, groups, naming conventions and revision rules: [docs/OFFICE-SETUP.md](d
 | `Tab` | switch pane · `F10` dual pane on/off |
 | `Alt+←` `Alt+→` `Alt+↑` / `Backspace` | back, forward, up |
 | `Ctrl+T` `Ctrl+W` `Ctrl+Shift+T` | new, close, reopen tab |
-| `Ctrl+C` `Ctrl+X` `Ctrl+V` | copy, cut, paste — shared with Explorer |
+| `Ctrl+C` `Ctrl+X` `Ctrl+V` | copy, cut, paste — through the Windows clipboard |
 | `Ctrl+F5` / `Ctrl+F6` | copy / move to the other pane |
 | `Ctrl+Alt+C` / `Ctrl+Alt+M` | copy to… / move to… (recent and pinned destinations) |
 | `Ctrl+Alt+Z` / `Ctrl+Shift+Z` | zip here with default preset / with options |
 | `Ctrl+Alt+X` | extract here (smart) |
 | `Ctrl+Shift+Enter` | share with people |
+| `Ctrl+Alt+L` | create a client link (Dexterity Share) |
+| `Ctrl+Shift+C` | copy path (your default Path Copy form) |
+| `Alt+Enter` | properties |
+| `Ctrl+Shift+B` | show / hide the sidebar |
 | `F2` / `Ctrl+Shift+R` | rename / rename many |
 | `Del` / `Shift+Del` / `Ctrl+Z` | recycle / delete permanently / undo |
 | `Space` | Quick Look |
@@ -168,8 +206,11 @@ only handles OS integration. Heavy libraries (PDF, Excel) load the first time th
 
 ## Privacy and security
 
-- Files move only inside your network: directly between office PCs over TLS (pre-shared office
-  key), or through the office server folder you configure. Nothing is uploaded anywhere.
+- Files shared with colleagues move only inside your network: directly between office PCs over
+  TLS (pre-shared office key), or through the office server folder you configure.
+- Client links (Dexterity Share) are the one exception you choose: the files stay on the office
+  server and are served from it only to people who have the link, until it expires. Nothing is
+  uploaded to a third-party file service.
 - The Cliq bot receives only the notification text (who sent what, and the message).
 - The UI runs sandboxed with no Node access; remote pages can't open windows in the app.
 

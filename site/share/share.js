@@ -5,11 +5,13 @@
 ;(function () {
   'use strict'
 
-  var ID_RE = /^[a-z2-7]{26}$/
+  // "<id>" or "<id>.<gist id>.<key fingerprint>": the second form tells this page where the office
+  // publishes its server address and which key must have signed it, so no per-office setup is needed here.
+  var LINK_RE = /^([a-z2-7]{26})(?:\.([0-9a-f]{20,40})\.([0-9a-f]{20}))?$/
   var card = document.getElementById('card')
   var toastEl = document.getElementById('toast')
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
-  var S = { id: '', cfg: null, base: '', meta: null, files: null, token: '', skew: 0, timers: [], run: 0, active: 0 }
+  var S = { id: '', gist: '', keyHash: '', cfg: null, base: '', meta: null, files: null, token: '', skew: 0, timers: [], run: 0, active: 0 }
 
   // ---- small helpers --------------------------------------------------------------------------
   function h(tag, props) {
@@ -209,12 +211,31 @@
     for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
     return out
   }
-  var pointerKey
-  /** The pointer is signed by the office server; a forged or altered one is ignored. */
+  function hex(buf) {
+    return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+      return ('0' + b.toString(16)).slice(-2)
+    }).join('')
+  }
+  /**
+   * The pointer is signed by the office server; a forged or altered one is ignored. For a link that
+   * names its key fingerprint, the pointer brings the public key and the fingerprint must match:
+   * whoever can edit the gist still cannot send clients anywhere else.
+   */
   async function pointerGenuine(p) {
-    if (!S.cfg.pointerKey) return true
+    var jwk = S.cfg.pointerKey
+    if (S.keyHash) {
+      if (!p.key || p.key.kty !== 'EC' || p.key.crv !== 'P-256' || typeof p.key.x !== 'string' || typeof p.key.y !== 'string' || !p.sig) return false
+      try {
+        var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p.key.x + '.' + p.key.y))
+        if (hex(digest).slice(0, 20) !== S.keyHash) return false
+      } catch (e) {
+        return false
+      }
+      jwk = { kty: 'EC', crv: 'P-256', x: p.key.x, y: p.key.y }
+    }
+    if (!jwk) return true
     try {
-      pointerKey = pointerKey || (await crypto.subtle.importKey('jwk', S.cfg.pointerKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']))
+      var pointerKey = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
       return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pointerKey, b64url(p.sig), new TextEncoder().encode('dxshare-pointer-v1\n' + p.base + '\n' + p.updated))
     } catch (e) {
       return false
@@ -228,17 +249,21 @@
     if (!r.ok) throw new Error('pointer ' + r.status)
     var p = await r.json()
     if (p && p.content && p.encoding === 'base64') p = JSON.parse(atob(p.content.replace(/\s/g, '')))
+    if (p && p.files && p.files['pointer.json']) p = JSON.parse(p.files['pointer.json'].content) // GitHub's gist API answer
     if (!p || typeof p.base !== 'string') throw new Error('pointer shape')
     var origin = validBase(p.base)
-    if (!origin || origin !== p.base || !hostAllowed(origin) || !(await pointerGenuine(p))) throw new Error('pointer rejected')
+    // An address signed with the key this link names is the office's own statement; otherwise only known tunnel hosts.
+    if (!origin || origin !== p.base || !(await pointerGenuine(p)) || !(S.keyHash || hostAllowed(origin))) throw new Error('pointer rejected')
     return { base: origin, updated: Date.parse(p.updated) || 0 }
   }
   /** Candidate server addresses, most recently published first. */
   async function candidates(fresh) {
     var cfg = S.cfg
     var fixed = cfg.base ? validBase(cfg.base) : ''
-    if (fixed) return [fixed]
+    if (fixed && !S.gist) return [fixed]
     var urls = cfg.pointers || []
+    // the link's own pointer: GitHub's file host first (no request limit, may be up to five minutes old), then its API (current)
+    if (S.gist) urls = [(cfg.gistRaw || 'https://gist.githubusercontent.com/raw/') + S.gist + '/pointer.json', (cfg.gistApi || 'https://api.github.com/gists/') + S.gist]
     if (!fresh) urls = urls.slice(0, 1)
     var found = await Promise.all(urls.map(function (u) {
       return readPointer(u, fresh).catch(function () {
@@ -249,8 +274,8 @@
       return b.updated - a.updated
     })
     var out = []
-    var cached = !fresh && store('dxs-base')
-    if (cached && validBase(cached) === cached && hostAllowed(cached)) out.push(cached)
+    var cached = !fresh && store('dxs-base-' + (S.gist || 'cfg'))
+    if (cached && validBase(cached) === cached && (S.keyHash || hostAllowed(cached))) out.push(cached)
     found.forEach(function (f) {
       if (out.indexOf(f.base) < 0) out.push(f.base)
     })
@@ -282,12 +307,12 @@
       var res = await ask(list[i])
       if (res.kind !== 'unreachable') {
         S.base = list[i]
-        store('dxs-base', list[i])
+        store('dxs-base-' + (S.gist || 'cfg'), list[i])
         return res
       }
     }
-    if (!fresh && !(S.cfg.base && validBase(S.cfg.base))) return connect(true) // the cached address may be stale: read every pointer afresh
-    return { kind: 'unreachable', configured: list.length > 0 || !!(S.cfg.pointers || []).length || !!S.cfg.base }
+    if (!fresh && (S.gist || !(S.cfg.base && validBase(S.cfg.base)))) return connect(true) // the cached address may be stale: read every pointer afresh
+    return { kind: 'unreachable', configured: list.length > 0 || !!S.gist || !!(S.cfg.pointers || []).length || !!S.cfg.base }
   }
 
   // ---- views ----------------------------------------------------------------------------------
@@ -469,12 +494,15 @@
     if (r.status === 200) return { kind: 'ok' }
     if (r.status === 401) return { kind: 'locked' }
     if (r.status === 404) return { kind: 'notfound' }
+    if (r.status === 409) return { kind: 'changed' }
     if (r.status === 410) return { kind: 'gone' } // expired, or the link's download limit is used up
     if (r.status === 429) return { kind: 'busy', retry: Number(r.headers.get('Retry-After')) || 30 }
     return { kind: 'unavailable' }
   }
   function problemText(p) {
     if (p.kind === 'busy') return 'The server is handling many downloads right now. Please try again in ' + (p.retry >= 90 ? Math.ceil(p.retry / 60) + ' minutes.' : 'about ' + p.retry + ' seconds.')
+    if (p.kind === 'changed') return 'This file was changed on our side after the link was made, so we will not send it. Please ask the sender for a new link.'
+    if (p.kind === 'limit') return 'This file has reached the number of downloads the sender allowed. Please ask the sender for a new link.'
     if (p.kind === 'unavailable') return 'This file is temporarily unavailable on our server. Please try again in a few minutes, or reply to the sender.'
     if (p.kind === 'unreachable') return navigator.onLine === false ? 'You appear to be offline. Check your connection and try again.' : "We couldn't reach our file server just now. Please try again in a moment."
     return 'This download is not available.'
@@ -488,7 +516,11 @@
       return true
     }
     if (p.kind === 'notfound') return showNotFound(), true
-    if (p.kind === 'gone') return start(), true
+    if (p.kind === 'gone') {
+      // expired while the page was open: show that; otherwise it is the sender's download limit
+      if (!S.meta || serverNow() >= S.meta.expiresAt) return start(), true
+      p.kind = 'limit'
+    }
     return false
   }
   function navigate(f) {
@@ -555,7 +587,7 @@
             sha = new window.DxSha256()
             got = 0
           } else if (r.status !== 200 && r.status !== 206) {
-            var kind = r.status === 401 ? 'locked' : r.status === 404 ? 'notfound' : r.status === 410 ? 'gone' : r.status === 429 ? 'busy' : 'unavailable'
+            var kind = r.status === 401 ? 'locked' : r.status === 404 ? 'notfound' : r.status === 409 ? 'changed' : r.status === 410 ? 'gone' : r.status === 429 ? 'busy' : 'unavailable'
             if (kind === 'busy' || kind === 'unavailable') throw new Error(kind)
             await writable.abort().catch(function () {})
             return { kind: kind }
@@ -673,7 +705,7 @@
     else if (res.kind === 'failed') ui.finish('bad', h('span', { class: 'err', text: 'The download could not be completed after several tries. Please try again later.' }))
     else {
       ui.box.remove()
-      fatal(res)
+      if (!fatal(res)) toast(problemText(res))
     }
     return res
   }
@@ -820,8 +852,11 @@
   // ---- start ----------------------------------------------------------------------------------
   async function start(fresh) {
     var run = ++S.run
-    var id = decodeURIComponent(location.hash.replace(/^#\/?/, '')).trim()
-    if (!ID_RE.test(id)) return showNoLink()
+    var link = LINK_RE.exec(decodeURIComponent(location.hash.replace(/^#\/?/, '')).trim())
+    if (!link) return showNoLink()
+    var id = link[1]
+    S.gist = link[2] || ''
+    S.keyHash = link[3] || ''
     if (id !== S.id) {
       S.id = id
       S.files = null
@@ -833,7 +868,7 @@
         var r = await timedFetch('config.json', { cache: 'no-cache' }, 10000)
         S.cfg = await r.json()
       } catch (e) {
-        S.cfg = { base: '', pointers: [], allowedHosts: [] }
+        S.cfg = { base: '', pointers: [], allowedHosts: ['*.trycloudflare.com'] } // config.json is optional
       }
     }
     var res = await connect(fresh === true)

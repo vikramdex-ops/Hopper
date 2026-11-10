@@ -8,7 +8,7 @@ import { basename, dirname, join, relative, isAbsolute, resolve } from 'node:pat
 import type { ArchivePreset, OfficeConfig } from '@shared/types'
 import { DEFAULT_PRESETS } from '@shared/defaults'
 import {
-  DAY_MS, DEFAULT_PAGE_URL, MANIFEST_VERSION, MAX_SHARE_FILES, encodeShareId, isShareId, normalizeDays, safeFileName, shareUrl,
+  DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_SHARE_FILES, encodeShareId, isShareId, normalizeDays, safeFileName, shareUrl,
   type PasswordVerifier, type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus, type ShareManifest, type ShareStats
 } from '@shared/pubshare'
 import type { EngineCtx } from './index'
@@ -24,6 +24,8 @@ export interface PubshareDeps {
   user: () => { user: string; host: string }
   fetch: typeof fetch
   now: () => number
+  /** false = do not start the download-notice timer (tests) */
+  watch?: boolean
 }
 
 const defaults: PubshareDeps = {
@@ -40,7 +42,10 @@ export function publicShareConfig(ctx: Pick<EngineCtx, 'office' | 'settings'>): 
     enabled: !!c.enabled,
     store: c.store?.trim() || (officeFile ? join(dirname(officeFile), 'PublicShares') : ''),
     pageUrl: c.pageUrl?.trim() || DEFAULT_PAGE_URL,
-    defaultDays: normalizeDays(c.defaultDays)
+    defaultDays: normalizeDays(c.defaultDays),
+    pointer: c.pointer && GIST_ID_RE.test(c.pointer.gist ?? '') && KEY_HASH_RE.test(c.pointer.key ?? '') ? { gist: c.pointer.gist, key: c.pointer.key } : undefined,
+    minFreeGB: Number.isFinite(c.minFreeGB) && c.minFreeGB! >= 0 ? c.minFreeGB : DEFAULT_MIN_FREE_GB,
+    host: c.host
   }
 }
 
@@ -116,6 +121,48 @@ async function copyHashed(src: string, dst: string, ctl: JobCtl, scale = 1) {
   return { size, sha256: hash.digest('hex') }
 }
 
+/** Free bytes on the store's drive, or null when the system cannot say. */
+export async function storeFree(store: string): Promise<number | null> {
+  try {
+    const v = await fsp.statfs(store)
+    return v.bavail * v.bsize
+  } catch {
+    return null
+  }
+}
+
+const gb = (n: number) => `${(n / 2 ** 30).toFixed(n < 10 * 2 ** 30 ? 1 : 0)} GB`
+
+/** Throws a plain-language error when the store's drive is too full for `need` more bytes. */
+export async function diskGuard(cfg: PublicShareConfig, need: number) {
+  const free = await storeFree(cfg.store)
+  if (free == null) return
+  const min = (cfg.minFreeGB ?? DEFAULT_MIN_FREE_GB) * 2 ** 30
+  if (free - need < min) {
+    throw new Error(`The office server is nearly full: ${gb(free)} free, and client links must leave ${gb(min)}${need ? ` (this link needs ${gb(need)})` : ''}. Revoke old links under "My client links" or ask IT to free space.`)
+  }
+}
+
+/**
+ * A file that already sits on the store's drive is linked into the store instead of copied: instant,
+ * and no second copy on disk. Returns false whenever that is not possible (other drive, file system
+ * without hard links, no permission) so the caller copies as usual.
+ */
+async function tryLink(src: string, dst: string) {
+  try {
+    await fsp.link(src, dst)
+    const [a, b] = await Promise.all([fsp.stat(src), fsp.stat(dst)])
+    // (a link count is not reported over SMB, so the check is: same size and same modified time)
+    if (a.size !== b.size || a.mtimeMs !== b.mtimeMs) throw new Error('not a real link')
+    return true
+  } catch {
+    await fsp.rm(dst, { force: true }).catch(() => {})
+    return false
+  }
+}
+
+const LINKABLE = /\.(zip|7z|rar|pdf|iso|tar|gz|tgz|mp4|rvm|nwd|nwf)$/i
+
 async function hashFile(file: string, ctl: JobCtl, scale: number) {
   const hash = createHash('sha256')
   let size = 0
@@ -168,6 +215,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
     if (!zip && paths.length > MAX_SHARE_FILES) throw new Error(`A link can hold at most ${MAX_SHARE_FILES} files; zip them into one file instead.`)
 
     await fsp.mkdir(cfg.store, { recursive: true })
+    await diskGuard(cfg, zip ? 0 : stats.reduce((a, s) => a + s.size, 0))
     const dir = shareDir(cfg.store, id)
     const data = join(dir, 'data')
     const who = deps.user()
@@ -177,6 +225,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       await fsp.writeFile(join(dir, 'creating.json'), JSON.stringify({ v: 1, id, owner: who, createdAt }), 'utf8')
 
       const files: ShareManifest['files'] = []
+      let linked = false
       if (zip) {
         const preset = presetFor(ctx, zip.presetId)
         const name = safeFileName((zip.name || spec.title || 'Files').replace(ARCHIVES, '')) + '.' + preset.format
@@ -198,22 +247,29 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       } else {
         const total = stats.reduce((a, s) => a + s.size, 0)
         ctl.setTotal(total, paths.length)
-        try {
-          const fsStat = await fsp.statfs(cfg.store)
-          if (fsStat.bavail * fsStat.bsize < total + (64 << 20)) throw Object.assign(new Error('The office server does not have enough free space for this link.'), { fatal: true })
-        } catch (e: any) {
-          if (e.fatal) throw e // statfs itself is best-effort
-        }
         const names = uniqueNames(paths.map((p) => basename(p)))
         for (let n = 0; n < paths.length; n++) {
           await ctl.checkpoint()
           ctl.setCurrent(paths[n])
-          const h = await copyHashed(paths[n], join(data, String(n)), ctl)
-          files.push({ name: names[n], size: h.size, sha256: h.sha256 })
+          const dst = join(data, String(n))
+          // Finished deliverables (archives, PDFs…) on the server's own drive are linked, not copied.
+          // The link shares its bytes with the original, so its size and time are recorded and the
+          // server refuses to send it if the original is ever edited in place.
+          if (paths.length === 1 && LINKABLE.test(paths[n]) && (await tryLink(paths[n], dst))) {
+            const h = await hashFile(dst, ctl, 1)
+            const st = await fsp.stat(dst)
+            if (st.size !== h.size || st.mtimeMs !== stats[n].mtimeMs) throw new Error(`${names[n]} changed while the link was being made. Try again when nobody is saving it.`)
+            files.push({ name: names[n], size: h.size, sha256: h.sha256, mtime: st.mtimeMs })
+            linked = true
+          } else {
+            const h = await copyHashed(paths[n], dst, ctl)
+            files.push({ name: names[n], size: h.size, sha256: h.sha256 })
+          }
           ctl.add(0, 1)
         }
       }
 
+      if (linked) ctl.info.title += ' (linked, no copy)'
       // What the server will serve must be exactly what we hashed.
       for (let n = 0; n < files.length; n++) {
         const st = await fsp.stat(join(data, String(n)))
@@ -241,7 +297,66 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       await fsp.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => {})
       throw e
     }
-    return shareUrl(cfg.pageUrl, id)
+    return shareUrl(cfg.pageUrl, id, cfg.pointer)
+  }
+
+  // ---- "your client downloaded it" ---------------------------------------------------------
+  // Remembers, per link, how many completed downloads have been announced. Cheap: one small
+  // stats.json per live link of mine, every two minutes, and only while I have live links.
+  const seenFile = () => join(ctx.dataDir || '.', 'pubshare-seen.json')
+  let seen: Record<string, number> | null = null
+  let quiet = 0
+  async function watchDownloads() {
+    let cfg: PublicShareConfig
+    try {
+      cfg = ready()
+    } catch {
+      return 0
+    }
+    const first = seen === null
+    if (first) seen = (await readJson<Record<string, number>>(seenFile())) ?? {}
+    let names: string[]
+    try {
+      names = (await fsp.readdir(cfg.store, { withFileTypes: true })).filter((d) => d.isDirectory() && isShareId(d.name)).map((d) => d.name)
+    } catch {
+      return 0
+    }
+    const me = deps.user().user.toLowerCase()
+    const next: Record<string, number> = {}
+    let live = 0
+    let told = 0
+    for (const id of names) {
+      const stats = await readJson<ShareStats>(join(cfg.store, id, 'stats.json'))
+      const known = seen![id]
+      // only links already known to be mine cost a manifest read again when their count moved
+      if (known !== undefined && (stats?.downloads ?? 0) === known) {
+        next[id] = known
+        live++
+        continue
+      }
+      const l = await readLink(cfg, id)
+      if (!l || l.owner.toLowerCase() !== me) continue
+      if (!l.expired) live++
+      const n = l.stats?.downloads ?? 0
+      // a link first seen with downloads already on it (new PC, cleared data) is recorded, not announced
+      if (known !== undefined && n > known) {
+        told++
+        ctx.emit('pubshare-download', { id, title: l.title, downloads: n, first: known === 0, at: l.stats?.lastDownloadAt || deps.now() })
+      }
+      next[id] = n
+    }
+    if (JSON.stringify(next) !== JSON.stringify(seen)) {
+      seen = next
+      await fsp.writeFile(seenFile(), JSON.stringify(next), 'utf8').catch(() => {})
+    }
+    quiet = live ? 0 : 4 // with no live links, look only every ten minutes
+    return told
+  }
+  if (deps.watch !== false) {
+    setInterval(() => {
+      if (quiet-- > 0) return
+      void watchDownloads().catch(() => {})
+    }, 120_000).unref()
   }
 
   async function readLink(cfg: PublicShareConfig, id: string): Promise<PublicLink | null> {
@@ -251,7 +366,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
     const stats = await readJson<ShareStats>(join(dir, 'stats.json'))
     return {
       id,
-      url: shareUrl(cfg.pageUrl, id),
+      url: shareUrl(cfg.pageUrl, id, cfg.pointer),
       title: m.title,
       message: m.message ?? '',
       sender: m.sender ?? '',
@@ -278,7 +393,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       const expiresAt = createdAt + normalizeDays(spec.days, cfg.defaultDays) * DAY_MS
       const title = spec.title?.trim() || basename(spec.paths[0])
       const jobId = ctx.jobs.create('share', `Client link: ${title}`, (ctl) => build(ctl, cfg, { ...spec, title }, id, expiresAt, createdAt), { immediate: true, dest: cfg.store })
-      return { jobId, id, url: shareUrl(cfg.pageUrl, id), expiresAt }
+      return { jobId, id, url: shareUrl(cfg.pageUrl, id, cfg.pointer), expiresAt }
     },
 
     /** Links in the store, newest first. scope 'mine' = created from this Windows account. */
@@ -329,10 +444,13 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       return m.expiresAt
     },
 
+    /** Look once for new client downloads of my links (also runs by itself every two minutes). */
+    'pubshare.checkDownloads': () => watchDownloads(),
+
     /** Is the store reachable, and does the share server answer through its public address? */
     'pubshare.status': async (): Promise<PublicShareStatus> => {
       const cfg = publicShareConfig(ctx)
-      const st: PublicShareStatus = { enabled: cfg.enabled, store: cfg.store, storeOk: false, pageUrl: cfg.pageUrl, healthy: false }
+      const st: PublicShareStatus = { enabled: cfg.enabled, store: cfg.store, storeOk: false, pageUrl: cfg.pageUrl, healthy: false, selfContained: !!cfg.pointer }
       if (!cfg.store) {
         st.storeError = 'No store folder is set'
         return st
@@ -345,7 +463,15 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
         return st
       }
       // The server's supervisor leaves its current public address in the store.
-      const beat = await readJson<{ base?: string; updated?: number }>(join(cfg.store, '_server.json'))
+      const free = await storeFree(cfg.store)
+      if (free != null) st.freeBytes = free
+      st.minFreeBytes = (cfg.minFreeGB ?? DEFAULT_MIN_FREE_GB) * 2 ** 30
+      const beat = await readJson<{ base?: string; updated?: number } & NonNullable<PublicShareStatus['server']>>(join(cfg.store, '_server.json'))
+      if (beat) {
+        const { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host } = beat
+        st.server = { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host }
+        st.serverSeenAt = beat.updated
+      }
       if (!beat?.base || !/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(beat.base)) {
         st.healthError = 'The share server has not reported in yet'
         return st

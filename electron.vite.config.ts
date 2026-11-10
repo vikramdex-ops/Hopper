@@ -16,7 +16,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           engine: resolve(__dirname, 'src/engine/index.ts'),
-          lan: resolve(__dirname, 'src/lan/index.ts')
+          lan: resolve(__dirname, 'src/lan/index.ts'),
+          share: resolve(__dirname, 'src/share/index.ts')
         }
       }
     }

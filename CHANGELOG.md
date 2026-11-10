@@ -4,6 +4,33 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] — 2026-11-10
+
+### Added
+- **Dexterity Share sets itself up.** Hopper can now run the share server itself, so no
+  separate server software has to be installed. The admin opens *Set up Dexterity Share on
+  this PC…* and completes three steps: use this PC, download the tunnel program (checked
+  against its published checksum), paste a GitHub token that has only the *gist* permission.
+  A *Test from the internet* button confirms that clients can download.
+- Client links are **self-contained**: each link carries what the download page needs to find
+  the server, so nothing has to be configured on the page.
+- **Bandwidth limit** for client downloads, with a separate limit for office hours, shared
+  equally between downloads.
+- **Disk guard**: a link is refused when it would leave the store below the free-space reserve
+  (5 GB by default).
+- **Download notices**: a toast and an Activity entry when a client downloads a link.
+- A finished archive or PDF already on the store's drive is linked **instantly** instead of
+  being copied.
+- **Project folder generator**: the "Dexterity project" template asks for job number, name,
+  project type, 3D platform, disciplines, sub-projects, areas and review gates, shows the
+  exact folder tree before creating it, and never overwrites what exists. A second template
+  makes a dated issue / submission pack. Templates are editable in Settings.
+- **Sidebar**: every drive shows "free of total" under its bar, and the sidebar collapses to a
+  narrow rail (button, View menu or Ctrl+Shift+B).
+
+### Fixed
+- An "Object has been destroyed" error that could appear while Hopper was closing.
+
 ## [2.1.0] — 2026-11-10
 
 ### Added

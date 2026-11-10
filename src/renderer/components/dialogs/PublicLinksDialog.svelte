@@ -101,6 +101,11 @@
         {status.healthy ? 'Share server online' : !status.enabled ? 'Dexterity Share is switched off' : !status.storeOk ? `Store not reachable: ${status.storeError}` : (status.healthError ?? 'Share server offline')}
       </span>
     {/if}
+    {#if status?.server && status.healthy}
+      <span class="caption">{status.server.activeDownloads ? `${status.server.activeDownloads} downloading now · ` : ''}{fmtSize(status.server.bytesToday ?? 0)} sent today{status.freeBytes != null ? ` · ${fmtSize(status.freeBytes)} free on the server` : ''}{status.server.host ? ` · on ${status.server.host}` : ''}</span>
+    {:else if status?.serverSeenAt && !status.healthy}
+      <span class="caption">last seen {fmtAgo(status.serverSeenAt)}{status.server?.host ? ` on ${status.server.host}` : ''}</span>
+    {/if}
     <span class="spacer"></span>
     <select class="input" bind:value={scope} onchange={load} aria-label="Whose links">
       <option value="mine">My links</option>

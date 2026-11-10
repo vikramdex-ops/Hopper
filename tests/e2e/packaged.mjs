@@ -25,17 +25,21 @@ await win.evaluate((p) => window.__hopper.zip('fast', [p]), join(demo, 'Site pho
 await win.waitForFunction(() => window.__hopper.jobs.some((j) => j.kind === 'zip' && j.state !== 'running' && j.state !== 'queued'), null, { timeout: 180000 })
 const zip = await win.evaluate(() => window.__hopper.jobs.find((j) => j.kind === 'zip'))
 console.log('zip', zip.state, zip.error ?? '', existsSync(join(demo, 'Site photos.zip')))
-const info = await win.evaluate((p) => window.__hopper.__engine('pdf.info', p), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf'))
+const info = await win.evaluate((p) => window.__hopper.__engine('pdf.info', p), join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf'))
 console.log('pdf.info pages', info.pages)
 // the viewers' parser worker and its libraries must load from inside the packaged archive
-const book = await win.evaluate((p) => window.__hopper.__engine('preview.sheetBook', p), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'Comment register.csv'))
+const book = await win.evaluate((p) => window.__hopper.__engine('preview.sheetBook', p), join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07', 'Comment register.csv'))
 console.log('sheet preview sheets', book.sheets?.length ?? JSON.stringify(book).slice(0, 120))
 const props = await win.evaluate((p) => window.hopper.shell.props([p]), join(demo, 'Site photos'))
 console.log('props owner', props[0].owner ? 'ok' : JSON.stringify(props[0]).slice(0, 120))
+// the Dexterity Share service must start from inside the packaged archive
+const share = await win.evaluate(() => window.hopper.share.state())
+console.log('share service', share.pc ? 'answers' : JSON.stringify(share).slice(0, 160), '| token protection', share.protected)
+if (!share.pc) process.exitCode = 1
 // "Check now" must work in the installed app (2.0.0 shipped with the updater failing to load)
 const upd = await win.evaluate(() => window.hopper.update.check())
 console.log('update check', JSON.stringify(upd))
-if (upd.status === 'error' && !/connection|published|busy/i.test(upd.error ?? '')) {
+if (upd.status === 'error' && !/connection|published|busy|installer/i.test(upd.error ?? '')) {
   console.log('UPDATE CHECK FAILED')
   process.exitCode = 1
 }

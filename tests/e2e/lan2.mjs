@@ -45,7 +45,7 @@ const officeCfg = { officeName: 'Test office', officeKey: KEY, serverInbox, cliq
 writeFileSync(office, JSON.stringify(officeCfg))
 
 // something to browse, select and link to
-const project = join(WORK, 'files', 'P12513 Refinery Revamp')
+const project = join(WORK, 'files', 'P10001 Refinery Revamp')
 mkdirSync(join(project, 'Lot 07'), { recursive: true })
 for (const n of ['ISO-1001_RevA.txt', 'ISO-1002_RevB.txt', 'Comment register.csv']) writeFileSync(join(project, 'Lot 07', n), `${n}\n`.repeat(40))
 
@@ -271,7 +271,7 @@ await check('announcement reaches an online PC at once: banner, then Got it is v
   await ev('asha', () => window.__hopperLan.lanx.compose())
   const d = w.locator('[role=dialog][aria-label="New announcement"]')
   await d.waitFor({ timeout: 15000 })
-  await d.locator('input.input').first().fill('P12513 project folder is almost full')
+  await d.locator('input.input').first().fill('P10001 project folder is almost full')
   await d.locator('textarea').fill('Please make a local backup of your working files and clear out old exports by 5 pm.')
   await d.locator('.lvl.urgent').click()
   await d.locator('input.input').nth(1).fill(project)

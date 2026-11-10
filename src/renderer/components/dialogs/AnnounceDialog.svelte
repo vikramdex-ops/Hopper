@@ -72,7 +72,7 @@
   {/if}
   <label class="field">
     <span>Title</span>
-    <input class="input" bind:value={title} maxlength="120" placeholder="e.g. P12513 project folder is almost full" autofocus />
+    <input class="input" bind:value={title} maxlength="120" placeholder="e.g. P10001 project folder is almost full" autofocus />
   </label>
   <label class="field">
     <span>Details <span class="caption">(optional)</span></span>

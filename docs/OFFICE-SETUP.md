@@ -118,6 +118,9 @@ All of these reach an offline colleague through the server inbox when they next 
 ## 7. Optional extras (admin, Settings → Office)
 
 - **Zoho Cliq bot**: one bot DMs each recipient. Steps: [CLIQ-SETUP.md](CLIQ-SETUP.md).
+- **Dexterity Share** (client download links): on one office PC that stays on, **Set up
+  Dexterity Share on this PC…** under *Dexterity Share*. Three steps, done in Hopper:
+  [DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md). How staff use it: [DEXTERITY-SHARE.md](DEXTERITY-SHARE.md).
 - **Groups**: e.g. *Piping team* → `arun, priya, ravi` (Windows account names). Type `@Piping`
   in the Share dialog to send to all of them.
 - **Folder templates**: one folder per line, with `{name}`, `{project}` and `{date}` tokens,

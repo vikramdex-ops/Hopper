@@ -44,6 +44,7 @@
   const expiresAt = $derived(created?.expiresAt ?? Date.now() + days * DAY_MS)
   const job = $derived(created ? app.jobs.find((j) => j.id === created!.jobId) : undefined)
   const pct = $derived(job?.total ? Math.min(100, (job.done / job.total) * 100) : 0)
+  const full = $derived(!!status && status.freeBytes != null && status.minFreeBytes != null && status.freeBytes - bytes < status.minFreeBytes)
   const pwProblem = $derived(password && password.length < 6 ? 'Use at least 6 characters' : '')
   const email = $derived(
     created
@@ -120,6 +121,8 @@
       <div class="warn"><Icon name="warning" /> <span>Dexterity Share isn't switched on for this office yet. Ask whoever looks after Hopper (Settings → Office → Dexterity Share).</span></div>
     {:else if status && !status.storeOk}
       <div class="warn"><Icon name="warning" /> <span>The share folder on the server can't be reached: {status.storeError}. Check that the office server is on.</span></div>
+    {:else if full}
+      <div class="warn bad"><Icon name="warning" /> <span>The office server is nearly full ({fmtSize(status!.freeBytes!)} free; client links must leave {fmtSize(status!.minFreeBytes!)}). Revoke old links under My client links, or ask IT to free space.</span></div>
     {:else if status && !status.healthy}
       <div class="warn"><Icon name="warning" /> <span>{status.healthError ?? 'The share server is not answering'}. You can still create the link — the client can download as soon as the server is back.</span></div>
     {/if}
@@ -224,7 +227,7 @@
   {#snippet footer()}
     {#if phase === 'form'}
       <span class="caption foot">Files stay on the office server. Only this link can reach them, until it expires.</span>
-      <button type="submit" class="btn primary" disabled={!title.trim() || !files.length || !!pwProblem || status?.enabled === false || status?.storeOk === false}><Icon name="link" /> Create link</button>
+      <button type="submit" class="btn primary" disabled={!title.trim() || !files.length || !!pwProblem || full || status?.enabled === false || status?.storeOk === false}><Icon name="link" /> Create link</button>
       <button type="button" class="btn" onclick={() => close()}>Cancel</button>
     {:else if phase === 'working'}
       <span class="spacer"></span>

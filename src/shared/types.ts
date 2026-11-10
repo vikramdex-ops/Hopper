@@ -353,6 +353,18 @@ export interface FolderTemplate {
   name: string
   /** relative folder paths, '/' separated; {name} {date} {project} tokens allowed */
   folders: string[]
+  // Structured templates (see template-model.ts) set `tree`; simple ones leave all of these out.
+  description?: string
+  inputs?: import('./template-model').TemplateInput[]
+  /** name pattern of the folder the template creates, e.g. '{job}-{name}' */
+  root?: string
+  tree?: import('./template-model').TemplateNode[]
+  blocks?: Record<string, import('./template-model').TemplateNode[]>
+  numbering?: import('./template-model').NumberingOptions
+  /** folder name of a sub-project, default '{label}< ({unit})>' */
+  subLabel?: string
+  /** shipped with Hopper (not stored in the office config) */
+  builtin?: boolean
 }
 
 export interface NamingConvention {
@@ -441,6 +453,7 @@ export interface Settings {
   confirmPermanentDelete: boolean
   inspector: boolean
   sidebarWidth: number
+  sidebarCollapsed: boolean
   inspectorWidth: number
   groupRevisions: boolean
   thumbSize: number
@@ -467,6 +480,8 @@ export interface Settings {
   recentFolders: string[]
   pathCopy: { quote: 'never' | 'spaces' | 'always'; defaultMode: string }
   tagColors: Record<string, string>
+  /** this PC hosts the Dexterity Share server (set by the setup wizard; secrets are stored elsewhere) */
+  shareServer?: import('./pubshare').ShareServerSettings
   /** office key pasted or accepted from an invite; used when the shared config has none or is unreachable */
   officeKeyOverride?: string
   officeJoined?: OfficeJoined

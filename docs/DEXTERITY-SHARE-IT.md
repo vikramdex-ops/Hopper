@@ -1,366 +1,225 @@
-# Dexterity Share — installation and operations guide for IT
+# Dexterity Share — setup and operations
 
 Dexterity Share lets staff send files to external clients with a download link, instead of
-uploading them to WeTransfer-style sites. Staff create the link in Hopper; the client opens a
-Dexterity-branded page and downloads **directly from the office's own server**.
+uploading them to WeTransfer-style sites. The client opens a Dexterity-branded page and downloads
+**directly from one office PC**. Staff instructions: [DEXTERITY-SHARE.md](DEXTERITY-SHARE.md).
 
-This guide is for whoever installs and looks after the server part. Staff instructions are in
-[DEXTERITY-SHARE.md](DEXTERITY-SHARE.md).
+> **[checked]** = read from the vendor's documentation or measured against the real service on
+> 10 November 2026. **[not tested]** = written from documentation, not yet run for real; see
+> section 9.
 
-> Statements about Cloudflare, Tailscale and GitHub marked **[checked]** were read from the
-> vendors' documentation on 10 November 2026. Anything marked **[not tested here]** was written
-> from the documentation and has not been run against the real service — see section 13.
+## 1. Setup: three steps, about five minutes
 
-## 1. How it works
+Do this **once, on the PC that will serve the files** — a PC that stays switched on and signed in
+to Windows (it can be the PC of whoever looks after Hopper). You must be an office admin in Hopper.
 
-```
- Staff PC (Hopper)                    Always-on office server                        Internet
- ─────────────────                    ───────────────────────                        ────────
- "Create client link"
-   │  copies files over the LAN (SMB)
-   ▼
- \\server\...\_Hopper\PublicShares\<id>\      ◄── the "store": one folder per link
-        data\0, data\1 …  (the files)
-        manifest.json     (title, expiry, checksums; written last)
-                                │ read only by
-                                ▼
-                      share server (node server.mjs)
-                      listens on 127.0.0.1:47880 ONLY
-                                │
-                      cloudflared (tunnel) ── outbound connection ──► Cloudflare ◄── client's browser
-                                                                           ▲
- Client receives an e-mail with                                            │ downloads the file
- https://…/share/#<id>  ──► GitHub Pages serves the page (HTML/JS only) ───┘
-                            the page asks the share server for link <id>
-```
+Open Hopper → `Ctrl+K` → **Set up Dexterity Share on this PC…** (also under *Settings → Office →
+Dexterity Share → Set up…*).
 
-Three separate parts:
+**Step 1 — Use this PC as the share server.** Press **Use this PC**. Hopper creates the store
+folder `PublicShares` beside `office.json` on the office server, switches itself to start with
+Windows and to stay in the tray, and starts serving.
 
-| Part | Where it runs | What it holds |
+**Step 2 — Get the tunnel program.** Press **Download**. Hopper fetches Cloudflare's `cloudflared`
+(about 55 MB) from its official GitHub release and compares it with the SHA-256 checksum GitHub
+publishes for that file **[checked: release assets carry a `digest` field; 2026.10.7 does]**. A
+file that does not match is deleted. (No internet access to GitHub from this PC? Download
+`cloudflared-windows-amd64.exe` elsewhere and use **I already have it…**.)
+Within a minute the bottom line turns green: *Online at ….trycloudflare.com*.
+
+**Step 3 — Connect the pointer.** The free tunnel gets a new address whenever this PC restarts.
+Hopper keeps the current address in a small note (a "gist") on the office's GitHub account, so
+links already e-mailed keep working. It needs a token that may edit gists and nothing else:
+
+1. Sign in to github.com as the office account (`vikramdex-ops`).
+2. Click your picture (top right) → **Settings**.
+3. Bottom of the left column → **Developer settings**.
+4. **Personal access tokens** → **Tokens (classic)**.
+5. **Generate new token** → **Generate new token (classic)**.
+6. *Note*: `Dexterity Share pointer`. *Expiration*: **No expiration** (or a date you will remember
+   to renew — when it expires, new addresses stop being published).
+7. Tick **only** the box **gist** ("Create gists"). Leave every other box empty.
+8. **Generate token**, copy the `ghp_…` text, paste it into Hopper, press **Connect**.
+
+Hopper checks the token, creates one unlisted gist, publishes the first signed address and ticks
+the step. Then press **Test from the internet**: Hopper makes a tiny test link, fetches it back
+through the public address and deletes it. Green means clients can download. Done.
+
+What ends up where:
+
+| What | Where | Secret? |
 |---|---|---|
-| **The page** (`site/share/`) | GitHub Pages | Static HTML/CSS/JS. No files, no link ids, no secrets. |
-| **The store** | A folder on the office file server | The shared files, one folder per link. |
-| **The share server + tunnel** (`server/dexterity-share/`) | The always-on office machine | Serves a file only to someone who presents its link id. |
+| The GitHub token | This PC only, encrypted by Windows (`%APPDATA%\Hopper\share\pointer-token.bin`) | Yes — never in `office.json`, never in the repository |
+| The key that signs the address | This PC only (`%APPDATA%\Hopper\share\state\pointer-key.pem`) | Yes |
+| Gist id + key fingerprint | `office.json` (`publicShare.pointer`), and inside every client link | No |
+| The current tunnel address | The gist, and `_server.json` in the store | No |
 
-Hopper never talks to the share server to create a link: it only writes files into the store over
-the office network. The share server never accepts uploads: it only reads the store.
+**Moving to another PC:** run the three steps on the new PC (same token or a new one). It gets a
+new signing key, so links made before the move stop finding the server; re-send those still needed
+(*My client links → Copy link* gives the new form). To avoid that, copy
+`%APPDATA%\Hopper\share\state\` to the new PC before step 3.
 
-## 2. Is the tunnel really necessary?
+## 2. How it works
 
-Yes — something of that kind is, and the tunnel is the safest form of it.
+```
+ Staff PC (Hopper)                 Share-server PC (Hopper in the tray)                 Internet
+ ─────────────────                 ────────────────────────────────────                 ────────
+ "Create client link"
+   │ copies (or links) the files over the LAN
+   ▼
+ \\server\…\_Hopper\PublicShares\<id>\     ◄── the store: one folder per link
+        data\0 …        (the files)
+        manifest.json   (title, expiry, checksums; written last)
+                              │ read by
+                              ▼
+                 share server inside Hopper, on 127.0.0.1:47880 only
+                              │
+                 cloudflared ── outbound connection ──► Cloudflare ◄── client's browser
+                              │
+                 current address, signed ──► gist on GitHub ◄── read by the client page
 
-- The office server sits behind the office router (NAT). A client in another city or country
-  cannot open a connection *to* it; from outside, the server has no address.
-- **GitHub Pages can host the page but not the files.** Pages serves a public repository: files put
-  there would be public, permanent, limited in size, and no longer "on our server".
-- The only alternative to a tunnel is **port forwarding** on the router (opening an inbound port to
-  the server) plus a static IP or dynamic DNS and your own TLS certificate. That exposes the
-  office's address and a listening port to every scanner on the internet. We do not recommend it.
+ Client's link:  https://…/share/#<link id>.<gist id>.<key fingerprint>
+                 GitHub Pages serves the page; everything after # stays in the browser.
+```
 
-With a tunnel, the server makes an **outbound** connection to Cloudflare and keeps it open.
-Clients connect to Cloudflare; Cloudflare passes each request down that already-open connection.
-**No inbound port is opened on the router or on the server's firewall.** If the tunnel program
-stops, the server is simply unreachable from outside again.
+- **Why a tunnel at all?** The office sits behind its router; nobody outside can connect *to* a PC
+  inside. The tunnel program connects *out* to Cloudflare and keeps that connection open; client
+  requests come down it. **No port is opened on the router or the Windows firewall.** GitHub
+  Pages can only host the page (public, static files) — not the client's files.
+- **Why the pointer?** The free "quick" tunnel has a random address that changes on every restart
+  **[checked]**. The link carries the gist id, so the page can always look the current address
+  up. No per-office configuration lives on the page host.
 
-## 3. Security model in plain words
+## 3. Security in plain words
 
-**What a person on the internet can reach**
+- A person on the internet can reach only the share server, only through the tunnel, and it
+  answers only: describe link `<id>`, check a password, send file `n` of link `<id>`, health check.
+  A link id is 128 random bits. Nothing lists links, folders or files.
+- File paths are built from the validated id and a file *number* only. `..`, encoded slashes and
+  75 similar tricks were tested: all "not found".
+- No response contains the PC's name, user names, paths or addresses. Clients see Cloudflare's
+  addresses, never the office's.
+- Passwords are stored as salted scrypt hashes; wrong guesses are limited (8 per client per
+  10 minutes, 40 per link per hour).
+- **The gist cannot be used to redirect clients.** The address in it is signed with a key that
+  never leaves the share-server PC, and each link carries that key's fingerprint. Someone who
+  stole the GitHub token could break the pointer (clients would see "can't reach our file
+  server") but could not point clients at another server. The token itself can only create and
+  edit gists of that account.
+- Revoking a link stops it within seconds, also mid-download. Expired links are deleted a day later.
+- Accept knowingly: anyone holding a link (and its password) can download; every office PC that
+  can write to `_Hopper` can read the store; traffic passes through Cloudflare.
 
-- Only the share server program, and only through the tunnel.
-- The share server answers exactly four kinds of request: "describe link `<id>`", "check this
-  password for link `<id>`", "send file number `n` of link `<id>`", and a health check.
-- A link id is 128 random bits (26 characters). It cannot be guessed, and there is no request
-  that lists links, folders or files. A wrong or malformed id gets the same "not found" answer as
-  anything else.
+## 4. Day to day
 
-**What cannot be reached or learnt**
-
-- The file server's other folders, the LAN, other PCs, SMB — none of it. The share server reads
-  one folder (the store) and builds file paths only from the validated id and a file *number*;
-  nothing typed by a client is ever used as a file name. `..`, encoded slashes and similar tricks
-  were tested (section 13) and return "not found".
-- The server's name, Windows user names, internal paths or IP addresses: no response or error
-  message contains them. The office's public IP is not revealed either — clients only ever see
-  Cloudflare's addresses.
-- The password of a protected link: only a salted scrypt hash is stored. Wrong guesses are
-  limited to 8 per client per 10 minutes and 40 per link per hour.
-
-**What stays true even if something goes wrong**
-
-- If the GitHub account or the page were tampered with, an attacker could change what the page
-  shows, but could not reach files without their link ids, and link ids are never sent to GitHub
-  (they travel in the `#fragment`, which browsers do not send to the page's host).
-- If the quick-tunnel "pointer" token (section 8) were stolen, an attacker could not redirect
-  clients: the pointer is signed with a key that never leaves the server, and the page ignores an
-  unsigned or altered pointer.
-- Expired links stop working at their expiry time; their files are deleted 24 hours later.
-  Revoking a link in Hopper stops it within seconds, including a download already in progress.
-
-**What you should know and accept**
-
-- Anyone who has the link (and the password, if set) can download. Treat links like the files.
-- Every office PC that can write to the store folder can create links and can read other
-  people's shared files there. Keep the `_Hopper` folder office-only, as it already is.
-- Downloads pass through Cloudflare's network (TLS from the client to Cloudflare, and an encrypted
-  tunnel from Cloudflare to the server). Cloudflare can technically see the traffic, as with any
-  site that uses Cloudflare.
-
-## 4. Choose how clients reach the server
-
-| | **A. Named tunnel + your own domain** (recommended) | **B. Quick tunnel** (free, pilot only) | **C. Tailscale Funnel** (free alternative) |
-|---|---|---|---|
-| Address | Fixed, yours: `https://files.yourdomain.com` | Random `https://<words>.trycloudflare.com`, **changes on every restart** | Fixed: `https://<machine>.<tailnet>.ts.net` |
-| Needs | A Cloudflare account (free) and a domain whose DNS is on Cloudflare **[checked]** | Nothing: no account, no domain **[checked]** | A Tailscale account; MagicDNS and HTTPS enabled **[checked]** |
-| Cost | The domain only (roughly ₹800–1,500 a year for a `.com`/`.in`; price not checked) | Free | Free plan available ("available for all plans" **[checked]**; plan terms for business use not checked) |
-| Reliability | Cloudflare's regular tunnel service | "No uptime guarantee", "for testing and development", max 200 requests in flight **[checked]** | "Subject to non-configurable bandwidth limits" **[checked]** — unknown speed for large files |
-| Extra moving part | None | The **pointer** (section 8) so e-mailed links survive address changes | None (use `tunnel.mode: "external"`) |
-
-**Recommendation: option A.** This is a client-facing service; Cloudflare itself describes quick
-tunnels as for testing, without any uptime promise, and may change or limit them at any time.
-A dedicated cheap domain (it does not have to be the company's main domain, and the company's
-e-mail and website DNS are not touched) removes the weakest link. It also lets the page itself
-live at an address like `https://share.yourdomain.com` instead of `vikramdex-ops.github.io`
-(section 9). Use option B to try the system out for a week before buying anything.
-
-A note on Cloudflare's terms: their free-plan *CDN* terms reserve the right to limit accounts
-that serve "a disproportionate percentage of pictures, audio files, or other large files"
-**[checked; the clause is about the CDN and does not mention Tunnel]**. An office sending some
-engineering deliverables is an ordinary use, but nobody can promise how Cloudflare will apply its
-terms; if large transfers become heavy and regular, a paid plan removes the question.
-
-## 5. Prerequisites
-
-- An always-on machine that can read the store folder. Best: the file server itself (the store is
-  then a local disk path). Windows Server / Windows 10 or 11, or Linux.
-- **Node.js 20 LTS or newer** on that machine (`node --version`). Nothing else is installed with
-  npm: the server is two plain files.
-- **cloudflared** (for options A and B): download the Windows installer or Linux package from
-  Cloudflare's downloads page and install it.
-- Outbound internet from that machine: **port 7844 TCP and UDP** to Cloudflare
-  (`region1.v2.argotunnel.com`, `region2.v2.argotunnel.com`) for the tunnel; port 443 for
-  cloudflared's optional update checks and, in option B, for GitHub's API **[checked]**.
-- The machine's clock set correctly (expiry times depend on it).
-
-## 6. Install on Windows
-
-1. **Create the store.** In the folder that holds Hopper's `office.json` (normally
-   `…\office-share\_Hopper\`), create `PublicShares`. Office staff need *Modify* on it
-   (they inherit it if `_Hopper` already allows them to write).
-2. **Copy the program.** Copy the repository folder `server/dexterity-share/` to a local folder on
-   the server that staff cannot write to, e.g. `D:\DexterityShare\` (not inside the shared folder).
-3. **Configure.** Copy `config.example.json` to `config.json` and edit:
-   - `server.store`: the **local** path of the store on this machine,
-     e.g. `D:\\Shares\\office-share\\_Hopper\\PublicShares` (JSON needs `\\`).
-   - `server.allowedOrigins`: the origin of the page — `https://vikramdex-ops.github.io`, or your
-     own page address if you use one. No path, no trailing slash.
-   - `tunnel`: see section 7 (named) or 8 (quick).
-4. **Check.** In a terminal in that folder: `node supervisor.mjs --check`. Every line should say
-   `ok`.
-5. **Install as a start-up task.** In an **elevated** PowerShell in that folder:
-   `powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`
-   This registers a scheduled task "Dexterity Share" that runs at start-up without anyone logged
-   on, as the built-in low-privilege account *Local Service*, restarts itself if it stops, and
-   grants that account the folders it needs. **[not tested here — the script was syntax-checked
-   only; registering tasks was outside what could be run on the development PC.]**
-6. **Tell Hopper.** On any PC: *Settings → Office → Dexterity Share*: switch it on, leave the
-   store empty (default: `PublicShares` beside `office.json`) or enter its network path, set the
-   page address, save to server.
-
-If the store is on another machine (a NAS that cannot run Node), run the service on any always-on
-Windows PC and give `server.store` as a UNC path. *Local Service* cannot open network shares, so
-install with `-RunAs System` only if the share allows the computer account, or create a dedicated
-Windows account with rights to the share and set it as the task's user in Task Scheduler (enter
-its password there yourself).
-
-### Linux
-
-Copy the folder to `/opt/dexterity-share`, create a user `dxshare` with read/write on the store,
-create `config.json` (set `tunnel.cloudflared` to `cloudflared`), run
-`node supervisor.mjs --check`, then install `dexterity-share.service` (in the same folder) as
-described in its header. **[not tested here — the code is plain Node and was tested on Windows.]**
-
-## 7. Option A: named tunnel with your own domain
-
-1. Register a domain (any registrar) and add it to a free Cloudflare account, following
-   Cloudflare's steps to switch its nameservers. "Before you publish an application through your
-   tunnel, you must add a website to Cloudflare." **[checked]**
-2. In the Cloudflare dashboard: **Networking → Tunnels → Create a tunnel**, name it
-   (e.g. `dexterity-share`). The dashboard shows an install command containing the **tunnel
-   token** **[checked]**.
-3. In the tunnel's **Routes** tab: **Add route → Published application**; subdomain `files`,
-   your domain, service URL `http://127.0.0.1:47880` **[checked; menu names as of Nov 2026]**.
-4. Choose one way to run cloudflared:
-   - **Simplest:** run the dashboard's install command once. cloudflared installs itself as its own
-     Windows service. In `config.json` set
-     `"tunnel": { "mode": "external", "publicBase": "https://files.yourdomain.com" }`.
-   - **Or supervised:** save the token alone in `tunnel-token.txt` beside `config.json` and set
-     `"tunnel": { "mode": "named", "tokenFile": "tunnel-token.txt", "publicBase": "https://files.yourdomain.com" }`.
-     The supervisor starts cloudflared itself and passes the token in the `TUNNEL_TOKEN`
-     environment variable **[checked: the variable exists]**, never on the command line.
-5. In the repository, set `site/share/config.json` to
-   `{ "base": "https://files.yourdomain.com", "pointers": [], "pointerKey": null, "allowedHosts": [] }`
-   and publish the site. No pointer is needed.
-
-## 8. Option B: quick tunnel and the pointer
-
-`"tunnel": { "mode": "quick" }` makes the supervisor run
-`cloudflared tunnel --url http://127.0.0.1:47880` **[checked]**. cloudflared prints a random
-`https://….trycloudflare.com` address; the supervisor reads it, checks from the outside that it
-really reaches our server, and then publishes it so that links already e-mailed keep working.
-
-**The pointer.** The client page cannot know a random address in advance, so the supervisor writes
-a small file `pointer.json` (`{ "base": "https://….trycloudflare.com", "updated": …, "sig": … }`)
-to a GitHub repository, and the page reads it. Design choices:
-
-- **A separate, public repository that contains nothing else** (e.g. `dexterity-share-pointer`),
-  not the Hopper repository. The server holds a token that can write to it; that token must not
-  be able to touch the repository that ships Hopper to every office PC.
-- **A fine-grained personal access token** limited to that one repository with
-  *Contents: Read and write* **[permission name not re-checked today]**. Saved in
-  `pointer-token.txt` beside `config.json`; the install script restricts that file to
-  administrators and the service account. Create the token yourself in GitHub's settings.
-- **Signed.** On first start the supervisor creates a key pair (`state\pointer-key.pem`, private,
-  never leaves the server). `node supervisor.mjs --check` prints the public key; paste it into
-  `site/share/config.json` as `pointerKey`. The page then accepts only pointers signed by the
-  server, and only addresses ending in `.trycloudflare.com`.
-- **Two ways to read it**, in `site/share/config.json`:
-  ```json
-  { "base": "",
-    "pointers": ["https://raw.githubusercontent.com/OWNER/dexterity-share-pointer/main/pointer.json",
-                 "https://api.github.com/repos/OWNER/dexterity-share-pointer/contents/pointer.json"],
-    "pointerKey": { "kty": "EC", "crv": "P-256", "x": "…", "y": "…" },
-    "allowedHosts": ["*.trycloudflare.com"] }
-  ```
-  The first is GitHub's file CDN: no rate limit worth mentioning, but it may serve a copy a few
-  minutes old (about five; not re-checked today). The second is GitHub's API: always current, but
-  limited to 60 anonymous requests per hour per client IP address **[checked]**. The page uses the
-  first; only if the address it gets does not answer does it ask both again, freshly.
-- **While the pointer is stale** (the minutes after an address change) or the server is down, the
-  client sees "We can't reach our file server right now", and the page retries by itself every
-  5–60 seconds. Nothing is lost; the link works again as soon as the new address is published.
-
-What quick tunnels cost you, honestly: every restart of the server, of cloudflared, or of the
-office internet connection gives a **new address**. Downloads in progress at that moment fail
-and the client's browser cannot resume them on the old address (the page's own "download and
-verify" mode can — it looks the address up again). Cloudflare gives no uptime promise for quick
-tunnels and limits them to 200 requests in flight **[checked]**.
-
-## 9. The page address clients see
-
-Links look like `https://vikramdex-ops.github.io/Hopper/share/#<id>`. That is a personal GitHub
-account name in a link sent to clients. To show a company address instead, with a domain from
-option A: in the repository's *Settings → Pages* set a custom domain such as
-`share.yourdomain.com` (GitHub's instructions; a CNAME record in Cloudflare DNS, set to "DNS
-only"), then set Hopper's page address to `https://share.yourdomain.com/share/` and add
-`https://share.yourdomain.com` to `server.allowedOrigins`. Note that a custom domain applies to
-the whole Pages site (the Hopper landing page moves with it). **[not tested here]**
-
-## 10. Firewall
-
-- **Inbound: nothing.** Do not add a port-forward on the router. Do not add an inbound Windows
-  Firewall rule for port 47880 — the server listens on 127.0.0.1 and refuses connections from
-  the LAN (tested).
-- **Outbound:** allow the server to reach Cloudflare on 7844 TCP+UDP (section 5). If only TCP is
-  possible, add `"protocol": "http2"` to the `tunnel` section **[checked: valid values are auto,
-  http2, quic]**.
-
-## 11. Test it
-
-1. `node supervisor.mjs --check` → all `ok`.
-2. After starting: `logs\supervisor.log` contains `public-address-verified` (the supervisor
-   fetched its own health check through the public address) and, in option B, `pointer-published`.
-3. The store contains `_server.json` with the public address and `"healthy": true`.
-   Hopper's *My client links* shows "Share server online".
-4. In Hopper, create a link to a small file; open it on a phone using **mobile data** (not office
-   Wi-Fi) and download. Then revoke it in Hopper and reload the page: "no longer available".
-5. Try a large file (several hundred MB) from outside and note the speed — it is your office
-   **upload** speed, shared with everything else the office is doing.
-
-## 12. Operate
-
-- **Logs:** `logs\share.log` (one JSON line per request: time, client address, method, shortened
-  link id, status, bytes, duration — never passwords, tokens or full link ids) and
-  `logs\supervisor.log`. Each rotates at 10 MB, five old files kept.
-- **Statistics:** each link's `stats.json` (opens, downloads, bytes). Hopper shows them.
-- **Clean-up:** hourly. Deletes links 24 hours after expiry, revoked links, and half-created
-  links older than a day. It only ever deletes folders in the store whose name is a valid link
-  id **and** that contain a share marker file; anything else in that folder is never touched.
-- **Update:** replace `server.mjs` and `supervisor.mjs` with the new versions, then restart the
-  task (*Task Scheduler → Dexterity Share → End, Run*). Keep `config.json`, `state\` and `logs\`.
-  Restarting waits up to 10 seconds for running downloads; unfinished ones can be resumed.
-- **Back-up:** `config.json` and `state\` (the signing key and token key). The store holds copies
-  of files that exist elsewhere; it needs no back-up.
-- **Uninstall:** `uninstall-windows.ps1` (elevated). Delete the program folder; delete the store
-  when no link is needed any more; delete the tunnel in the Cloudflare dashboard and the pointer
-  repository and token on GitHub.
-- **Tuning** (`server` section of `config.json`): `maxConcurrentDownloads` (24),
-  `maxDownloadsPerIp` (6), `idleTimeoutSeconds` (300: a download that makes no progress for five
-  minutes is dropped and can be resumed), `graceHours` (24), `tokenTtlHours` (12: how long a
-  password unlock lasts). If you use something other than Cloudflare in front, set
-  `clientIpHeader` to `""`.
+- **The PC must stay on, signed in, with Hopper in the tray.** Sleep, sign-out, shutdown or
+  quitting Hopper take every link offline until it is back. Set Windows power options to never
+  sleep. Clients see a clear "temporarily unreachable" page that retries by itself.
+- **Status:** the wizard's bottom line; *My client links* (online dot, downloads running, sent
+  today, free space, which PC); `_server.json` in the store.
+- **After a restart** the tunnel has a new address. Hopper publishes it within about a minute;
+  the page may read GitHub's cached copy for up to five minutes **[checked: gist file host sends
+  `max-age=300`; the gist API `max-age=60`, 60 requests/hour per client IP, both allow any
+  origin]** and falls back to the API when the cached address is dead. A download running at the
+  moment of a restart fails; the client retries.
+- **Speed** is the office upload speed, shared with everyone. *Advanced* in the wizard: a total
+  upload limit in Mbit/s and a lower one for office hours (Mon–Sat, times adjustable); several
+  downloads share the limit equally. Default: no limit.
+- **Disk:** new links are refused when the server drive would drop below 5 GB free (*Advanced* →
+  *Keep free on the server*); the Create dialog says so and what to do.
+- **Instant links:** a single finished file (zip, 7z, rar, pdf…) that already lives on the same
+  server drive as the store is *linked* into the store, not copied — no waiting, no second copy
+  **[checked: hard links work on the office share]**. A link shares its bytes with the original, so
+  the server records size and modified time and **refuses** the download ("changed after
+  sharing") if the original is later edited in place. Editing programs that save by replacing the
+  file leave the shared copy as it was.
+- **Logs:** `%APPDATA%\Hopper\share\logs\` (`share.log` per request, `supervisor.log`,
+  `hopper-share.log`), 10 MB each, five kept. No passwords, tokens or full link ids.
 
 ### Troubleshooting
 
-| Symptom | Check |
+| What you see | What to do |
 |---|---|
-| Client sees "We can't reach our file server" | Is the task running? `logs\supervisor.log`: look for `tunnel-exited`, `public-check-failed`, `server-exited`. Is the office internet up? Option B: was the pointer published (`pointer-failed` shows GitHub's answer)? |
-| `cloudflared not found` in the log | Set `tunnel.cloudflared` to the full path of `cloudflared.exe`. |
-| Task starts and stops at once | Run `node supervisor.mjs` in a terminal to see the message. Usually `config.json` (bad JSON, single `\`), or the store path. |
-| Works in a terminal but not as the task | The task's account cannot read the store or write `state\`/`logs\`: re-run the installer, or see section 6 for stores on another machine. |
-| Hopper says "The share server has not reported in yet" | The service cannot write `_server.json` into the store (permissions), or Hopper's store path points somewhere else than `server.store`. |
-| Page says "This service is not set up yet" | `site/share/config.json` has neither `base` nor `pointers`. |
-| Browser console shows a CORS error | `server.allowedOrigins` does not contain the page's exact origin (scheme + host, no path). |
-| Port 47880 in use | Another copy is running (the old task?), or change `server.port` (and the tunnel's service URL in option A). |
-| Downloads are slow | That is the office upload speed. Zip with compression, send outside office hours, or raise the uplink. |
+| Step 1: "cannot write to the store folder" | The server share is not connected on this PC, or you have no write access to `_Hopper`. |
+| Step 1: "Port 47880 is already in use" | Another copy (the standalone service?) is running. Stop it, or change the port under Advanced. |
+| Step 2: "does not match the checksum" | The download was damaged or tampered with; it was deleted. Try again later. |
+| Bottom line stays "Connecting…" | This PC cannot reach Cloudflare: allow outbound port 7844 (TCP and UDP) **[checked]**; check the internet. |
+| Step 3: "GitHub does not accept this token" | Mistyped, expired or deleted. Generate a new one. |
+| Step 3: "not allowed to edit gists" | The token was made without the **gist** box. Generate a new one with only that box. |
+| Step 3: "may not edit the pointer gist" | The token belongs to a different GitHub account than the one that made the gist. Use that account, or clear `publicShare.pointer` in `office.json` and connect again (old links then need re-sending). |
+| Client: "We can't reach our file server" | Is the PC on and Hopper running? Wizard bottom line green? If the tunnel is up but the pointer has an error, step 3 shows it. |
+| Client: "This file was changed after it was shared" | An instantly linked original was edited. Create a new link. |
 
-## 13. What was tested, and what was not
+## 5. Advanced: a fixed address instead of the quick tunnel
 
-Tested on the development PC (Windows 10, Node 26, store on the office share), all automated:
+Cloudflare describes quick tunnels as "for testing and development", with "no uptime guarantee"
+and at most 200 requests in flight **[checked]**. If that becomes a problem, *Advanced → Address*:
 
-- **Server end-to-end (33 checks, `tests/e2e/pubshare.mjs`):** links created exactly as Hopper
-  creates them; full download with SHA-256 match; resume with `Range`/`If-Range`; a 5 GB file
-  (sizes and ranges beyond 2 and 4 GB); 300 files in one link; parallel downloads and the
-  per-client and global limits; passwords, wrong-password lockouts, parallel guessing; expiry,
-  extending, revoking during a download; 75 hostile paths (`..`, encoded slashes, long, upper-case
-  and non-ASCII ids, raw NUL bytes) — all "not found", nothing outside the store readable;
-  wrong HTTP methods; CORS from the page and from other sites; response headers; Unicode and
-  very long file names; clean-up deleting only what it should; a stalled client; the server
-  killed mid-download and restarted, then the download resumed; loopback-only listening.
-- **Supervisor (12 checks) against a stand-in for cloudflared** that prints the same lines:
-  reading the address, outside verification, signed pointer publishing to a mock GitHub API,
-  a new address after the tunnel dies, restart after failed checks, restart of a crashed server,
-  retry when GitHub is down, named and external modes, clean stop.
-- **Client page in Microsoft Edge (18 checks):** every state on desktop and phone sizes, light
-  and dark; real downloads compared by checksum; the verified download surviving a server outage;
-  password flow; pointer acceptance and rejection; hostile text; the content-security policy.
+- **My Cloudflare tunnel (own domain):** needs a domain on a free Cloudflare account
+  ("you must add a website to Cloudflare" **[checked]**). Create a tunnel in the dashboard, route
+  a hostname to `http://127.0.0.1:47880`, paste the tunnel token and the address. Hopper runs
+  cloudflared with the token in its environment, never on the command line.
+- **My own address:** any other way that delivers HTTPS requests to `127.0.0.1:47880` on this PC
+  (for example Tailscale Funnel: fixed `*.ts.net` name, ports 443/8443/10000 only, "non-configurable
+  bandwidth limits" **[checked]**).
 
-**Not tested, by decision (no tunnel was opened and nothing was installed or pushed from the
-development PC):**
+With step 3 connected, links keep the same form and keep working when you switch modes: the
+signed pointer simply names the new address.
 
-- The real `cloudflared` program: its actual output format, quick-tunnel creation and limits,
-  named-tunnel routing, behaviour of long multi-GB downloads through Cloudflare, and resume
-  through Cloudflare.
-- The real GitHub API and token (the pointer was published to a local mock), and how long
-  `raw.githubusercontent.com` really caches.
-- `install-windows.ps1` / `uninstall-windows.ps1` and the *Local Service* account's permissions;
-  Linux and systemd; Tailscale Funnel.
-- The page served from the real GitHub Pages address, and browsers other than Edge (Firefox,
-  Safari, mobile browsers) — the code avoids anything browser-specific on the normal download
-  path, but they were not run.
-- The clean-up's refusal to follow a folder *junction* placed in the store (could not be created
-  on the network share used for testing; the code skips links and compares real paths).
+## 6. For a server nobody logs into: the standalone service
 
-Do the section 11 tests on the real server before telling staff to use it.
+Hopper-hosted sharing needs a signed-in Windows session. For a headless server use the same code
+as a service: `server/dexterity-share/` (two plain Node files; Node 20+).
 
-## 14. Limits to be honest about
+1. Copy the folder to the server, copy `config.example.json` to `config.json`; set `server.store`
+   (local path of `PublicShares`), `server.allowedOrigins` (`https://vikramdex-ops.github.io`),
+   and `"pointer": { "gist": { "id": "<gist id>", "tokenFile": "pointer-token.txt" } }`.
+2. `node supervisor.mjs --check`, then `install-windows.ps1` from an elevated PowerShell
+   (scheduled task at start-up, account *Local Service*) **[not tested]**, or
+   `dexterity-share.service` on Linux **[not tested]**.
+3. The link fingerprint must match this server's key: after the first start, put the gist id and
+   the fingerprint of `state\pointer-public.json` into `office.json` → `publicShare.pointer`
+   (simplest: run the Hopper wizard once on a PC, then copy its
+   `%APPDATA%\Hopper\share\state\` folder to the server's `state\`).
 
-- **Speed** is the office's upload speed. A 1 GB file over a 20 Mbit/s uplink takes about seven
-  minutes at best, and slows everyone else's uploads meanwhile.
-- **Availability** is the office's: a power cut, an internet outage or a server restart makes
-  links unreachable until it is over. Clients see a clear "temporarily unreachable" page that
-  retries by itself; expiry dates do not pause.
-- **Quick tunnels** (option B) add their own outages and address changes (section 8).
-- **No virus scanning** is done on shared files, and there is no audit of who downloaded beyond
-  the IP address in the log.
-- One server process handles everything. It is designed for an office's volume (dozens of
-  downloads at once), not for public distribution.
+Do not run both on the same store at once.
+
+## 7. The page and old links
+
+Links made before the pointer was connected have the short form `…/share/#<id>` and need
+`site/share/config.json` to name the server (`base`, or `pointers`). New links
+(`#<id>.<gist>.<fingerprint>`) need nothing: `config.json` may be absent. Both forms keep working.
+
+Links show `vikramdex-ops.github.io` — a personal account name. A GitHub organisation or a custom
+domain for Pages changes that; set the new page address in *Settings → Office*.
+
+## 8. Limits to be honest about
+
+- Availability is that of one PC, its Windows session, the office power and internet, and
+  Cloudflare's free quick-tunnel service, which promises nothing.
+- Speed is the office upload speed.
+- No virus scanning; no record of who downloaded beyond the client address in the log.
+- The GitHub token (classic, scope `gist`) can edit *all* gists of that account. Use the office
+  account, not a personal one with gists that matter.
+
+## 9. What was tested, and what was not
+
+Automated, on the development PC (store on the office share):
+
+- **Server (37 checks):** as before — downloads, resume, 5 GB sizes, limits, passwords, expiry,
+  revoke, hostile paths, headers, clean-up, restart — plus the bandwidth limit (measured), instant
+  links and the "changed" refusal, the disk guard, and download notices.
+- **Supervisor and gist pointer (20 checks)** against stand-ins for cloudflared and GitHub.
+- **Client page in Microsoft Edge (20 checks):** all states, real downloads, self-contained links
+  (gist file, gist API, swapped key, wrong fingerprint, unsigned pointer).
+- **Setup wizard in the real app (private build):** every step, wrong tokens, bad checksum,
+  self-test, quit.
+
+Checked against the real services: GitHub's gist endpoints (CORS and cache headers), the
+cloudflared release metadata (checksum field), hard links on the office share.
+
+**Not yet run for real:** an actual cloudflared tunnel (its real output, a download through
+Cloudflare, sustained large transfers and measured speed), a real GitHub token and gist, Windows
+`safeStorage` in a packaged install, start-with-Windows in a packaged install, the standalone
+service scripts, Linux, browsers other than Edge. Do the wizard's **Test from the internet**, then
+download a real link on a phone using mobile data, before telling staff to use it.

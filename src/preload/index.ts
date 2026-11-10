@@ -60,6 +60,16 @@ const api = {
   update: { check: invoke('update:check'), install: invoke('update:install'), state: invoke('update:state'), on: listen('hopper:update') },
   defmgr: { status: invoke('defmgr:status'), apply: invoke('defmgr:apply'), revert: invoke('defmgr:revert') },
   fs: { ensureDir: invoke('fs:ensureDir') },
+  /** Dexterity Share server hosted by this PC (setup wizard and status) */
+  share: {
+    state: invoke('share:state'),
+    call: invoke('share:call'),
+    connectPointer: invoke('share:connectPointer'),
+    setTunnelToken: invoke('share:setTunnelToken'),
+    forgetToken: invoke('share:forgetToken'),
+    configure: invoke('share:configure'),
+    on: listen('hopper:share')
+  },
   onOpen: listen('hopper:open'),
   onTheme: listen('hopper:theme')
 }

@@ -1,6 +1,6 @@
 // End-to-end smoke suite: drives the real app and checks the core flows actually work.
 // Usage: npm run build && npm run e2e
-import { existsSync, mkdirSync, statSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { launch, makeDemo, WORK } from './harness.mjs'
 
@@ -47,7 +47,7 @@ await step('listing has attributes and sizes', async () => {
 })
 
 await step('open nested folder and back', async () => {
-  await ev((p) => window.__hopper.panes[0].navigate(p + '\\P12513 Refinery Revamp\\02_Working\\Lot 07'), demo)
+  await ev((p) => window.__hopper.panes[0].navigate(p + '\\P10001 Refinery Revamp\\02_Working\\Lot 07'), demo)
   await until(() => window.__hopper.panes[0].rows.some((r) => r.name.startsWith('ISO-1001')))
   await win.screenshot({ path: join(shots, '01-lot.png') })
   await ev(() => window.__hopper.panes[0].back())
@@ -55,7 +55,7 @@ await step('open nested folder and back', async () => {
 })
 
 await step('revision grouping hides older revisions', async () => {
-  await ev((p) => window.__hopper.panes[0].navigate(p + '\\P12513 Refinery Revamp\\02_Working\\Lot 07'), demo)
+  await ev((p) => window.__hopper.panes[0].navigate(p + '\\P10001 Refinery Revamp\\02_Working\\Lot 07'), demo)
   await ev(() => window.__hopper.updateSettings({ groupRevisions: true }))
   const names = await ev(() => window.__hopper.panes[0].rows.map((r) => r.name))
   await ev(() => window.__hopper.updateSettings({ groupRevisions: false }))
@@ -116,7 +116,7 @@ await step('new folder does not clobber', async () => {
 })
 
 await step('preview pane renders a PDF', async () => {
-  await ev((d) => window.__hopper.panes[0].navigate(d, { select: d + '\\ISO-1003_Rev2.pdf' }), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07'))
+  await ev((d) => window.__hopper.panes[0].navigate(d, { select: d + '\\ISO-1003_Rev2.pdf' }), join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07'))
   await until(() => !!document.querySelector('.insp canvas, .insp .pdf'), null, 30000)
   await win.waitForTimeout(800)
   await win.screenshot({ path: join(shots, '03-preview-pdf.png') })
@@ -149,7 +149,7 @@ await step('context menu on a file', async () => {
 
 for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', 'office'], ['shortcuts'], ['share'], ['copyTo'], ['zip'], ['massRename'], ['folderSize'], ['checksum'], ['selectPattern'], ['template'], ['packager'], ['pdf'], ['dupes'], ['compare'], ['workspaces'], ['undoHistory'], ['people'], ['publicLink'], ['publicLinks'], ['announcements']]) {
   await step(`dialog ${name}${arg ? ` (${arg})` : ''} opens`, async () => {
-    const lot = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
+    const lot = join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07')
     await ev(({ d }) => window.__hopper.panes[0].navigate(d), { d: lot })
     await ev(() => { const p = window.__hopper.panes[0]; p.selectWhere((r) => r.ext === 'pdf') ; p.focus = p.rows.findIndex((r) => r.ext === 'pdf') })
     await ev(({ name, arg }) => { void window.__hopper.__dialogs[name](...(arg ? [arg] : [])) }, { name, arg })
@@ -165,7 +165,7 @@ for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', '
 }
 
 await step('properties is Hopper\'s own window with size on disk', async () => {
-  const f = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf')
+  const f = join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf')
   await ev((f) => { void window.__hopper.__dialogs.properties([f]) }, f)
   await until(() => /Size on disk\s+4\.0 KB/.test(document.querySelector('.dlg')?.innerText ?? ''), null, 20000)
   await win.screenshot({ path: join(shots, 'dlg-properties.png') })
@@ -179,7 +179,7 @@ await step('properties is Hopper\'s own window with size on disk', async () => {
 })
 
 await step('open with lists apps without Explorer', async () => {
-  const f = join(demo, 'P12513 Refinery Revamp', 'README.txt')
+  const f = join(demo, 'P10001 Refinery Revamp', 'README.txt')
   await ev((f) => { void window.__hopper.__dialogs.openWith({ name: 'README.txt', path: f, ext: 'txt', dir: false }) }, f)
   await until(() => document.querySelectorAll('.dlg .app').length > 0, null, 20000)
   await win.screenshot({ path: join(shots, 'dlg-openwith.png') })
@@ -229,6 +229,36 @@ await step('last tab cannot be closed; home is a start page', async () => {
   await ev(() => window.__hopper.panes[1].navigate('hopper:home'))
   await until(() => /Jump back in/.test(document.body.innerText))
   await win.screenshot({ path: join(shots, '07-home.png') })
+})
+
+await step('project template: preview, create, and a second run keeps what exists', async () => {
+  const dest = join(demo, '_template test')
+  mkdirSync(dest, { recursive: true })
+  const inputs = { job: 'J999', name: 'DEMO', type: 'Detail design', platform: 'S3D' }
+  const pv = await ev(([d, i]) => window.__hopper.__engine('templates.preview', 'dexterity-project', d, i), [dest, inputs])
+  if (pv.paths.length < 40) throw new Error(`preview has only ${pv.paths.length} folders`)
+  if (pv.errors?.length) throw new Error('preview errors: ' + JSON.stringify(pv.errors))
+  if (pv.existing.length) throw new Error('nothing should exist yet')
+  const r = await ev(([d, i]) => window.__hopper.__engine('templates.create', 'dexterity-project', d, i), [dest, inputs])
+  if (r.created.length !== pv.paths.length) throw new Error(`created ${r.created.length}, preview said ${pv.paths.length}`)
+  const missing = pv.paths.filter((x) => !existsSync(join(dest, x)))
+  if (missing.length) throw new Error('not on disk: ' + missing.slice(0, 3).join(', '))
+  const again = await ev(([d, i]) => window.__hopper.__engine('templates.create', 'dexterity-project', d, i), [dest, inputs])
+  if (again.created.length !== 0 || again.existing.length !== pv.paths.length) throw new Error('second run should create nothing')
+  const bad = await ev(([d]) => window.__hopper.__engine('templates.preview', 'dexterity-project', d, {}), [dest])
+  if (!bad.errors?.length) throw new Error('missing job number should block creating')
+  rmSync(dest, { recursive: true, force: true })
+})
+
+await step('sidebar shows free space and collapses to a rail', async () => {
+  const free = await ev(() => [...document.querySelectorAll('.sidebar .free')].map((e) => e.textContent).filter((t) => /free of/.test(t)).length)
+  if (!free) throw new Error('no "free of" lines on drives')
+  await win.screenshot({ path: join(shots, '08-sidebar.png') })
+  await ev(() => window.__hopper.updateSettings({ sidebarCollapsed: true }))
+  await until(() => !!document.querySelector('.rail') && !document.querySelector('.sidebar'))
+  await win.screenshot({ path: join(shots, '09-sidebar-collapsed.png') })
+  await win.locator('.rail .rbtn').first().click()
+  await until(() => !!document.querySelector('.sidebar'))
 })
 
 await step('memory stays reasonable', async () => {

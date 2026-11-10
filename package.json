@@ -1,7 +1,7 @@
 {
   "name": "hopper",
   "productName": "Hopper",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Hopper: the internal file manager of Dexterity Design Services Private Limited. Dual panes, a transfer queue, one-key zips, PDF and lot tools, and @mention file sharing over the office LAN with Zoho Cliq notifications.",
   "main": "out/main/index.js",

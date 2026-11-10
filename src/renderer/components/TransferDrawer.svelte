@@ -21,7 +21,7 @@
 </script>
 
 {#if app.drawer}
-  <section class="drawer" aria-label="Transfers">
+  <section class="drawer" aria-label="Transfers" style:margin-left={`${app.settings?.sidebarCollapsed ? 56 : (app.settings?.sidebarWidth ?? 232) + 8}px`}>
     <header>
       <span class="subtitle">Transfers</span>
       {#if app.activeJobs.length}<span class="caption">{plural(app.activeJobs.length, 'active job')}</span>{/if}

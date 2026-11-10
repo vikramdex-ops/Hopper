@@ -49,7 +49,7 @@ await check('alice discovers bob', async () => {
 })
 
 await check('direct share alice -> bob (folder, TLS-PSK)', async () => {
-  await ev('alice', (p) => window.__hopper.share({ to: ['bob'], paths: [p], message: 'Lot 07 for back-check' }), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07'))
+  await ev('alice', (p) => window.__hopper.share({ to: ['bob'], paths: [p], message: 'Lot 07 for back-check' }), join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07'))
   await until('bob', () => window.__hopper.inbox.length > 0, null, 120000)
   const item = await ev('bob', () => window.__hopper.inbox[0])
   if (item.via !== 'direct') throw new Error(`via ${item.via}`)

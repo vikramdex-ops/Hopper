@@ -68,8 +68,21 @@
   }
 </script>
 
+{#if s.sidebarCollapsed}
+  <aside class="rail" aria-label="Sidebar (collapsed)">
+    <button class="rbtn" title="Show sidebar (Ctrl+Shift+B)" aria-label="Show sidebar" onclick={() => app.updateSettings({ sidebarCollapsed: false })}><Icon name="sidebar" /></button>
+    <button class="rbtn" class:on={here === VIRTUAL.home} title="Home" aria-label="Home" onclick={() => go(VIRTUAL.home)}><Icon name="home" /></button>
+    <button class="rbtn" class:on={here === VIRTUAL.inbox} title="Inbox" aria-label="Inbox" onclick={() => go(VIRTUAL.inbox)}>
+      <Icon name="inbox" />{#if app.unseenInbox}<span class="rdot"></span>{/if}
+    </button>
+    <button class="rbtn" class:on={here === VIRTUAL.activity} title="Activity" aria-label="Activity" onclick={() => go(VIRTUAL.activity)}><Icon name="activity" /></button>
+    <span class="rgrow"></span>
+    <button class="rbtn" title="Settings (Ctrl+,)" aria-label="Settings" onclick={() => dialogs.settings?.()}><Icon name="settings" /></button>
+  </aside>
+{:else}
 <aside class="sidebar" style:width={`${s.sidebarWidth}px`}>
   <div class="top">
+    <button class="collapse" title="Hide sidebar (Ctrl+Shift+B)" aria-label="Hide sidebar" onclick={() => app.updateSettings({ sidebarCollapsed: true })}><Icon name="chevronLeft" size={14} /></button>
     <button class="row" class:on={here === VIRTUAL.home} onclick={() => go(VIRTUAL.home)}><Icon name="home" /><span>Home</span></button>
     <button class="row" class:on={here === VIRTUAL.inbox} onclick={() => go(VIRTUAL.inbox)}>
       <Icon name="inbox" /><span>Inbox</span>
@@ -113,6 +126,9 @@
           <span class="ellipsis">{d.label || (d.kind === 'network' ? (d.remote ?? '').split('\\').filter(Boolean).pop() ?? 'Network' : 'Local Disk')} ({d.root.slice(0, 2)})</span>
           {#if d.ready && d.total}
             <span class="cap"><span class="fill" class:full={used > 0.9} style:width={`${Math.round(used * 100)}%`}></span></span>
+            <span class="free" class:low={used > 0.9}>{fmtSize(d.free)} free of {fmtSize(d.total)}</span>
+          {:else}
+            <span class="free">{d.ready ? '' : 'Not connected'}</span>
           {/if}
         </span>
       </button>
@@ -148,8 +164,72 @@
     <button class="btn subtle sm" onclick={() => dialogs.settings?.()} title="Settings (Ctrl+,)"><Icon name="settings" /> Settings</button>
   </div>
 </aside>
+{/if}
 
 <style>
+  .rail {
+    flex: none;
+    width: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 8px;
+  }
+  .rbtn {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .rbtn:hover,
+  .rbtn.on {
+    background: var(--hover);
+  }
+  .rdot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .rgrow {
+    flex: 1;
+  }
+  .top {
+    position: relative;
+  }
+  .collapse {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    z-index: 1;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    display: grid;
+    place-items: center;
+    opacity: 0;
+  }
+  .sidebar:hover .collapse,
+  .collapse:focus-visible {
+    opacity: 1;
+  }
+  .collapse:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
   .sidebar {
     flex: none;
     display: flex;
@@ -244,12 +324,23 @@
     display: flex;
   }
   .drive {
-    height: 44px;
+    height: 58px;
+  }
+  .free {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .free.low {
+    color: var(--bad);
   }
   .dl {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
   }
   .cap {
     height: 4px;

@@ -60,6 +60,7 @@
       item('view.grid', { checked: pane.view === 'grid' }),
       { separator: true },
       item('view.dual', { checked: app.dual }),
+      item('view.sidebar', { checked: !app.settings?.sidebarCollapsed, label: 'Sidebar' }),
       item('view.inspector', { checked: app.settings?.inspector }),
       { separator: true },
       item('view.hidden', { checked: app.settings?.showHidden }),

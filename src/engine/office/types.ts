@@ -28,6 +28,27 @@ export interface TemplateResult {
   created: string[]
   /** folders the template names that already existed */
   existing: string[]
+  /** the folder to open afterwards: the template's root, or its first top-level folder */
+  top?: string | null
+}
+
+export interface TemplatePreview {
+  /** resolved destination ('' when previewing without one) */
+  dest: string
+  /** the template's own root folder name, when it has one and the values are complete */
+  top: string | null
+  /** every folder, relative to dest, '\' separated, parents first */
+  paths: string[]
+  /** the subset of paths that already exist (kept, never overwritten) */
+  existing: string[]
+  warnings: import('@shared/template-model').TemplateWarning[]
+  /** problems that block creating */
+  errors: string[]
+  /** folders that would be created */
+  count: number
+  depth: number
+  /** characters of the longest full path */
+  longest: number
 }
 
 export interface TransmittalInfo {

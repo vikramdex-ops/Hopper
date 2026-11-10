@@ -19,6 +19,7 @@
     }
     for (const i of app.inbox) out.push({ at: i.at, icon: 'inbox', title: `Received ${plural(i.files, 'file')} from ${i.fromName}`, detail: i.message ?? fmtSize(i.bytes), path: i.folder })
     for (const s of Object.values(app.shares)) if (s.state === 'done') out.push({ at: Date.now(), icon: 'send', title: `Sent to ${app.personName(s.to)}`, detail: `${fmtSize(s.total)}${s.via === 'server' ? ' · via office server' : ''}` })
+    for (const d of app.clientDownloads) out.push({ at: d.at, icon: 'download', title: `Your client downloaded ${d.title}`, detail: d.downloads > 1 ? `${d.downloads} downloads so far` : 'First download', tone: 'ok' })
     for (const u of app.undoList) if (u.kind === 'rename' || u.kind === 'recycle' || u.kind === 'new') out.push({ at: u.at, icon: u.kind === 'recycle' ? 'delete' : u.kind === 'new' ? 'plus' : 'rename', title: u.label, detail: u.undone ? 'undone' : undefined, path: u.pairs[0]?.[1] || undefined })
     return out.sort((a, b) => b.at - a.at).slice(0, 300)
   })

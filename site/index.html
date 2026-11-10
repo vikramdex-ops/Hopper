@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hopper — Dexterity's file manager</title>
-<meta name="description" content="Hopper is the internal file manager of Dexterity Design Services Private Limited: dual panes, a transfer queue, one-key zips, PDF and lot tools, and @mention file sharing over the office LAN.">
+<meta name="description" content="Hopper is the internal file manager of Dexterity Design Services Private Limited: dual panes, a transfer queue, one-key zips, viewers for drawings and documents, project folders, @mention file sharing over the office LAN and download links for clients.">
 <meta name="robots" content="noindex">
 <meta property="og:title" content="Hopper — Dexterity's file manager">
-<meta property="og:description" content="Send files to a colleague with an @mention, zip in one key, and trust every copy over the network.">
+<meta property="og:description" content="Send files to a colleague with an @mention or to a client with one link, zip in one key, and trust every copy over the network.">
 <meta property="og:image" content="assets/shots/01-workspace-light.png">
 <meta name="theme-color" content="#0b5cd6">
 <link rel="icon" type="image/png" href="assets/icon-32.png">
@@ -56,9 +56,9 @@ kbd { font: 600 .82em var(--font); padding: 1px 7px; border-radius: 6px; border:
 .brand img { width: 30px; height: 30px; }
 .brand small { font: 500 12px var(--font); color: var(--text-3); border-left: 1px solid var(--line); padding-left: 10px; margin-left: 2px; display: none; }
 @media (min-width: 560px) { .brand small { display: inline; } }
-.links { display: none; gap: 22px; margin-left: 18px; }
+.links { display: none; gap: 20px; margin-left: 16px; }
 .links a { color: var(--text-2); font-size: 15px; }
-@media (min-width: 980px) { .links { display: flex; } }
+@media (min-width: 1080px) { .links { display: flex; } }
 .grow { flex: 1; }
 .icon-btn { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); display: grid; place-items: center; cursor: pointer; flex: none; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 46px; padding: 0 22px; border-radius: 12px; font: 600 15px var(--font); border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; white-space: nowrap; transition: transform .15s, box-shadow .15s; }
@@ -93,7 +93,7 @@ h1 span { background: linear-gradient(92deg, var(--accent), var(--accent-2)); -w
 .facts span { color: var(--text-2); font-size: 14px; line-height: 1.45; }
 
 /* features ------------------------------------------------------------ */
-.feature { padding: 64px 0; }
+.feature { padding: clamp(40px, 6vw, 60px) 0; }
 .feature + .feature { border-top: 1px solid var(--line); }
 .row { display: grid; gap: 28px; align-items: center; }
 @media (min-width: 940px) { .row { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 64px; } .flip .text { order: 2; } .flip .row { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); } }
@@ -106,9 +106,28 @@ h2 { margin: 10px 0 14px; font: 720 clamp(26px, 3.6vw, 38px)/1.16 var(--display)
 .ticks li::after { content: ''; position: absolute; left: 7px; top: 7px; width: 5px; height: 9px; border: solid var(--accent); border-width: 0 2px 2px 0; transform: rotate(40deg); }
 /* the visual sits on a soft tinted stage, so a cropped dialog reads like a product shot */
 .stage { border-radius: 22px; padding: clamp(14px, 3vw, 32px); background: linear-gradient(145deg, var(--tint-2), var(--tint) 55%, transparent), var(--surface-2); border: 1px solid var(--line); }
-.stage img { margin: 0 auto; width: 100%; max-height: 560px; object-fit: contain; border-radius: 12px; box-shadow: var(--shadow); }
+.stage img { margin: 0 auto; width: auto; max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 12px; box-shadow: var(--shadow); }
 /* very wide captures (the transfer drawer): show the readable left part at a useful height */
 .stage img.wide { height: clamp(200px, 30vw, 300px); object-fit: cover; object-position: left center; }
+
+/* gallery of small shots ---------------------------------------------- */
+.sub { margin: 0; max-width: 720px; color: var(--text-2); font-size: 17px; }
+.gallery { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); margin-top: 26px; }
+@media (min-width: 640px) { .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1000px) { .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+.gallery .shot { aspect-ratio: 4 / 3; padding: 16px; display: grid; place-items: center; background: linear-gradient(145deg, var(--tint-2), var(--tint) 55%, transparent), var(--surface-2); border-bottom: 1px solid var(--line); overflow: hidden; }
+.gallery .shot img { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 8px; box-shadow: var(--shadow); }
+.gallery a.shot:hover { text-decoration: none; }
+/* phones: a swipeable row instead of six tall tiles */
+@media (max-width: 639px) {
+  .gallery { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 82%; overflow-x: auto; scroll-snap-type: x mandatory; margin-right: -16px; padding-right: 16px; padding-bottom: 6px; scrollbar-width: none; }
+  .gallery::-webkit-scrollbar { display: none; }
+  .gallery figure { scroll-snap-align: start; }
+}
+.gallery figcaption { padding: 14px 16px 16px; color: var(--text-2); font-size: 14.5px; line-height: 1.5; }
+.gallery figcaption b { display: block; color: var(--text); font: 650 16px var(--display); margin-bottom: 2px; }
+.more-links { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 24px; }
 
 /* cards --------------------------------------------------------------- */
 .cards { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); margin-top: 28px; }
@@ -118,6 +137,11 @@ h2 { margin: 10px 0 14px; font: 720 clamp(26px, 3.6vw, 38px)/1.16 var(--display)
 .card .b { width: 42px; height: 42px; border-radius: 12px; background: var(--tint-2); color: var(--accent); display: grid; place-items: center; }
 .card h3 { margin: 14px 0 6px; font: 650 18px var(--display); }
 .card p { margin: 0; color: var(--text-2); font-size: 15px; }
+@media (max-width: 639px) {
+  .card { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 2px 14px; padding: 16px; }
+  .card .b { grid-row: span 2; }
+  .card h3 { margin: 0; }
+}
 
 /* keys, steps, faq ------------------------------------------------------ */
 .keys { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 40px; margin-top: 22px; }
@@ -130,6 +154,7 @@ h2 { margin: 10px 0 14px; font: 720 clamp(26px, 3.6vw, 38px)/1.16 var(--display)
 .steps li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; color: var(--text-2); font-size: 15px; }
 .steps li::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 12px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 700; }
 .steps b { color: var(--text); }
+@media (max-width: 699px) { .steps li { padding: 16px; } .steps li::before { float: left; margin: 0 12px 2px 0; width: 28px; height: 28px; font-size: 14px; } }
 .faq { margin-top: 22px; display: grid; gap: 10px; }
 details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; }
 summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
@@ -149,7 +174,7 @@ footer p { margin: 0; }
   <div class="wrap">
     <a class="brand" href="#top"><img src="assets/icon-180.png" alt="" width="30" height="30"> Hopper <small>Dexterity Design Services</small></a>
     <div class="links">
-      <a href="#share">Sharing</a><a href="#zip">Zips</a><a href="#queue">Transfers</a><a href="#office">Office tools</a><a href="#setup">Setup</a>
+      <a href="#share">Sharing</a><a href="#client">Client links</a><a href="#viewers">Viewers</a><a href="#projects">Project folders</a><a href="#office">Office tools</a><a href="#setup">Setup</a>
     </div>
     <span class="grow"></span>
     <button class="icon-btn" id="theme" aria-label="Switch light or dark theme">
@@ -161,9 +186,9 @@ footer p { margin: 0; }
 
 <header class="hero" id="top">
   <div class="wrap">
-    <span class="tag"><b>2.0</b> Internal tool · Dexterity Design Services</span>
+    <span class="tag"><b>2.2</b> Internal tool · Dexterity Design Services</span>
     <h1>One file manager for <span>the whole office</span>.</h1>
-    <p class="lede">Dual panes, a transfer queue you can trust and one-key zips — and send files to any colleague on the office network with an <b>@mention</b>. They get a Zoho Cliq message the moment it lands.</p>
+    <p class="lede">Dual panes, a transfer queue you can trust and one-key zips. Send files to a colleague with an <b>@mention</b>, or to a client with a download link served from our own office server.</p>
     <div class="cta">
       <a class="btn primary dl" href="https://github.com/vikramdex-ops/Hopper/releases/latest">
         <svg class="ico" viewBox="0 0 20 20" fill="currentColor"><path d="M3 4.5l6-1v6H3zM11 3.3l6-.8v7h-6zM3 10.5h6v6l-6-1zM11 10.5h6v7l-6-.8z"/></svg>
@@ -174,13 +199,13 @@ footer p { margin: 0; }
     <p class="meta"><span class="dl-meta">Windows 10 and 11 · per-user install · updates itself</span></p>
     <div class="win">
       <img class="l" src="assets/shots/01-workspace-light.png" alt="Hopper with two panes of drawings and a PDF preview" width="1600" height="960">
-      <img class="d" src="assets/shots/02-workspace-dark.png" alt="Hopper in dark mode" width="1600" height="960" loading="lazy">
+      <img class="d" src="assets/shots/02-workspace-dark.png" alt="Hopper in dark mode" loading="lazy">
     </div>
     <p class="win-note">Shown with demo project data.</p>
     <div class="facts">
       <div><b>@name</b><span>sends to anyone in the office</span></div>
-      <div><b>1 key</b><span>zips on every CPU core</span></div>
-      <div><b>0 waiting</b><span>everything runs in the background</span></div>
+      <div><b>1 link</b><span>sends a lot to a client, for as long as you choose</span></div>
+      <div><b>No CAD</b><span>needed to view DWG, DGN, PDF and Excel</span></div>
       <div><b>Ctrl+Z</b><span>for copies, moves, renames and deletes</span></div>
     </div>
   </div>
@@ -195,14 +220,62 @@ footer p { margin: 0; }
       <ul class="ticks">
         <li>Direct PC-to-PC over the office network: encrypted, parallel streams, resumes after a drop, every file checksum-verified.</li>
         <li>Colleague offline? It waits in their server inbox and arrives when their Hopper starts.</li>
-        <li>The office bot DMs each person in Zoho Cliq with what was sent and your note.</li>
+        <li>Click a person to message them, send files, send a folder link or ask them for files. The office bot can DM them in Zoho Cliq.</li>
       </ul>
     </div>
     <div class="stage"><img src="assets/shots/f-share.png" alt="Share dialog with @ mentions and a team" loading="lazy"></div>
   </div>
 </section>
 
-<section class="feature flip" id="zip">
+<section class="feature flip" id="client">
+  <div class="wrap row">
+    <div class="text">
+      <div class="kicker">Dexterity Share · new</div>
+      <h2>Send a lot to a client with one link.</h2>
+      <p>Too big for e-mail? Select the files, choose <b>Create client link</b> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd>). The files stay on the office server; the client gets a link to a Dexterity download page.</p>
+      <ul class="ticks">
+        <li>Expires after 1, 3, 7, 14, 30, 60 or 90 days. Optional password and download limit.</li>
+        <li>Ready-made e-mail text that states the expiry date.</li>
+        <li><b>My client links</b> shows how many times each link was downloaded; extend or revoke any time. Hopper tells you when a client downloads.</li>
+      </ul>
+    </div>
+    <div class="stage"><img src="assets/shots/f-clientlink.png" alt="Client link ready, with the link, password and e-mail text" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="feature" id="viewers">
+  <div class="wrap row">
+    <div class="text">
+      <div class="kicker">Viewers · new</div>
+      <h2>Open drawings and documents without the software.</h2>
+      <p>Press <kbd>Space</kbd> for Quick Look, or <b>View</b> for the full-window viewer. No design software or Microsoft Office needed.</p>
+      <ul class="ticks">
+        <li>PDF with continuous scroll and <kbd>Ctrl</kbd>+wheel zoom; Excel workbooks and Word documents.</li>
+        <li>MicroStation V7 drawings (<code>.dgn</code>, <code>.i01</code>…) drawn by Hopper, with zoom, pan and levels.</li>
+        <li>The preview saved inside DWG drawings, and the stored details of SmartSketch <code>.sha</code> files.</li>
+      </ul>
+    </div>
+    <div class="stage"><img src="assets/shots/f-viewer.png" alt="A line list workbook open in the full-window viewer" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="feature flip" id="projects">
+  <div class="wrap row">
+    <div class="text">
+      <div class="kicker">Project folders · new</div>
+      <h2>A new project's folders, exactly as the office sets them up.</h2>
+      <p>The <b>Dexterity project</b> template asks for the job number, name, project type, 3D platform and disciplines, and shows the exact folder tree before it creates anything.</p>
+      <ul class="ticks">
+        <li>Sub-projects, areas and review gates when the job needs them.</li>
+        <li>Never overwrites what already exists; run it again to add what's missing.</li>
+        <li>A second template makes a dated issue or submission pack. Templates are editable in Settings.</li>
+      </ul>
+    </div>
+    <div class="stage"><img src="assets/shots/f-template.png" alt="New from template with a live folder-tree preview" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="feature" id="zip">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Archives</div>
@@ -218,7 +291,7 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="feature" id="queue">
+<section class="feature flip" id="queue">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Copy, move, paste</div>
@@ -227,56 +300,42 @@ footer p { margin: 0; }
       <ul class="ticks">
         <li>Pause, resume, cancel; one conflict question with “do this for all”; optional checksum verify.</li>
         <li>Same-drive moves are instant; flaky shares are retried for you.</li>
-        <li>Shares Explorer's clipboard both ways and drags files out to Explorer, Outlook or Cliq.</li>
+        <li>Copy and paste with other Windows apps through the clipboard, and drag files out to Outlook or Cliq.</li>
       </ul>
     </div>
     <div class="stage"><img class="wide" src="assets/shots/f-transfers.png" alt="Transfer queue with speed and time left" loading="lazy"></div>
   </div>
 </section>
 
-<section class="feature flip" id="office">
+<section class="feature" id="office">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Built for our lots</div>
-      <h2>Package a lot with its transmittal in one dialog.</h2>
-      <p>Check every name against the office convention, see the revisions Hopper found, write the transmittal as Excel and PDF, then zip and share.</p>
+      <h2>Package a lot with its transmittal. Always see the latest revision.</h2>
+      <p>Check every name against the office convention, write the transmittal as Excel and PDF, then zip and share.</p>
       <ul class="ticks">
+        <li><code>ISO-1001_RevA</code>, <code>RevB</code> and <code>Rev0</code> fold under the latest. When the office rules can't decide the order, Hopper marks it for a manual check instead of guessing.</li>
         <li>Duplicate drawings and naming problems are flagged before anything is written.</li>
         <li>PDF toolkit: merge, split, extract, rotate and reorder pages.</li>
-        <li>Folder templates create a project or lot tree in one click.</li>
       </ul>
     </div>
     <div class="stage"><img src="assets/shots/f-packager.png" alt="Lot and transmittal packager" loading="lazy"></div>
   </div>
 </section>
 
-<section class="feature">
-  <div class="wrap row">
-    <div class="text">
-      <div class="kicker">Revisions</div>
-      <h2>See the latest revision. Never a guess.</h2>
-      <p><code>ISO-1001_RevA</code>, <code>RevB</code> and <code>Rev0</code> fold under the latest. When the office rules can't decide the order — letters then numbers, say — Hopper marks it for a manual check instead of picking one.</p>
-      <ul class="ticks">
-        <li>Rules live in the shared office config, so every PC agrees.</li>
-        <li>A Rev column, and a revision line in the details pane.</li>
-      </ul>
+<section class="feature" id="more">
+  <div class="wrap">
+    <div class="kicker">Hopper's own, top to bottom</div>
+    <h2>Nothing is handed off to Windows Explorer.</h2>
+    <p class="sub">The context menu, Properties, Open with and the folder picker are all Hopper's own, and folders always open inside Hopper.</p>
+    <div class="gallery">
+      <figure><a class="shot" href="assets/shots/f-pathcopy.png"><img src="assets/shots/f-pathcopy.png" alt="Context menu with the Path Copy submenu" loading="lazy"></a><figcaption><b>Path Copy</b> Name, path, parent, UNC, Internet and Samba forms. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies your default.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-properties.png"><img src="assets/shots/f-properties.png" alt="Hopper's Properties window" loading="lazy"></a><figcaption><b>Properties</b> Size on disk, contents, attributes, every path form and access.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-clientlinks.png"><img src="assets/shots/f-clientlinks.png" alt="My client links with download counts" loading="lazy"></a><figcaption><b>My client links</b> Opened, downloaded, days left. Extend or revoke.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-person.png"><img src="assets/shots/f-person.png" alt="Person panel with a conversation" loading="lazy"></a><figcaption><b>Person panel</b> Messages, files, folder links and requests with one colleague.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-home.png"><img src="assets/shots/f-home.png" alt="Home page with drives showing free space" loading="lazy"></a><figcaption><b>Home</b> Recent folders, pinned, Inbox, people and low-disk warnings. Every drive shows “free of total”.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-rail.png"><img src="assets/shots/f-rail.png" alt="Sidebar collapsed to a narrow rail" loading="lazy"></a><figcaption><b>Sidebar rail</b> Collapse the sidebar to icons with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>.</figcaption></figure>
     </div>
-    <div class="stage"><img src="assets/shots/f-revisions.png" alt="File list with revisions grouped" loading="lazy"></div>
-  </div>
-</section>
-
-<section class="feature flip">
-  <div class="wrap row">
-    <div class="text">
-      <div class="kicker">Explorer-grade</div>
-      <h2>Everything you right-click for — and the Windows menu too.</h2>
-      <p>The common actions sit up front with their shortcuts. <b>Show more options</b> opens the real Windows menu, so 7-Zip, WinRAR and Send to are still one click away.</p>
-      <ul class="ticks">
-        <li>Real Windows icons and thumbnails, Properties and Recycle Bin restore.</li>
-        <li>A command palette (<kbd>Ctrl</kbd>+<kbd>K</kbd>) for every action.</li>
-      </ul>
-    </div>
-    <div class="stage"><img src="assets/shots/f-context.png" alt="Context menu with share, zip and Windows options" loading="lazy"></div>
   </div>
 </section>
 
@@ -287,9 +346,9 @@ footer p { margin: 0; }
     <div class="cards">
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M10 3.5v13"/></svg></div><h3>Two panes, many tabs</h3><p>Each pane keeps its own tabs and history. Save whole layouts as workspaces.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.2 12.2 4.3 4.3"/></svg></div><h3>Instant search</h3><p>A background index answers as you type; content search and duplicates when you need them.</p></div>
-      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg></div><h3>Preview everything</h3><p>PDFs page by page, images, text, CSV and archives — plus Quick Look on <kbd>Space</kbd>.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h8.5a4 4 0 0 1 0 8H8M7.5 4.5 4 8l3.5 3.5"/></svg></div><h3>Undo that works</h3><p>Undo copies, moves, renames, new folders and deletes — even after a restart.</p></div>
-      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 8.5 10 3l6.5 5.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg></div><h3>Inbox and Activity</h3><p>Everything you received, sent, zipped or moved, in one place.</p></div>
+      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3a4.5 4.5 0 0 0-4.5 4.5c0 4-1.5 5.5-1.5 5.5h12s-1.5-1.5-1.5-5.5A4.5 4.5 0 0 0 10 3zM8.3 15.5a1.8 1.8 0 0 0 3.4 0"/></svg></div><h3>Announcements</h3><p>Office-wide notices with a banner and “Got it”. PCs that were switched off see them on start.</p></div>
+      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 8.5 10 3l6.5 5.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg></div><h3>Inbox and Activity</h3><p>Everything you received, sent, zipped or moved — and client downloads — in one place.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5 16 5v5c0 3.6-2.5 6.5-6 7.5-3.5-1-6-3.9-6-7.5V5z"/></svg></div><h3>Light on the PC</h3><p>Heavy work runs outside the window and big tools load only when used.</p></div>
     </div>
   </div>
@@ -303,9 +362,13 @@ footer p { margin: 0; }
       <div><span>Command palette</span><span><kbd>Ctrl</kbd>+<kbd>K</kbd></span></div>
       <div><span>Go to any folder</span><span><kbd>Ctrl</kbd>+<kbd>G</kbd></span></div>
       <div><span>Share with people</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd></span></div>
+      <div><span>Create client link</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></span></div>
       <div><span>Zip here</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></span></div>
       <div><span>Extract here</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></span></div>
       <div><span>Copy / move to other pane</span><span><kbd>Ctrl</kbd>+<kbd>F5</kbd> <kbd>Ctrl</kbd>+<kbd>F6</kbd></span></div>
+      <div><span>Copy path</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></span></div>
+      <div><span>Show / hide sidebar</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></span></div>
+      <div><span>Properties</span><span><kbd>Alt</kbd>+<kbd>Enter</kbd></span></div>
       <div><span>Undo</span><span><kbd>Ctrl</kbd>+<kbd>Z</kbd></span></div>
       <div><span>Package a lot</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
     </div>
@@ -315,14 +378,14 @@ footer p { margin: 0; }
 <section class="feature" id="setup">
   <div class="wrap">
     <div class="kicker">Office setup</div>
-    <h2>About five minutes for the whole office.</h2>
+    <h2>A few minutes for the whole office.</h2>
     <ol class="steps">
       <li><b>Install</b> Hopper on each PC. Per-user, no admin rights, updates itself.</li>
-      <li><b>Settings → Office</b>: point at the shared config file, generate the office key, save to server.</li>
-      <li><b>Settings → Sharing</b>: allow through the firewall; add your name and Zoho email.</li>
-      <li><b>Optional</b>: the Cliq bot, groups, folder templates and naming rules.</li>
+      <li><b>The office admin</b>, in Settings → Office: create the office key and save the office config to the server. Only the admin can.</li>
+      <li><b>Everyone else joins</b>: from the shared config, an invite the admin sends over the network, or a pasted key. Then allow Hopper through the firewall and add your name.</li>
+      <li><b>Dexterity Share</b>, once, by the admin on a PC that stays on: three steps inside Hopper. No server software to install and no ports to open.</li>
     </ol>
-    <p style="margin-top:18px"><a href="https://github.com/vikramdex-ops/Hopper/blob/main/docs/OFFICE-SETUP.md">Full setup guide →</a></p>
+    <p class="more-links"><a href="https://github.com/vikramdex-ops/Hopper/blob/main/docs/OFFICE-SETUP.md">Office setup guide →</a> <a href="https://github.com/vikramdex-ops/Hopper/blob/main/docs/DEXTERITY-SHARE.md">Sending files to a client →</a></p>
   </div>
 </section>
 
@@ -332,9 +395,10 @@ footer p { margin: 0; }
     <h2>Good to know</h2>
     <div class="faq">
       <details><summary>Who can use Hopper?</summary><p>Hopper is internal software of Dexterity Design Services Private Limited, for Dexterity staff and authorised contractors on office PCs.</p></details>
-      <details><summary>Do files leave the office network?</summary><p>No. Files go directly between office PCs over TLS with the office key, or through the office server inbox. Only the notification text goes to Zoho Cliq, and only when the bot is switched on.</p></details>
+      <details><summary>Do files leave the office network?</summary><p>Not when you share with colleagues: files go directly between office PCs over TLS with the office key, or through the office server inbox. A client link is the one case you choose: the files stay on the office server and are served from it only to people who have the link, until it expires. Only notification text goes to Zoho Cliq, and only when the bot is switched on.</p></details>
+      <details><summary>Can I send files to a client?</summary><p>Yes. Select the files, choose <b>Create client link</b>, pick how many days it lasts and, if you like, a password and download limit. Hopper gives you the link and the e-mail text. <b>My client links</b> shows when the client downloads, and lets you extend or revoke the link.</p></details>
       <details><summary>What if a colleague's PC is off?</summary><p>The share is copied to their folder in the server inbox. When their Hopper starts, it moves the files into their Inbox and notifies them.</p></details>
-      <details><summary>Does it replace Windows Explorer?</summary><p>It can open folders by default (Settings → Advanced), and it shares Explorer's clipboard, context menu, icons and thumbnails, so both work side by side.</p></details>
+      <details><summary>Does it replace Windows Explorer?</summary><p>It doesn't need it. The context menu, Properties, Open with, the folder picker and the Recycle Bin view are Hopper's own, and folders always open inside Hopper. It can also be your default for folders (Settings → Advanced). Copy and paste through the Windows clipboard and drag out to other apps still work.</p></details>
       <details><summary>Why does Windows warn the first time I install it?</summary><p>The installer is not code-signed yet, so SmartScreen asks you to confirm. Each release lists SHA-256 checksums to verify the download.</p></details>
     </div>
   </div>
