@@ -67,6 +67,16 @@ talks to the renderer through its own MessagePort, so a long copy never delays a
 - **Offline fallback**: the sender writes the files to
   `U:\_HopperInbox\<user>\<date> from <sender>\` plus a `manifest.json`. The recipient's app picks
   them up and moves them into their local Inbox.
+- **Notes** (2.1): a share has a `kind` — `files`, `message`, `link` (a pointer to a folder on a
+  shared drive) or `request`. The last three are an offer with no files that the receiver
+  completes at once; offline, they are a server-inbox drop holding only `manifest.json`.
+- **Announcements** (2.1): posted by admins/announcers, pushed to online PCs over the TLS channel
+  (hello role `small`, one frame, the receiver answers `ok`; retried) and kept in
+  `announcements.json` next to `office.json`. Acknowledgements return the same way and are filed
+  per user in `announcement-acks\`.
+- **Office key** (2.1): only an admin (`office.admins`) creates it and saves the office config.
+  Other PCs read it from the config, or join with a pasted key or from an admin's two-minute LAN
+  invite (an unsigned datagram on the discovery port; see OFFICE-SETUP.md for the trade-off).
 - **Cliq**: an office bot (an incoming webhook URL plus a zapikey) lives in the shared office config
   on U:, never in the repo. Each person's Zoho email comes from their profile.
 

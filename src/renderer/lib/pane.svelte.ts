@@ -228,11 +228,8 @@ export class Pane {
 
   closeTab(i = this.active) {
     if (this.tabs[i]?.locked) return
-    if (this.tabs.length === 1) {
-      this.app.closedTabs.push($state.snapshot(this.tabs[0]) as TabState)
-      void this.navigate(VIRTUAL.home)
-      return
-    }
+    // The last tab can't be closed: a pane always shows something.
+    if (this.tabs.length === 1) return
     this.app.closedTabs.push($state.snapshot(this.tabs[i]) as TabState)
     this.tabs = this.tabs.filter((_, k) => k !== i)
     if (this.active >= this.tabs.length) this.active = this.tabs.length - 1

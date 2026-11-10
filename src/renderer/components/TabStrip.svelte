@@ -19,7 +19,7 @@
       { label: 'Rename tab…', icon: 'rename', run: async () => { const n = await app.prompt('Tab name', t.title ?? app.tabTitle(t)); if (n !== null) { t.title = n || undefined; app.persistSoon() } } },
       ...(app.dual ? [{ label: 'Open in other pane', icon: 'dualPane', run: () => app.other.navigate(t.path) }] : []),
       { separator: true },
-      { label: 'Close tab', icon: 'close', keys: 'Ctrl+W', disabled: t.locked, run: () => pane.closeTab(i) },
+      { label: 'Close tab', icon: 'close', keys: 'Ctrl+W', disabled: t.locked || pane.tabs.length < 2, run: () => pane.closeTab(i) },
       { label: 'Close other tabs', disabled: pane.tabs.length < 2, run: () => { pane.tabs = pane.tabs.filter((x, k) => k === i || x.locked); pane.active = pane.tabs.indexOf(t); void pane.load() } }
     ])
   }
@@ -61,7 +61,7 @@
     >
       {#if t.locked}<Icon name="lock" size={12} />{/if}
       <span class="label ellipsis">{app.tabTitle(t)}</span>
-      {#if !t.locked}
+      {#if !t.locked && pane.tabs.length > 1}
         <button class="x" tabindex="-1" aria-label="Close tab" onclick={(e) => { e.stopPropagation(); pane.closeTab(i) }}><Icon name="close" size={12} /></button>
       {/if}
     </div>

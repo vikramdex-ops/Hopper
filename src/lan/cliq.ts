@@ -3,7 +3,7 @@
 // (Cliq REST API v2 "Post message to a bot"; `userids` takes user ids or email ids and limits the
 // message to those bot subscribers). Calls are serialised with a 10 s timeout and no retries.
 // The zapikey is never logged.
-import type { OfficeConfig } from '@shared/types'
+import type { OfficeConfig, ShareKind } from '@shared/types'
 import { formatBytes } from './protocol'
 
 const TIMEOUT_MS = 10_000
@@ -55,8 +55,14 @@ export function postCliq(cfg: OfficeConfig['cliq'] | undefined, emails: string[]
   return p
 }
 
-export function shareText(o: { fromName: string; files: number; bytes: number; message: string; zipped: boolean; via: 'direct' | 'server' }) {
-  const what = `${o.files} ${o.files === 1 ? 'file' : 'files'} (${formatBytes(o.bytes)}${o.zipped ? ', zipped' : ''})`
+export function shareText(o: { fromName: string; files: number; bytes: number; message: string; zipped: boolean; via: 'direct' | 'server'; kind?: ShareKind; linkPath?: string }) {
+  const body = o.message.trim().slice(0, 1000)
+  const seen = o.via === 'direct' ? 'it is in your Hopper Inbox' : 'it will appear in your Hopper Inbox when Hopper starts'
+  if (o.kind === 'message') return `${o.fromName} sent you a message in Hopper: "${body}"`
+  if (o.kind === 'link') return `${o.fromName} sent you a folder link in Hopper: ${o.linkPath ?? ''}${body ? ` — "${body}"` : ''} (${seen})`
+  if (o.kind === 'request') return `${o.fromName} is asking you for files in Hopper: "${body}" (${seen}; reply from there)`
+  const what
+ = `${o.files} ${o.files === 1 ? 'file' : 'files'} (${formatBytes(o.bytes)}${o.zipped ? ', zipped' : ''})`
   const msg = o.message.trim() ? `: "${o.message.trim().slice(0, 1000)}"` : ''
   const where =
     o.via === 'direct' ? 'saved to your Hopper Inbox' : 'on the office server, it will appear in your Hopper Inbox when Hopper starts'

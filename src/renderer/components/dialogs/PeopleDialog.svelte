@@ -1,6 +1,7 @@
 <script lang="ts">
   // People on the network: presence, PC and Hopper version for each colleague, plus office groups.
-  // "Send selected files" opens the share composer addressed to that person or group.
+  // Clicking a person opens their Person panel (message, files, folder link, request). Groups get
+  // the share composer, which only ever takes the explicit selection.
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
   import { app } from '../../lib/app.svelte'
@@ -12,9 +13,9 @@
   let { close }: { close: (v?: unknown) => void } = $props()
 
   let q = $state('')
-  const files = app.active.targets().filter((e) => !isVirtual(e.path) && !isArchivePath(e.path))
+  const files = app.active.selected.filter((e) => !isVirtual(e.path) && !isArchivePath(e.path))
   const canSend = files.length > 0
-  const sendTip = canSend ? `Send ${plural(files.length, 'selected item')}` : 'Select files in the active pane first'
+  const sendTip = canSend ? `Send ${plural(files.length, 'selected item')}` : 'Choose files in the next step'
 
   const RANK: Record<Peer['status'], number> = { online: 0, busy: 1, away: 2, offline: 3 }
   const STATUS: Record<Peer['status'], string> = { online: 'Online', busy: 'Busy', away: 'Away', offline: 'Offline' }
@@ -35,6 +36,11 @@
   function send(to: string) {
     close(true)
     void dialogs.share?.([to])
+  }
+
+  function person(user: string, tab?: string) {
+    close(true)
+    void dialogs.person?.(user, tab)
   }
 
   function settings() {
@@ -77,7 +83,8 @@
 
     <div class="caption head">Colleagues</div>
     {#each people as p (p.id)}
-      <div class="person" class:off={p.status === 'offline'}>
+      <div class="person click" class:off={p.status === 'offline'} role="button" tabindex="0" data-person={p.user} title={`Open ${p.displayName || p.user}`}
+        onclick={() => person(p.user)} onkeydown={(e) => e.key === 'Enter' && e.target === e.currentTarget && person(p.user)}>
         <span class="av" style:background={personColor(p.user)}>{initials(p.displayName || p.user)}<span class="pres {p.status}"></span></span>
         <span class="who">
           <span class="ellipsis nm">{p.displayName || p.user}</span>
@@ -86,7 +93,8 @@
           </span>
         </span>
         <span class="caption st">{STATUS[p.status]}{p.status === 'offline' ? ' (via server)' : ''}</span>
-        <button type="button" class="btn sm" disabled={!canSend} title={sendTip} onclick={() => send(p.user)}><Icon name="send" /> Send selected files</button>
+        <button type="button" class="btn sm" onclick={(e) => { e.stopPropagation(); person(p.user) }}><Icon name="at" /> Message</button>
+        <button type="button" class="btn sm" title={sendTip} onclick={(e) => { e.stopPropagation(); person(p.user, 'files') }}><Icon name="send" /> {canSend ? `Send ${plural(files.length, 'item')}` : 'Send files'}</button>
       </div>
     {:else}
       <div class="caption empty">{q.trim() ? `No one matches “${q}”.` : 'Nobody else running Hopper has been seen on this network yet.'}</div>
@@ -101,7 +109,7 @@
             <span class="ellipsis nm">{g.name}</span>
             <span class="caption ellipsis" title={g.members.map((m) => app.personName(m)).join(', ')}>{plural(g.members.length, 'member')}: {g.members.map((m) => app.personName(m)).join(', ')}</span>
           </span>
-          <button type="button" class="btn sm" disabled={!canSend || !g.members.length} title={sendTip} onclick={() => send(`group:${g.id}`)}><Icon name="send" /> Send selected files</button>
+          <button type="button" class="btn sm" disabled={!g.members.length} title={sendTip} onclick={() => send(`group:${g.id}`)}><Icon name="send" /> {canSend ? `Send ${plural(files.length, 'item')}` : 'Send files'}</button>
         </div>
       {/each}
     {/if}
@@ -156,6 +164,9 @@
   }
   .person:hover {
     background: var(--hover);
+  }
+  .person.click {
+    cursor: pointer;
   }
   .person.off .nm {
     color: var(--text-2);

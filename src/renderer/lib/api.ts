@@ -9,7 +9,21 @@ declare global {
   }
 }
 
-export const host = window.hopper
+const raw = window.hopper
+const picker = async (opts: Record<string, unknown>) => (await import('./commands')).dialogs.pickFolder?.(opts)
+
+/** window.hopper, with the folder and file pickers replaced by Hopper's own dialog. */
+export const host: HopperApi = {
+  ...raw,
+  dialog: {
+    ...raw.dialog,
+    folder: (async (title?: string, defaultPath?: string) => ((await picker({ title: title ?? 'Choose a folder', mode: 'folder', start: defaultPath })) as string | undefined) ?? null) as HopperApi['dialog']['folder'],
+    files: (async (title?: string, filters?: { extensions: string[] }[]) => {
+      const filter = (filters ?? []).flatMap((f) => f.extensions).filter((e) => e !== '*').map((e) => e.toLowerCase())
+      return ((await picker({ title: title ?? 'Choose files', mode: 'file', multiple: true, filter })) as string[] | undefined) ?? []
+    }) as HopperApi['dialog']['files']
+  }
+}
 
 function portClient(name: 'engine' | 'lan') {
   let port: MessagePort | null = null

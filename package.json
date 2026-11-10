@@ -1,7 +1,7 @@
 {
   "name": "hopper",
   "productName": "Hopper",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Hopper: the internal file manager of Dexterity Design Services Private Limited. Dual panes, a transfer queue, one-key zips, PDF and lot tools, and @mention file sharing over the office LAN with Zoho Cliq notifications.",
   "main": "out/main/index.js",
@@ -28,12 +28,15 @@
     "icons": "node tools/make-icon.mjs",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --win --x64",
-    "native": "node tools/build-native.mjs"
+    "native": "node tools/build-native.mjs",
+    "e2e:all": "node tests/e2e/run.mjs && node tests/e2e/lan.mjs && node tests/e2e/pubshare.mjs && node tests/e2e/pubshare-app.mjs"
   },
   "dependencies": {
     "electron-updater": "6.8.11",
     "exceljs": "4.4.0",
-    "pdf-lib": "1.17.1"
+    "mammoth": "^1.8.0",
+    "pdf-lib": "1.17.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",

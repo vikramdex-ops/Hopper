@@ -88,12 +88,19 @@ export class OfficeStore {
   loadedFrom = ''
   error = ''
 
-  async load(path: string) {
+  async load(path: string, hop = 0): Promise<OfficeConfig> {
     this.loadedFrom = path
     try {
       const text = await fsp.readFile(path, 'utf8')
       this.data = merge(defaultOffice(), JSON.parse(text))
       this.error = ''
+      // an admin moved the config: follow the pointer, but keep this copy if the new place is unreachable
+      const next = this.data.movedTo
+      if (typeof next === 'string' && next && hop < 3 && next.toLowerCase() !== path.toLowerCase()) {
+        const here = this.data
+        await this.load(next, hop + 1)
+        if (this.error) Object.assign(this, { data: here, loadedFrom: path, error: '' })
+      }
     } catch (e: any) {
       this.error = e?.code === 'ENOENT' ? 'not-found' : String(e?.message ?? e)
       this.data = defaultOffice()

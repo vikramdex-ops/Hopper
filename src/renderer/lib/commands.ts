@@ -5,6 +5,7 @@ import { host, engine } from './api'
 import { VIRTUAL, isArchivePath, isVirtual } from './pane.svelte'
 import { kindOf } from './filetypes'
 import { dirname } from './format'
+import { copyPaths, PATH_MODES, type PathMode } from './pathcopy'
 
 export interface Command {
   id: string
@@ -72,12 +73,11 @@ export const commands: Command[] = [
   { id: 'file.template', label: 'New from folder template…', group: 'New', icon: 'template', when: writable, run: open('template') },
   { id: 'file.open', label: 'Open', group: 'File', icon: 'open', keys: ['Enter'], when: hasTargets, run: () => { for (const e of T().slice(0, 12)) void app.openEntry(e) } },
   { id: 'file.openNewTab', label: 'Open in new tab', group: 'File', icon: 'plus', keys: ['Ctrl+Enter'], when: () => T().some((e) => e.dir), run: () => { for (const e of T().filter((x) => x.dir)) app.active.openTab(e.path, false) } },
-  { id: 'file.openWith', label: 'Open with…', group: 'File', icon: 'openWith', when: () => T().length === 1 && !T()[0].dir, run: () => host.shell.openWith(T()[0].path) },
-  { id: 'file.properties', label: 'Properties', group: 'File', icon: 'info', keys: ['Alt+Enter'], when: () => hasTargets() && real(), run: () => host.shell.properties(T().map((e) => e.path)) },
-  { id: 'file.reveal', label: 'Show in Explorer', group: 'File', icon: 'windows', when: () => hasTargets() && real(), run: () => host.shell.reveal(T()[0].path) },
+  { id: 'file.openWith', label: 'Open with…', group: 'File', icon: 'openWith', when: () => T().length === 1 && !T()[0].dir, run: () => dialogs.openWith?.(T()[0]) },
+  { id: 'file.properties', label: 'Properties', group: 'File', icon: 'info', keys: ['Alt+Enter'], when: real, run: () => dialogs.properties?.(T().length ? T().map((e) => e.path) : [app.active.path]) },
   { id: 'file.terminal', label: 'Open terminal here', group: 'File', icon: 'terminal', keys: ['Ctrl+`'], when: writable, run: () => host.shell.terminal(app.active.path) },
-  { id: 'file.copyPath', label: 'Copy path', group: 'File', icon: 'copyPath', keys: ['Ctrl+Shift+C'], run: () => { const t = T(); const text = t.length ? t.map((e) => e.path).join('\r\n') : app.active.path; void host.clip.writeText(text); app.toast('info', 'Path copied', text.length > 120 ? `${text.slice(0, 120)}…` : text) } },
-  { id: 'file.copyName', label: 'Copy name', group: 'File', icon: 'copyPath', when: hasTargets, run: () => host.clip.writeText(T().map((e) => e.name).join('\r\n')) },
+  { id: 'file.copyPath', label: 'Copy path', group: 'Path Copy', icon: 'copyPath', keys: ['Ctrl+Shift+C'], run: () => copyPaths((app.settings?.pathCopy?.defaultMode as PathMode) || 'path') },
+  ...PATH_MODES.map((m) => ({ id: `path.${m.id}`, label: `Copy ${m.label}`, group: 'Path Copy', icon: 'copyPath', run: () => copyPaths(m.id) })),
   { id: 'file.print', label: 'Print', group: 'File', icon: 'print', keys: ['Ctrl+P'], when: () => hasTargets() && T().every((e) => !e.dir), run: () => host.shell.print(T().map((e) => e.path)) },
   { id: 'file.checksum', label: 'Checksum (SHA-256)…', group: 'File', icon: 'checksum', when: () => T().length === 1 && !T()[0].dir, run: open('checksum') },
   { id: 'file.size', label: 'Calculate folder sizes', group: 'File', icon: 'size', keys: ['Ctrl+Shift+S'], when: real, run: open('folderSize') },
@@ -92,6 +92,10 @@ export const commands: Command[] = [
 
   // share
   { id: 'share.send', label: 'Share with people…', group: 'Share', icon: 'share', keys: ['Ctrl+Shift+Enter', 'Ctrl+Alt+S'], when: () => hasTargets() && real(), run: open('share') },
+  { id: 'share.clientLink', label: 'Create client link… (Dexterity Share)', group: 'Share', icon: 'link', keys: ['Ctrl+Alt+L'], when: () => hasTargets() && real(), run: () => dialogs.publicLink?.() },
+  { id: 'share.clientLinks', label: 'My client links', group: 'Share', icon: 'link', run: open('publicLinks') },
+  { id: 'share.announcements', label: 'Announcements', group: 'Share', icon: 'bell', run: open('announcements') },
+  { id: 'share.announce', label: 'New announcement…', group: 'Share', icon: 'bell', when: () => !!app.lanStatus?.canAnnounce, run: () => dialogs.announce?.() },
   { id: 'share.people', label: 'People on the network', group: 'Share', icon: 'people', run: open('people') },
 
   // view

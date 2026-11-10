@@ -147,7 +147,7 @@ await step('context menu on a file', async () => {
   await win.keyboard.press('Escape')
 })
 
-for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', 'office'], ['shortcuts'], ['share'], ['copyTo'], ['zip'], ['massRename'], ['folderSize'], ['checksum'], ['selectPattern'], ['template'], ['packager'], ['pdf'], ['dupes'], ['compare'], ['workspaces'], ['undoHistory'], ['people']]) {
+for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', 'office'], ['shortcuts'], ['share'], ['copyTo'], ['zip'], ['massRename'], ['folderSize'], ['checksum'], ['selectPattern'], ['template'], ['packager'], ['pdf'], ['dupes'], ['compare'], ['workspaces'], ['undoHistory'], ['people'], ['publicLink'], ['publicLinks'], ['announcements']]) {
   await step(`dialog ${name}${arg ? ` (${arg})` : ''} opens`, async () => {
     const lot = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07')
     await ev(({ d }) => window.__hopper.panes[0].navigate(d), { d: lot })
@@ -163,6 +163,73 @@ for (const [name, arg] of [['settings'], ['settings', 'sharing'], ['settings', '
     })
   })
 }
+
+await step('properties is Hopper\'s own window with size on disk', async () => {
+  const f = join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf')
+  await ev((f) => { void window.__hopper.__dialogs.properties([f]) }, f)
+  await until(() => /Size on disk\s+4\.0 KB/.test(document.querySelector('.dlg')?.innerText ?? ''), null, 20000)
+  await win.screenshot({ path: join(shots, 'dlg-properties.png') })
+  await win.keyboard.press('Escape')
+  // a folder: totals are counted by the engine
+  await ev((d) => { void window.__hopper.__dialogs.properties([d]) }, join(demo, 'Site photos'))
+  await until(() => /Contains\s*\n?\s*[1-9]\d* files/.test(document.querySelector('.dlg')?.innerText ?? ''), null, 30000)
+  await win.screenshot({ path: join(shots, 'dlg-properties-folder.png') })
+  await win.keyboard.press('Escape')
+  await until(() => !document.querySelector('.dlg'), null, 5000)
+})
+
+await step('open with lists apps without Explorer', async () => {
+  const f = join(demo, 'P12513 Refinery Revamp', 'README.txt')
+  await ev((f) => { void window.__hopper.__dialogs.openWith({ name: 'README.txt', path: f, ext: 'txt', dir: false }) }, f)
+  await until(() => document.querySelectorAll('.dlg .app').length > 0, null, 20000)
+  await win.screenshot({ path: join(shots, 'dlg-openwith.png') })
+  await win.keyboard.press('Escape')
+  await until(() => !document.querySelector('.dlg'), null, 5000)
+})
+
+await step('folder picker is Hopper\'s own', async () => {
+  await ev((d) => { void window.__hopper.__dialogs.pickFolder({ title: 'Choose a folder', mode: 'folder', start: d }) }, demo)
+  await until(() => document.querySelectorAll('.dlg .item').length > 2, null, 20000)
+  await win.screenshot({ path: join(shots, 'dlg-picker.png') })
+  await win.keyboard.press('Escape')
+  await until(() => !document.querySelector('.dlg'), null, 5000)
+})
+
+await step('path copy forms', async () => {
+  const f = join(demo, 'Site photos', 'IMG_2040.png')
+  const r = await ev(async (f) => {
+    const o = {}
+    for (const m of ['name', 'path', 'parent', 'unc', 'uncParent', 'internet', 'samba']) o[m] = await window.__hopper.__formatPath(f, m)
+    return o
+  }, f)
+  console.log('     ', JSON.stringify(r))
+  if (r.name !== 'IMG_2040.png') throw new Error('name ' + r.name)
+  if (r.path !== f) throw new Error('path ' + r.path)
+  if (!r.unc.startsWith('\\\\') || !r.unc.endsWith('\\Site photos\\IMG_2040.png')) throw new Error('unc ' + r.unc)
+  if (!r.uncParent.endsWith('\\Site photos')) throw new Error('uncParent ' + r.uncParent)
+  if (!/^file:\/\/[^/]/.test(r.internet) || !r.internet.endsWith('/Site%20photos/IMG_2040.png')) throw new Error('internet ' + r.internet)
+  if (!r.samba.startsWith('smb://') || r.samba.includes('\\')) throw new Error('samba ' + r.samba)
+})
+
+await step('context menu has Path Copy and no Explorer hand-off', async () => {
+  await ev((d) => window.__hopper.panes[0].navigate(d), join(demo, 'Site photos'))
+  await win.locator('.pane').first().locator('.list .row').first().click({ button: 'right' })
+  await until(() => !!document.querySelector('.menu'))
+  const text = await ev(() => document.querySelector('.menu').innerText)
+  await win.keyboard.press('Escape')
+  if (!/Path Copy/.test(text)) throw new Error('no Path Copy: ' + text)
+  if (/Show more options|Explorer/.test(text)) throw new Error('Explorer item still present')
+})
+
+await step('last tab cannot be closed; home is a start page', async () => {
+  const n = await ev(() => { const p = window.__hopper.panes[0]; while (p.tabs.length > 1) p.closeTab(); p.closeTab(); return p.tabs.length })
+  if (n !== 1) throw new Error('tabs ' + n)
+  const path = await ev(() => window.__hopper.panes[0].path)
+  if (path.startsWith('hopper:home')) throw new Error('closing the last tab jumped to Home')
+  await ev(() => window.__hopper.panes[1].navigate('hopper:home'))
+  await until(() => /Jump back in/.test(document.body.innerText))
+  await win.screenshot({ path: join(shots, '07-home.png') })
+})
 
 await step('memory stays reasonable', async () => {
   const m = await app.evaluate(async ({ app }) => app.getAppMetrics().map((p) => ({ type: p.type, name: p.name ?? p.serviceName ?? '', kb: p.memory.workingSetSize })))

@@ -36,6 +36,8 @@ export class Discovery {
   port = 0
   /** persistent install id (lan-id), set before start() */
   id = ''
+  /** datagrams that are not beacons (join invites); also heard while this PC has no key */
+  onOther: ((buf: Buffer, address: string) => void) | null = null
 
   constructor(
     private ctx: LanCtx,
@@ -55,7 +57,7 @@ export class Discovery {
     return this.sock !== null
   }
 
-  /** Bind the UDP port. Rejects with the socket error (EADDRINUSE etc.). */
+  /** Bind the UDP port. Rejects with the socket error (EADDRINUSE etc.). Without a key it only listens. */
   start(port: number) {
     this.port = port
     if (this.sock) return Promise.resolve()
@@ -112,6 +114,27 @@ export class Discovery {
     if (!force && sig === this.lastSent) return
     this.lastSent = sig
     this.send(this.sock, b).catch(() => {})
+  }
+
+  /** Send a raw datagram to every broadcast target (join invites). */
+  async broadcast(buf: Buffer) {
+    const sock = this.sock
+    if (!sock) return false
+    await Promise.all(this.targets.map((addr) => new Promise<void>((resolve) => sock.send(buf, DISCOVERY_PORT, addr, () => resolve()))))
+    return true
+  }
+
+  /** Online PCs other than this one. */
+  online(): Peer[] {
+    return [...this.peers.values()].filter((p) => p.status !== 'offline')
+  }
+
+  /** The key went away or changed: everyone we knew is unverified now. */
+  forget() {
+    if (!this.peers.size) return
+    this.peers.clear()
+    this.lastSent = ''
+    this.onChange()
   }
 
   self(): Peer {
@@ -211,8 +234,10 @@ export class Discovery {
   }
 
   private onBeacon(buf: Buffer, address: string) {
+    if (buf.subarray(0, 18).toString('latin1') === '{"hopper":"invite"') return this.onOther?.(buf, address)
     if (!this.ctx.key) return
     const b = openBeacon(buf, beaconKey(this.ctx.key))
+
     if (!b || b.id === this.id) return
     if (Math.abs(Date.now() - b.t) > MAX_SKEW_MS) return
     const prev = this.peers.get(b.id)

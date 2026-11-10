@@ -1,17 +1,34 @@
 <script lang="ts">
-  // Share with people: type "@" (or just a name) to pick colleagues and groups, Slack-style.
+  // Share with people: type "@" (or just a name) to pick colleagues and groups.
+  // Shares the explicit selection only (or the paths it is given): a row that merely has focus
+  // is never sent, and with nothing selected the dialog offers pickers instead.
   import { tick } from 'svelte'
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
   import { app } from '../../lib/app.svelte'
+  import { host } from '../../lib/api'
+  import { isArchivePath, isVirtual } from '../../lib/pane.svelte'
   import { basename, fmtSize, initials, personColor, plural } from '../../lib/format'
 
   let { to = [], paths, close }: { to?: string[]; paths?: string[]; close: (v?: unknown) => void } = $props()
 
-  const files = paths ?? app.active.targets().map((e) => e.path)
-  const entries = paths ? [] : app.active.targets()
-  const bytes = entries.reduce((a, e) => a + (e.dir ? 0 : e.size), 0)
-  const hasFolders = entries.some((e) => e.dir)
+  const real = (p: string) => !isVirtual(p) && !isArchivePath(p)
+  const entries = paths ? [] : app.active.selected.filter((e) => real(e.path))
+  const initial = paths ?? entries.map((e) => e.path)
+  let files = $state<string[]>([...initial])
+  const picked = $derived(files.length !== initial.length)
+  const bytes = $derived(picked ? 0 : entries.reduce((a, e) => a + (e.dir ? 0 : e.size), 0))
+  const hasFolders = $derived(!picked && entries.some((e) => e.dir))
+
+  async function chooseFiles() {
+    const more = (await host.dialog.files('Choose files to share')).filter(real)
+    files = [...new Set([...files, ...more])]
+  }
+
+  async function chooseFolder() {
+    const d = await host.dialog.folder('Choose a folder to share', real(app.active.path) ? app.active.path : undefined)
+    if (d && real(d)) files = [...new Set([...files, d])]
+  }
 
   let chosen = $state<string[]>([...to])
   let query = $state('')
@@ -74,7 +91,7 @@
 
   function send() {
     if (!chosen.length || !files.length) return
-    void app.share({ to: chosen, paths: files, message: message.trim() || undefined, zipFirst, notifyCliq })
+    void app.share({ to: chosen, paths: $state.snapshot(files), message: message.trim() || undefined, zipFirst, notifyCliq })
     close(true)
   }
 
@@ -82,11 +99,22 @@
 </script>
 
 <Dialog title="Share" icon="share" width={560} onclose={() => close()} onsubmit={send}>
-  <div class="what">
-    <Icon name={files.length === 1 ? (hasFolders ? 'folder' : 'file') : 'layers'} size={20} />
-    <span class="ellipsis">{files.length === 1 ? basename(files[0]) : plural(files.length, 'item')}</span>
-    {#if bytes}<span class="caption">{fmtSize(bytes)}{hasFolders ? ' + folders' : ''}</span>{/if}
-  </div>
+  {#if files.length}
+    <div class="what">
+      <Icon name={files.length === 1 ? (hasFolders ? 'folder' : 'file') : 'layers'} size={20} />
+      <span class="ellipsis" title={files.join(', ')}>{files.length === 1 ? basename(files[0]) : plural(files.length, 'item')}</span>
+      {#if bytes}<span class="caption">{fmtSize(bytes)}{hasFolders ? ' + folders' : ''}</span>{/if}
+      <button type="button" class="btn subtle sm" onclick={chooseFiles}>Add files…</button>
+      {#if !paths}<button type="button" class="btn subtle icon sm" title="Clear" aria-label="Clear" onclick={() => (files = [])}><Icon name="close" size={12} /></button>{/if}
+    </div>
+  {:else}
+    <div class="what none">
+      <Icon name="info" size={20} />
+      <span>Nothing is selected. Choose what to share:</span>
+      <button type="button" class="btn sm" onclick={chooseFiles}><Icon name="file" /> Files…</button>
+      <button type="button" class="btn sm" onclick={chooseFolder}><Icon name="folder" /> Folder…</button>
+    </div>
+  {/if}
 
   {#if !ready}
     <div class="warn"><Icon name="warning" /> <span>LAN sharing isn't ready on this PC{app.lanStatus?.reason ? ` (${app.lanStatus.reason})` : ''}. Set it up in Settings → Sharing.</span></div>

@@ -3,10 +3,12 @@
   // (no Save button). The Office section edits the shared office config as a draft and saves it
   // to the server, because every Hopper in the office reads that one file.
   import { onMount } from 'svelte'
+  import { PATH_MODES } from '../../lib/pathcopy'
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
   import { app } from '../../lib/app.svelte'
   import { engine, host, lan } from '../../lib/api'
+  import { fingerprintOf, lanx, toUnc, validKey } from '../../lib/lan2.svelte'
   import { basename, fmtAgo, fmtDateFull, plural } from '../../lib/format'
   import { DEFAULT_PRESETS } from '@shared/defaults'
   import { groupRevisions, splitExt } from '@shared/revisions'
@@ -211,12 +213,18 @@
     }
   }
 
+  let shareStatus = $state('')
+
   function tidy(c: OfficeConfig): OfficeConfig {
     const lines = (a: string[]) => a.map((x) => x.trim()).filter(Boolean)
+    const users = (a: string[] | undefined) => [...new Set(lines(a ?? []).map((x) => x.toLowerCase()))]
     return {
       ...c,
+      admins: users(c.admins),
+      announcers: users(c.announcers),
       officeName: c.officeName.trim(),
       serverInbox: c.serverInbox.trim(),
+      publicShare: c.publicShare ? { ...c.publicShare, store: c.publicShare.store.trim(), pageUrl: c.publicShare.pageUrl.trim() } : undefined,
       cliq: { ...c.cliq, endpoint: c.cliq.endpoint.trim(), zapikey: c.cliq.zapikey.trim() },
       groups: c.groups.map((g) => ({ ...g, name: g.name.trim(), members: [...new Set(lines(g.members))] })),
       templates: c.templates.map((t) => ({ ...t, name: t.name.trim(), folders: lines(t.folders) })),
@@ -232,6 +240,7 @@
       await host.office.save(tidy($state.snapshot(draft) as OfficeConfig))
       await app.reloadOffice()
       await loadOffice()
+      await lanx.refreshMeta()
       app.toast('success', 'Office config saved', 'Other PCs pick it up when they reload it or restart Hopper.')
     } catch (e) {
       app.toast('error', "Couldn't save the office config", msg(e))
@@ -256,6 +265,107 @@
     const bytes = crypto.getRandomValues(new Uint8Array(32))
     draft.officeKey = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
     showKey = false
+  }
+
+  // ---- Office: admins, joining, inviting -------------------------------------------------
+
+  // Only an office admin creates the key and edits the shared config (main enforces it too).
+  // Everyone else gets a read-only page with a way to join: the config file, or a pasted key.
+  const isAdmin = $derived(lanx.meta.admin)
+  const joined = $derived(lanx.meta.keySource !== 'none')
+  let draftFp = $state('')
+  let joinKey = $state('')
+  let joinFp = $state('')
+  let joinBusy = $state(false)
+  let adminInput = $state('')
+  let announcerInput = $state('')
+  let clock = $state(Date.now())
+  const inviteLeft = $derived(lanx.inviteStatus.active ? Math.max(0, Math.ceil((lanx.inviteStatus.until - clock) / 1000)) : 0)
+
+  $effect(() => {
+    const k = draft?.officeKey ?? ''
+    void fingerprintOf(k).then((fp) => (draftFp = fp))
+  })
+  $effect(() => {
+    const k = joinKey
+    void fingerprintOf(k).then((fp) => (joinFp = fp))
+  })
+  $effect(() => {
+    if (!lanx.inviteStatus.active) return
+    const t = setInterval(() => (clock = Date.now()), 1000)
+    return () => clearInterval(t)
+  })
+
+  function addUser(list: 'admins' | 'announcers') {
+    if (!draft) return
+    const v = (list === 'admins' ? adminInput : announcerInput).trim().toLowerCase()
+    if (list === 'admins') adminInput = ''
+    else announcerInput = ''
+    draft[list] ??= []
+    if (v && !draft[list].includes(v)) draft[list].push(v)
+  }
+
+  async function removeAdmin(u: string) {
+    if (!draft) return
+    if (u === lanx.meta.user && !(await app.confirm('Remove yourself as an admin?', 'After you save, you can no longer change the office config from this account.', 'Remove'))) return
+    draft.admins = draft.admins.filter((x) => x !== u)
+  }
+
+  async function joinByKey() {
+    if (joinBusy || !validKey(joinKey)) return
+    joinBusy = true
+    try {
+      const fp = await lanx.joinWithKey(joinKey, { via: 'paste' })
+      joinKey = ''
+      await loadOffice()
+      app.toast('success', 'This PC joined the office', `Key fingerprint ${fp}. Colleagues appear under People in a few seconds.`)
+    } catch (e) {
+      app.toast('error', "Couldn't join", msg(e))
+    } finally {
+      joinBusy = false
+    }
+  }
+
+  async function forgetKey() {
+    if (!(await app.confirm('Forget the office key stored on this PC?', 'LAN sharing stops until this PC reads a key from the office config again, or you join again.', 'Forget'))) return
+    await lanx.leave()
+  }
+
+  async function toggleInvite() {
+    try {
+      lanx.inviteStatus = await lan.call(lanx.inviteStatus.active ? 'invite.stop' : 'invite.start')
+      clock = Date.now()
+    } catch (e) {
+      app.toast('error', "Couldn't start inviting", msg(e))
+    }
+  }
+
+  async function moveOffice() {
+    if (!draft || officeBusy) return
+    const from = officeInfo?.path || officePath
+    const picked = await host.dialog.folder('Move the office config to…', from.replace(/[\\/][^\\/]*$/, '') || undefined)
+    if (!picked) return
+    // a mapped drive letter differs between PCs: store the UNC so the pointer works everywhere
+    const dir = toUnc(picked, app.drives).path
+    const ok = await app.confirm(
+      'Move the office config?',
+      `office.json${dirty ? ' (with your unsaved changes)' : ''} and the announcements are written to ${dir}. A pointer stays in the old file, so PCs that can still read ${from} follow it by themselves; any other PC needs the new path or an invite.`,
+      'Move'
+    )
+    if (!ok) return
+    officeBusy = true
+    try {
+      const r = await host.office.save(tidy($state.snapshot(draft) as OfficeConfig), { moveTo: dir })
+      if (app.settings) app.settings.officeConfigPath = r.path
+      await app.reloadOffice()
+      await loadOffice()
+      await lanx.refreshMeta()
+      app.toast('success', 'Office config moved', `${r.path}${r.pointer === false ? '. The old file could not be updated, so tell the other PCs the new path.' : ''}`)
+    } catch (e) {
+      app.toast('error', "Couldn't move the office config", msg(e))
+    } finally {
+      officeBusy = false
+    }
   }
 
   async function copyText(text: string, what: string) {
@@ -440,6 +550,7 @@
     void host.defmgr.status().then((v: any) => (dm = v)).catch((e: any) => (dmError = msg(e)))
     void host.update.state().then((v: any) => (upd = v)).catch(() => {})
     void loadOffice()
+    void lanx.refreshMeta()
     const offIndex = engine.on('index', (v: IndexStatus) => (indexStatus = v))
     const offUpdate = host.update.on((v: any) => (upd = v))
     return () => {
@@ -488,7 +599,7 @@
           <div class="row">
             <input class="input" value={s.inboxDir} placeholder="Default Inbox folder" spellcheck="false" onchange={(e) => set({ inboxDir: e.currentTarget.value.trim() })} />
             <button type="button" class="btn" onclick={browseInbox}><Icon name="folderOpen" /> Browse</button>
-            {#if s.inboxDir}<button type="button" class="btn subtle" onclick={() => host.shell.open(s.inboxDir)} title="Open the Inbox folder"><Icon name="open" /></button>{/if}
+            {#if s.inboxDir}<button type="button" class="btn subtle" onclick={() => { void app.active.navigate(s.inboxDir); tryClose() }} title="Open the Inbox folder"><Icon name="open" /></button>{/if}
           </div>
         </label>
 
@@ -535,6 +646,22 @@
           <span class="txt"><span>Small files copied at once</span><span class="caption">More is faster for many small files on fast disks; fewer is gentler on the server</span></span>
           <select class="input narrow" value={s.parallelSmallFiles} onchange={(e) => set({ parallelSmallFiles: Number(e.currentTarget.value) })}>
             {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={n}>{n}</option>{/each}
+          </select>
+        </div>
+
+        <h3 class="subtitle">Path Copy</h3>
+        <div class="item">
+          <span class="txt"><span>Ctrl+Shift+C copies</span><span class="caption">The other forms are in the right-click Path Copy menu and the command palette.</span></span>
+          <select class="input" value={s.pathCopy?.defaultMode ?? 'path'} onchange={(e) => set({ pathCopy: { ...(s.pathCopy ?? { quote: 'never' }), defaultMode: e.currentTarget.value } })}>
+            {#each PATH_MODES as m (m.id)}<option value={m.id}>{m.label}</option>{/each}
+          </select>
+        </div>
+        <div class="item">
+          <span class="txt"><span>Quotes</span><span class="caption">Wrap copied paths in "double quotes".</span></span>
+          <select class="input" value={s.pathCopy?.quote ?? 'never'} onchange={(e) => set({ pathCopy: { ...(s.pathCopy ?? { defaultMode: 'path' }), quote: e.currentTarget.value as 'never' | 'spaces' | 'always' } })}>
+            <option value="never">Never</option>
+            <option value="spaces">Only when the path has spaces</option>
+            <option value="always">Always</option>
           </select>
         </div>
 
@@ -615,7 +742,7 @@
           </span>
           <button type="button" class="btn sm" onclick={() => lan.call('lan.status').then((v) => (app.lanStatus = v)).catch(() => {})}><Icon name="refresh" /></button>
         </div>
-        {#if !app.office?.officeKey}<div class="caption warnText">Sharing needs the office key. Set it under Office.</div>{/if}
+        {#if lanx.meta.keySource === 'none'}<div class="caption warnText">Sharing needs the office key. {lanx.meta.admin ? 'Create it under Office.' : 'Join the office under Office.'}</div>{/if}
         {@render toggle('Share and receive files over the office network', 'Colleagues running Hopper can send to this PC, and you to them', s.lan.enabled, (v) => set({ lan: { ...s.lan, enabled: v } }))}
         <div class="item">
           <span class="txt"><span>When someone sends you files</span><span class="caption">Blocked people are always refused</span></span>
@@ -637,8 +764,66 @@
           <span class="txt"><span>Allow Hopper through Windows Firewall</span><span class="caption">Needed once per PC so others can reach it. Asks for administrator rights.</span></span>
           <button type="button" class="btn" disabled={firewallBusy} onclick={firewall}><Icon name="shield" /> Allow</button>
         </div>
+      {:else if current === 'office' && !isAdmin}
+        <div class="note"><Icon name="info" /> <span>The office is set up by its admin{app.office?.admins?.length ? ` (${app.office.admins.map((a) => app.personName(a)).join(', ')})` : ''}. This page shows what this PC uses; there is nothing to configure here.</span></div>
+        <div class="item">
+          <span class="txt">
+            <span>{app.office?.officeName || 'Office'}</span>
+            <span class="caption" class:warnText={!!officeInfo?.error}>
+              {#if !officeInfo}Loading…{:else if officeInfo.error}This PC can't read the office config at {officeInfo.path || officePath}{officeInfo.error === 'not-found' ? '' : ` (${officeInfo.error})`}{:else}Config loaded from {officeInfo.path}{/if}
+            </span>
+          </span>
+          <button type="button" class="btn" onclick={() => lanx.openList()}><Icon name="bell" /> Announcements</button>
+        </div>
+        <div class="item" data-join-state={joined ? 'joined' : 'none'}>
+          <span class="dot" class:on={joined}></span>
+          <span class="txt">
+            <span><b>{joined ? 'Joined' : 'Not joined'}</b>{#if joined}&nbsp;· key fingerprint <code class="key">{lanx.meta.fingerprint}</code>{/if}</span>
+            <span class="caption">
+              {#if lanx.meta.keySource === 'config'}Key read from the shared office config.
+              {:else if lanx.meta.keySource === 'override'}{s.officeJoined?.via === 'invite' ? `Joined from ${s.officeJoined.by || 'an admin'}'s invite` : 'Joined with a pasted key'}{s.officeJoined?.at ? ` on ${fmtDateFull(s.officeJoined.at)}` : ''}. Stored on this PC only.
+              {:else}This PC has no office key yet, so it can't share with colleagues. Join below, or ask the admin to invite this PC.{/if}
+            </span>
+          </span>
+          {#if lanx.meta.keySource === 'override'}<button type="button" class="btn subtle" onclick={forgetKey}>Forget key</button>{/if}
+        </div>
+
+        {#each lanx.invites as inv (inv.id)}
+          <div class="item invite">
+            <span class="txt">
+              <span><b>{inv.adminName}</b> ({inv.host}, {inv.address}) invites this PC to join <b>{inv.officeName}</b></span>
+              <span class="caption">Key fingerprint <code class="key">{inv.fingerprint}</code>{inv.haveKey ? ' · different from the key this PC uses' : ''}</span>
+            </span>
+            <span class="acts">
+              <button type="button" class="btn primary" onclick={() => lanx.acceptInvite(inv).then(loadOffice)}>{inv.haveKey ? 'Switch to it' : 'Join'}</button>
+              <button type="button" class="btn" onclick={() => lanx.ignoreInvite(inv)}>Ignore</button>
+            </span>
+          </div>
+        {/each}
+
+        <h3 class="subtitle">Join office</h3>
+        <label class="field">
+          <span>Office config file <span class="caption">(the admin's office.json on the server)</span></span>
+          <div class="row">
+            <input class="input" bind:value={officePath} spellcheck="false" onkeydown={enterTo(changeOfficePath)} />
+            <button type="button" class="btn" onclick={browseOffice} disabled={officeBusy}><Icon name="folderOpen" /> Browse</button>
+            <button type="button" class="btn" onclick={changeOfficePath} disabled={officeBusy || !officePath.trim()} title="Load the config from this path"><Icon name="refresh" /> Load</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Or paste the office key <span class="caption">(from the admin's announcement or message)</span></span>
+          <div class="row">
+            <input class="input mono" type="password" bind:value={joinKey} spellcheck="false" autocomplete="off" placeholder="64 hex characters" onkeydown={enterTo(joinByKey)} data-join-key />
+            <button type="button" class="btn primary" disabled={joinBusy || !joinFp} onclick={joinByKey} data-join-go><Icon name="lock" /> Join</button>
+          </div>
+        </label>
+        <div class="caption" class:warnText={!!joinKey.trim() && !joinFp}>
+          {#if !joinKey.trim()}The key is only used when the office config has none or can't be reached. It is stored on this PC.
+          {:else if joinFp}Fingerprint <code class="key">{joinFp}</code> · check it matches the one on the admin's Office page, then Join.
+          {:else}Not an office key: it must be hex characters only, 32 or more.{/if}
+        </div>
       {:else if current === 'office'}
-        <div class="note"><Icon name="info" /> Saved to the server: every Hopper in the office uses it.</div>
+        <div class="note"><Icon name="info" /> Saved to the server: every Hopper in the office uses it. You are an office admin.</div>
         <label class="field">
           <span>Office config file</span>
           <div class="row">
@@ -683,6 +868,74 @@
               <button type="button" class="btn" onclick={generateKey}><Icon name="lock" /> Generate</button>
             </span>
           </div>
+          {#if draftFp}
+            <div class="caption">Fingerprint <code class="key">{draftFp}</code> · every PC shows its own on the Office page; they match when the PC is on this key.{#if lanx.meta.keySource === 'override'} This PC is running on a key stored locally because the saved config has none.{/if}</div>
+          {/if}
+          <div class="item">
+            <span class="txt">
+              <span>Invite PCs on this network</span>
+              <span class="caption">
+                {#if inviteLeft}Inviting for {inviteLeft} s more. PCs without a key show a Join prompt with fingerprint <code class="key">{lanx.inviteStatus.fingerprint}</code>.
+                {:else}For 2 minutes, PCs that have no key are offered this office and join with one click. The key crosses the LAN unencrypted during that time.{/if}
+              </span>
+            </span>
+            <button type="button" class="btn" class:primary={!inviteLeft} disabled={!inviteLeft && (dirty || !draft.officeKey || !app.lanStatus?.ready)} title={dirty ? 'Save first' : !app.lanStatus?.ready ? 'LAN sharing must be ready' : ''} onclick={toggleInvite} data-invite-toggle>
+              <Icon name={inviteLeft ? 'stop' : 'people'} /> {inviteLeft ? 'Stop inviting' : 'Invite PCs'}
+            </button>
+          </div>
+          <div class="item">
+            <span class="txt">
+              <span>Move office config to…</span>
+              <span class="caption">Writes office.json and the announcements into a folder you pick, and leaves a pointer in the old file for the other PCs.</span>
+            </span>
+            <button type="button" class="btn" disabled={officeBusy} onclick={moveOffice}><Icon name="folderOpen" /> Move…</button>
+          </div>
+
+          <h3 class="subtitle">Admins and announcers</h3>
+          <label class="field">
+            <span>Admins <span class="caption">(Windows user names; may create the key and change everything on this page)</span></span>
+            <div class="chips">
+              {#each draft.admins ?? [] as u (u)}
+                <span class="chip">{app.personName(u)}{app.personName(u) !== u ? ` (${u})` : ''}<button type="button" aria-label={`Remove ${u}`} disabled={(draft.admins ?? []).length < 2} onclick={() => removeAdmin(u)}><Icon name="close" size={10} /></button></span>
+              {/each}
+              <input class="bare" list="hopper-people" bind:value={adminInput} placeholder="Add a user name and press Enter" spellcheck="false" onkeydown={enterTo(() => addUser('admins'))} />
+            </div>
+          </label>
+          <label class="field">
+            <span>Announcers <span class="caption">(besides admins, may post office announcements)</span></span>
+            <div class="chips">
+              {#each draft.announcers ?? [] as u (u)}
+                <span class="chip">{app.personName(u)}{app.personName(u) !== u ? ` (${u})` : ''}<button type="button" aria-label={`Remove ${u}`} onclick={() => (draft!.announcers = draft!.announcers.filter((x) => x !== u))}><Icon name="close" size={10} /></button></span>
+              {/each}
+              <input class="bare" list="hopper-people" bind:value={announcerInput} placeholder="Add a user name and press Enter" spellcheck="false" onkeydown={enterTo(() => addUser('announcers'))} />
+            </div>
+          </label>
+          <div class="row">
+            <button type="button" class="btn" onclick={() => lanx.compose()}><Icon name="bell" /> New announcement…</button>
+            <button type="button" class="btn subtle" onclick={() => lanx.openList()}>All announcements</button>
+          </div>
+
+          <h3 class="subtitle">Dexterity Share (client links)</h3>
+          <div class="caption">Staff create a download link for a client; the files stay on the office server. IT installs the server part once: see docs/DEXTERITY-SHARE-IT.md.</div>
+          {#if draft.publicShare}
+            <label class="check"><input type="checkbox" bind:checked={draft.publicShare.enabled} /> Let staff create client links</label>
+            <div class="grid2">
+              <label class="field"><span>Store folder <span class="caption">(empty = PublicShares beside office.json)</span></span>
+                <input class="input" bind:value={draft.publicShare.store} spellcheck="false" placeholder="PublicShares beside office.json" /></label>
+              <label class="field"><span>Default expiry</span>
+                <select class="input" bind:value={draft.publicShare.defaultDays}>
+                  {#each [1, 3, 7, 14, 30, 60, 90] as d (d)}<option value={d}>{d} day{d > 1 ? 's' : ''}</option>{/each}
+                </select></label>
+            </div>
+            <label class="field"><span>Client page address</span>
+              <input class="input" bind:value={draft.publicShare.pageUrl} spellcheck="false" /></label>
+            <div class="row">
+              <button type="button" class="btn" onclick={async () => { shareStatus = 'Checking…'; try { const r = await engine.call('pubshare.status'); shareStatus = !r.storeOk ? `Store folder not reachable: ${r.storeError ?? r.store}` : r.healthy ? 'Server is running and reachable from the internet.' : r.base ? `Store is fine, but the server did not answer: ${r.healthError ?? 'no reply'}` : 'Store is fine. The server part is not installed or has not started yet.' } catch (e) { shareStatus = String((e as Error).message) } }}><Icon name="refresh" /> Check server</button>
+              <span class="caption ellipsis" title={shareStatus}>{shareStatus}</span>
+            </div>
+          {:else}
+            <button type="button" class="btn" onclick={() => (draft.publicShare = { enabled: false, store: '', pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 })}>Set up Dexterity Share</button>
+          {/if}
 
           <h3 class="subtitle">Zoho Cliq bot</h3>
           <label class="check"><input type="checkbox" bind:checked={draft.cliq.enabled} /> Send a Cliq DM to each recipient when files are shared</label>
@@ -850,7 +1103,7 @@
         </div>
         <div class="item">
           <span class="txt"><span>Settings folder</span><span class="caption ellipsis">{app.info?.userData ?? ''}</span></span>
-          <button type="button" class="btn" disabled={!app.info?.userData} onclick={() => host.shell.open(app.info.userData)}><Icon name="folderOpen" /> Open</button>
+          <button type="button" class="btn" disabled={!app.info?.userData} onclick={() => { void app.active.navigate(app.info.userData); tryClose() }}><Icon name="folderOpen" /> Open</button>
         </div>
         <div class="item">
           <span class="txt"><span>Developer tools</span><span class="caption">Ctrl+Shift+F12</span></span>
@@ -892,7 +1145,7 @@
   </datalist>
 
   {#snippet footer()}
-    <span class="caption foot">{current === 'office' ? 'Office settings are shared and need Save to server.' : 'Changes apply immediately.'}</span>
+    <span class="caption foot">{current === 'office' ? (isAdmin ? 'Office settings are shared and need Save to server.' : 'Office settings are managed by the office admin.') : 'Changes apply immediately.'}</span>
     <button type="button" class="btn primary" onclick={tryClose}>Close</button>
   {/snippet}
 </Dialog>
@@ -1163,6 +1416,12 @@
   .status.ok {
     background: var(--layer-solid);
     border: 1px solid var(--stroke);
+  }
+  .item > .dot {
+    background: var(--warn);
+  }
+  .item > .dot.on {
+    background: var(--ok);
   }
   .status .dot {
     background: var(--warn);

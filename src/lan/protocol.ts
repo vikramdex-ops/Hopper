@@ -2,8 +2,9 @@
 // that can be interleaved with raw byte runs on the same socket.
 // Kept free of TS-only syntax (enums, parameter properties) so tests can load it with Node's
 // type stripping.
-import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, hkdfSync, timingSafeEqual } from 'node:crypto'
 import type { Duplex, Writable } from 'node:stream'
+import type { Announcement, ShareKind, ShareLink } from '@shared/types'
 
 export const DISCOVERY_PORT = 47820
 export const TRANSFER_PORT = 47821
@@ -46,6 +47,12 @@ export function officeKeyBytes(officeKey: string | undefined | null): Buffer | n
 
 function hkdf(key: Buffer, info: string) {
   return Buffer.from(hkdfSync('sha256', key, 'hopper-lan', info, 32))
+}
+
+/** First 8 hex of SHA-256 of the key: lets two people compare keys without showing them. '' for a bad key. */
+export function keyFingerprint(key: Buffer | string | null | undefined): string {
+  const b = typeof key === 'string' ? officeKeyBytes(key) : key
+  return b ? createHash('sha256').update(b).digest('hex').slice(0, 8) : ''
 }
 
 export const beaconKey = (key: Buffer) => hkdf(key, 'beacon-mac v1')
@@ -97,7 +104,127 @@ export function openBeacon(buf: Buffer, macKey: Buffer): Beacon | null {
 }
 
 // ---------------------------------------------------------------------------
+// Invites: an UNSIGNED datagram (a PC without the key cannot check a MAC) that carries the office
+// key in clear. Sent only while an admin has "Invite PCs" running; never applied without a click.
+
+export const INVITE_MS = 120_000
+export const INVITE_EVERY_MS = 4_000
+
+export interface Invite {
+  v: 1
+  id: string
+  officeName: string
+  adminUser: string
+  adminName: string
+  host: string
+  configPath: string
+  /** office key, lower-case hex */
+  key: string
+  /** sender clock, ms */
+  t: number
+}
+
+export function sealInvite(i: Invite): Buffer {
+  return Buffer.from(JSON.stringify({ hopper: 'invite', ...i }))
+}
+
+export function openInvite(buf: Buffer): Invite | null {
+  if (buf.length > MAX_BEACON) return null
+  let o: any
+  try {
+    o = JSON.parse(buf.toString('utf8'))
+  } catch {
+    return null
+  }
+  if (!o || o.hopper !== 'invite' || o.v !== 1 || typeof o.id !== 'string' || !/^[0-9a-f]{8,32}$/.test(o.id)) return null
+  if (typeof o.key !== 'string' || !officeKeyBytes(o.key) || o.key.length > 128) return null
+  if (typeof o.adminUser !== 'string' || !o.adminUser.trim()) return null
+  return {
+    v: 1,
+    id: o.id,
+    officeName: plain(o.officeName, 80) || 'Office',
+    adminUser: plain(o.adminUser, 64).toLowerCase(),
+    adminName: plain(o.adminName, 80) || plain(o.adminUser, 64),
+    host: plain(o.host, 64),
+    configPath: plain(o.configPath, 520),
+    key: o.key.toLowerCase(),
+    t: Number(o.t) || 0
+  }
+}
+
+/** One line of text from the wire: no control characters, trimmed, capped. */
+function plain(v: unknown, max: number) {
+  return String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max)
+}
+
+/** Multi-line text from the wire: keeps newlines and tabs only. */
+function prose(v: unknown, max: number) {
+  return String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, max)
+}
+
+// ---------------------------------------------------------------------------
+// Share kinds, links and announcements as they arrive from the wire or the office folder
+
+export const MAX_MESSAGE = 2000
+
+export function parseKind(k: unknown): ShareKind | null {
+  if (k === undefined || k === null || k === 'files') return 'files'
+  return k === 'message' || k === 'link' || k === 'request' ? k : null
+}
+
+/** A share id quoted as "in reply to", or undefined. */
+export function replyId(v: unknown): string | undefined {
+  return typeof v === 'string' && /^[\w-]{6,64}$/.test(v) ? v : undefined
+}
+
+const ABSOLUTE = /^(\\\\[^\\/:*?"<>|]+\\[^\\/:*?"<>|]+|[a-zA-Z]:\\)/
+
+/** A link must be an absolute Windows path (drive or UNC) with no control characters and no '..' part. */
+export function parseLink(l: any): ShareLink | null {
+  if (!l || typeof l.path !== 'string') return null
+  const path = l.path.trim()
+  if (!path || path.length > 1024 || /[\u0000-\u001f<>"|?*]/.test(path) || !ABSOLUTE.test(path)) return null
+  if (path.split('\\').some((p: string) => p === '..')) return null
+  return { path, dir: l.dir !== false }
+}
+
+export function cleanAnnouncement(raw: any): Announcement | null {
+  if (!raw || typeof raw.id !== 'string' || !/^[\w-]{6,64}$/.test(raw.id)) return null
+  const title = plain(raw.title, 120)
+  const by = plain(raw.by, 64).toLowerCase()
+  const at = Number(raw.at)
+  if (!title || !by || !Number.isFinite(at) || at <= 0) return null
+  const level = raw.level === 'important' || raw.level === 'urgent' ? raw.level : 'info'
+  const out: Announcement = { id: raw.id, title, body: prose(raw.body, 4000), level, at, by, byName: plain(raw.byName, 80) || by }
+  const host = plain(raw.host, 64)
+  if (host) out.host = host
+  const link = raw.path ? parseLink({ path: raw.path }) : null
+  if (link) out.path = link.path
+  const exp = Number(raw.expires)
+  if (Number.isFinite(exp) && exp > 0) out.expires = exp
+  if (raw.withdrawn === true) out.withdrawn = true
+  return out
+}
+
+/** Announcements shown as current: not withdrawn and not past their expiry. */
+export const announcementLive = (a: Announcement, now = Date.now()) => !a.withdrawn && !(a.expires && a.expires <= now)
+
+/** Newest first, one per id (a withdrawn copy wins over the original), capped. */
+export function mergeAnnouncements(lists: Announcement[][], cap = 200): Announcement[] {
+  const byId = new Map<string, Announcement>()
+  for (const list of lists) {
+    for (const a of list) {
+      const prev = byId.get(a.id)
+      if (!prev || (a.withdrawn && !prev.withdrawn)) byId.set(a.id, a)
+
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.at - a.at).slice(0, cap)
+}
+
+// ---------------------------------------------------------------------------
 // Ranges and names
+
 
 /** Deterministic split shared by sender and receiver: [start, end) pairs. */
 export function splitRanges(size: number): [number, number][] {

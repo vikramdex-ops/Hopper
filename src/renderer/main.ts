@@ -4,6 +4,7 @@ import App from './App.svelte'
 import { app } from './lib/app.svelte'
 import { engine } from './lib/api'
 import { dialogs } from './lib/commands'
+import { formatPath } from './lib/pathcopy'
 
 const density = (() => {
   try {
@@ -18,5 +19,6 @@ if (density) document.documentElement.dataset.density = density
 ;(window as any).__hopper = app
 ;(app as any).__engine = (m: string, ...a: unknown[]) => engine.call(m, ...a)
 ;(app as any).__dialogs = dialogs
+;(app as any).__formatPath = formatPath
 
 mount(App, { target: document.getElementById('app')! })

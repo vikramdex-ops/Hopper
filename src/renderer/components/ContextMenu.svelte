@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { app, type MenuItem } from '../lib/app.svelte'
-  import { host } from '../lib/api'
   import Icon from './Icon.svelte'
 
   let el: HTMLDivElement | undefined = $state()
@@ -10,13 +9,7 @@
   let subEl: HTMLDivElement | undefined = $state()
   let hot = $state(-1)
 
-  const items = $derived(app.menu ? (app.menu.native ? [...app.menu.items, { separator: true }, { label: 'Show more options', icon: 'more', keys: 'Shift+F10', run: native }] : app.menu.items) : [])
-
-  function native() {
-    const m = app.menu
-    if (!m?.native) return
-    void host.shell.contextMenu(m.native, Math.round(window.screenX + m.x), Math.round(window.screenY + m.y))
-  }
+  const items = $derived(app.menu ? app.menu.items : [])
 
   $effect(() => {
     if (!app.menu) return

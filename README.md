@@ -48,6 +48,17 @@ wonder whether a copy over the network really finished.
 </tr>
 </table>
 
+## What's new in 2.1
+
+- **Dexterity Share** — client download links served from the office server, with expiry,
+  password and a branded page ([staff guide](docs/DEXTERITY-SHARE.md), [IT guide](docs/DEXTERITY-SHARE-IT.md)).
+- **Person panel, folder links and announcements** over the office network.
+- **Path Copy** menu (UNC, Internet and Samba forms) and Hopper's own Properties, Open with and
+  folder picker — nothing is handed to Windows Explorer.
+- **Viewers** for PDF (Ctrl+wheel zoom), Excel, Word, DWG saved previews and MicroStation V7
+  drawings, with no design software installed.
+- Only the office admin can create the office key; other PCs join.
+
 ## What's new in 2.0
 
 Hopper 2.0 is a ground-up rebuild of the earlier internal *Xplorer² Modern* 1.x, renamed

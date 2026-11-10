@@ -8,10 +8,14 @@ import { finished } from 'node:stream/promises'
 import type { InboxItem } from '@shared/types'
 import {
   FrameConn,
+  MAX_MESSAGE,
+  parseKind,
+  parseLink,
   PROTOCOL_VERSION,
   PSK_CIPHERS,
   pskFor,
   RawError,
+  replyId,
   safeRel,
   sanitizeName,
   splitRanges,
@@ -19,7 +23,7 @@ import {
   TRANSFER_PORT,
   TRANSFER_PORT_LAST
 } from './protocol'
-import type { Admit, LanCtx, OnReceived } from './types'
+import type { Admit, LanCtx, OnReceived, OnSmall } from './types'
 import { CHUNK, freeName, hashFile, makeFreshDir, readJson, saver, writeJsonAtomic } from './util'
 
 const HELLO_MS = 10_000
@@ -58,6 +62,7 @@ interface RecvSession {
   createdAt: number
   files: RecvFile[]
   bytes: number
+  replyTo?: string
   control?: FrameConn
   idleTimer?: NodeJS.Timeout
   finished: boolean
@@ -73,6 +78,7 @@ interface Persisted {
   token: string
   createdAt: number
   files: { rel: string; size: number; mtime: number; done: number[]; verified: boolean; sha?: string }[]
+  replyTo?: string
 }
 
 export class TransferServer {
@@ -88,7 +94,8 @@ export class TransferServer {
   constructor(
     private ctx: LanCtx,
     private admit: Admit,
-    private onReceived: OnReceived
+    private onReceived: OnReceived,
+    private onSmall: OnSmall
   ) {
     this.partialFile = join(ctx.dataDir, 'lan-partial.json')
     this.partialSaver = saver(2000, () => writeJsonAtomic(this.partialFile, this.persisted))
@@ -175,11 +182,60 @@ export class TransferServer {
       }
       if (hello.role === 'control') await this.control(conn, identity, hello)
       else if (hello.role === 'data') await this.data(conn, identity, hello)
+      else if (hello.role === 'small') await this.small(conn, identity, hello)
       else sock.destroy()
     } catch (e: any) {
       if (!/closed|ended|ECONNRESET/.test(String(e?.message))) this.ctx.log('recv', e?.message ?? e)
       sock.destroy()
     }
+  }
+
+  /** An announcement or acknowledgement: one frame in, 'ok' or 'err' out. */
+  private async small(conn: FrameConn, identity: string, hello: any) {
+    const frame = await conn.readFrame(HELLO_MS)
+    let verdict: true | string
+    try {
+      verdict = this.onSmall(identity, frame, String(hello.fromName || identity).slice(0, 80))
+    } catch (e: any) {
+      verdict = String(e?.message ?? e)
+    }
+    conn.send(verdict === true ? { t: 'ok' } : { t: 'err', code: verdict })
+    conn.sock.end()
+  }
+
+  /** A share with no bytes (message, folder link, request): admit, put it in the Inbox, done. */
+  private async note(conn: FrameConn, identity: string, hello: any, offer: any, kind: 'message' | 'link' | 'request') {
+    const shareId: string = offer.shareId
+    const message = String(offer.message ?? '').slice(0, MAX_MESSAGE)
+    const link = kind === 'link' ? parseLink(offer.link) : null
+    if ((kind === 'link' && !link) || (kind !== 'link' && !message.trim()) || (Array.isArray(offer.files) && offer.files.length)) {
+      conn.send({ t: 'decline', reason: 'bad-offer' })
+      return conn.sock.end()
+    }
+    const fromName = String(hello.fromName || identity).slice(0, 80)
+    const verdict = await this.admit({ from: identity, fromName, files: 0, bytes: 0, message, via: 'direct', kind })
+    if (verdict !== true) {
+      conn.send({ t: 'decline', reason: verdict })
+      return conn.sock.end()
+    }
+    this.completed.set(shareId, { from: identity, folder: '', at: Date.now() })
+    const item: InboxItem = {
+      id: shareId,
+      from: identity,
+      fromName,
+      at: Date.now(),
+      message: message || undefined,
+      folder: '',
+      files: 0,
+      bytes: 0,
+      via: 'direct',
+      kind,
+      ...(link ? { link } : {}),
+      ...(replyId(offer.replyTo) ? { replyTo: replyId(offer.replyTo) } : {})
+    }
+    this.onReceived(item)
+    conn.send({ t: 'complete', folder: '' })
+    conn.sock.end()
   }
 
   private async control(conn: FrameConn, identity: string, hello: any) {
@@ -194,6 +250,12 @@ export class TransferServer {
       conn.send({ t: 'complete', folder: done.folder })
       return conn.sock.end()
     }
+    const kind = parseKind(offer.kind)
+    if (!kind) {
+      conn.send({ t: 'decline', reason: 'bad-offer' })
+      return conn.sock.end()
+    }
+    if (kind !== 'files') return this.note(conn, identity, hello, offer, kind)
     let s = this.sessions.get(shareId) ?? this.restore(shareId)
     if (s && s.from !== identity) {
       conn.send({ t: 'decline', reason: 'bad-share' })
@@ -240,6 +302,7 @@ export class TransferServer {
           failures: 0
         })),
         bytes,
+        replyTo: replyId(offer.replyTo),
         finished: false
       }
       this.sessions.set(shareId, s)
@@ -401,7 +464,9 @@ export class TransferServer {
       folder: s.folder,
       files: s.files.length,
       bytes: s.bytes,
-      via: 'direct'
+      via: 'direct',
+      kind: 'files',
+      ...(s.replyTo ? { replyTo: s.replyTo } : {})
     }
     this.onReceived(item)
   }
@@ -445,7 +510,8 @@ export class TransferServer {
       folder: s.folder,
       token: s.token,
       createdAt: s.createdAt,
-      files: s.files.map((f) => ({ rel: f.rel, size: f.size, mtime: f.mtime, done: f.ranges.map((r) => r.done), verified: f.verified, sha: f.sha }))
+      files: s.files.map((f) => ({ rel: f.rel, size: f.size, mtime: f.mtime, done: f.ranges.map((r) => r.done), verified: f.verified, sha: f.sha })),
+      ...(s.replyTo ? { replyTo: s.replyTo } : {})
     }
     this.partialSaver.schedule()
   }
@@ -462,6 +528,7 @@ export class TransferServer {
       token: p.token,
       createdAt: p.createdAt,
       bytes: p.files.reduce((a, f) => a + f.size, 0),
+      replyTo: p.replyTo,
       finished: false,
       files: p.files.map((f) => ({
         rel: f.rel,
@@ -480,6 +547,7 @@ export class TransferServer {
 }
 
 function parseFiles(raw: unknown) {
+
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 200_000) return null
   const out: { rel: string; size: number; mtime: number }[] = []
   const seen = new Set<string>()

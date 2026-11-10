@@ -4,10 +4,12 @@
   import { engine } from '../lib/api'
   import { app } from '../lib/app.svelte'
   import { isArchivePath, splitArchive } from '../lib/pane.svelte'
-  import { kindOf, KIND_COLOR, KIND_ICON } from '../lib/filetypes'
+  import { kindOf, richMode, KIND_COLOR, KIND_ICON, type RichMode } from '../lib/filetypes'
   import { fmtSize, plural } from '../lib/format'
-  import { renderMarkdown, parseCsv } from '../lib/markdown'
+  import { renderMarkdown } from '../lib/markdown'
   import Icon from './Icon.svelte'
+  import RichPreview from './viewers/RichPreview.svelte'
+  import { docViewer } from '../lib/docviewer.svelte'
 
   let { entry, large = false }: { entry: Entry; large?: boolean } = $props()
 
@@ -16,10 +18,9 @@
     | { t: 'loading' }
     | { t: 'image'; src: string; full: string }
     | { t: 'media'; src: string; video: boolean }
-    | { t: 'pdf'; pages: number }
+    | { t: 'rich'; mode: RichMode }
     | { t: 'text'; text: string; truncated: boolean; mono: boolean }
     | { t: 'md'; html: string }
-    | { t: 'csv'; rows: string[][]; truncated: boolean }
     | { t: 'archive'; items: ArchiveEntry[]; total: number }
     | { t: 'folder'; dirs: number; files: number; bytes: number }
     | { t: 'font'; family: string }
@@ -28,11 +29,6 @@
 
   let st = $state<State>({ t: 'none' })
   let token = 0
-  let canvas: HTMLCanvasElement | undefined = $state()
-  let pdfDoc: any = null
-  let pdfClose: (() => void) | null = null
-  let renderTask: any = null
-  let page = $state(1)
   let fontFace: FontFace | null = null
   let media: HTMLMediaElement | undefined = $state()
 
@@ -47,11 +43,6 @@
       media.removeAttribute('src')
       media.load()
     }
-    renderTask?.cancel()
-    renderTask = null
-    pdfClose?.()
-    pdfClose = null
-    pdfDoc = null
     if (fontFace) {
       document.fonts.delete(fontFace)
       fontFace = null
@@ -61,7 +52,6 @@
   async function render(e: Entry) {
     const my = ++token
     cleanup()
-    page = 1
     if (isArchivePath(e.path)) {
       st = { t: 'none' }
       return
@@ -79,14 +69,14 @@
         st = { t: 'image', src: e.ext === 'svg' || e.ext === 'gif' ? fileUrl(e.path) : thumbUrl(e, large ? 1024 : 512), full: fileUrl(e.path) }
       } else if (k === 'video' || k === 'audio') {
         st = { t: 'media', src: fileUrl(e.path), video: k === 'video' }
-      } else if (k === 'pdf') {
-        st = { t: 'loading' }
-        const pdfjs = await import('../lib/pdf')
-        const { doc, close } = await pdfjs.open(fileUrl(e.path))
-        if (my !== token) return close()
-        pdfDoc = doc
-        pdfClose = close
-        st = { t: 'pdf', pages: doc.numPages }
+      } else if (richMode(e.ext)) {
+        // PDF, spreadsheets, Word and drawings have their own interactive viewers.
+        st = { t: 'rich', mode: richMode(e.ext)! }
+      } else if (k === 'file' && e.size >= 1536 && (await sniffDrawing(e, my))) {
+        // Unknown extension, but the content is a drawing (border and sheet files often are).
+        st = { t: 'rich', mode: 'cad' }
+      } else if (my !== token) {
+        return
       } else if (k === 'font') {
         const family = `pv-${my}`
         fontFace = new FontFace(family, `url("${fileUrl(e.path)}")`)
@@ -105,7 +95,6 @@
         if (my !== token) return
         if (r.binary) st = { t: 'thumb', src: thumbUrl(e, 256) }
         else if (k === 'markdown') st = { t: 'md', html: renderMarkdown(r.text) }
-        else if (e.ext === 'csv' || e.ext === 'tsv') st = { t: 'csv', rows: parseCsv(r.text, e.ext === 'tsv' ? '\t' : r.text.split('\n', 1)[0].includes(';') && !r.text.split('\n', 1)[0].includes(',') ? ';' : ','), truncated: r.truncated }
         else st = { t: 'text', text: r.text, truncated: r.truncated, mono: k !== 'text' }
       } else {
         st = { t: 'thumb', src: thumbUrl(e, large ? 768 : 384) }
@@ -115,42 +104,17 @@
     }
   }
 
-  let drawSeq = 0
-  async function drawPdf(my: number) {
-    if (!pdfDoc || !canvas || my !== token) return
-    const seq = ++drawSeq
-    // pdf.js cancels asynchronously; the canvas is free only once the old task has settled.
-    const prev = renderTask
-    prev?.cancel()
-    await prev?.promise.catch(() => {})
-    if (seq !== drawSeq || !pdfDoc || !canvas) return
-    const pg = await pdfDoc.getPage(page)
-    if (seq !== drawSeq || !canvas) return
-    const vp0 = pg.getViewport({ scale: 1 })
-    const width = canvas.parentElement?.clientWidth ?? 300
-    const scale = (width / vp0.width) * window.devicePixelRatio
-    const vp = pg.getViewport({ scale })
-    canvas.width = vp.width
-    canvas.height = vp.height
-    canvas.style.width = `${vp.width / window.devicePixelRatio}px`
-    const task = pg.render({ canvasContext: canvas.getContext('2d')!, viewport: vp, canvas })
-    renderTask = task
+  async function sniffDrawing(e: Entry, my: number) {
     try {
-      await task.promise
+      const kind = await engine.call<string>('preview.sniff', e.path, large ? 'quicklook-sniff' : 'inspector-sniff')
+      return my === token && (kind === 'dgn7' || kind === 'dwg')
     } catch {
-      /* cancelled */
-    } finally {
-      if (renderTask === task) renderTask = null
-      pg.cleanup()
+      return false
     }
   }
 
   $effect(() => {
     void render(entry)
-  })
-  $effect(() => {
-    void page
-    if (st.t === 'pdf') void drawPdf(token)
   })
   onDestroy(() => {
     token++
@@ -173,29 +137,21 @@
       <div class="glyph" style:color={KIND_COLOR.audio}><Icon name="audio" size={56} /></div>
       <audio bind:this={media} src={st.src} controls preload="metadata"></audio>
     {/if}
-  {:else if st.t === 'pdf'}
-    <div class="pdf"><canvas bind:this={canvas}></canvas></div>
-    {#if st.pages > 1}
-      <div class="pager">
-        <button class="btn subtle icon sm" disabled={page <= 1} onclick={() => page--} aria-label="Previous page"><Icon name="chevronLeft" /></button>
-        <span class="caption">Page {page} of {st.pages}</span>
-        <button class="btn subtle icon sm" disabled={page >= st.pages} onclick={() => page++} aria-label="Next page"><Icon name="chevronRight" /></button>
-      </div>
-    {/if}
+  {:else if st.t === 'rich'}
+    <div class="richbox">
+      {#if docViewer.entry?.path === entry.path}
+        <!-- The full-window viewer has this file open; don't keep a second copy working behind it. -->
+        <div class="glyph" style:color={KIND_COLOR[k]}><Icon name={KIND_ICON[k]} size={56} /></div>
+        <div class="caption center">Open in the viewer</div>
+      {:else}
+        {#key entry.path}<RichPreview {entry} mode={st.mode} size={large ? 'large' : 'side'} />{/key}
+      {/if}
+    </div>
   {:else if st.t === 'text'}
     <pre class="text" class:mono={st.mono}>{st.text}</pre>
     {#if st.truncated}<div class="caption more">Showing the first 256 KB</div>{/if}
   {:else if st.t === 'md'}
     <div class="md">{@html st.html}</div>
-  {:else if st.t === 'csv'}
-    <div class="csv">
-      <table><tbody>
-        {#each st.rows as row, i (i)}
-          <tr class:h={i === 0}>{#each row as c, j (j)}<td>{c}</td>{/each}</tr>
-        {/each}
-      </tbody></table>
-    </div>
-    <div class="caption more">First {st.rows.length} rows{st.truncated ? ' of a larger file' : ''}</div>
   {:else if st.t === 'archive'}
     <div class="arch">
       <div class="caption">{plural(st.total, 'item')} · {fmtSize(st.items.reduce((a, x) => a + x.size, 0))} unpacked</div>
@@ -262,26 +218,16 @@
   audio {
     width: 100%;
   }
-  .pdf {
-    border-radius: var(--r-md);
-    overflow: hidden;
-    background: white;
-    box-shadow: var(--shadow-card);
-    max-height: 70vh;
-    overflow-y: auto;
+  .richbox {
+    height: clamp(300px, 58vh, 760px);
+    min-width: 0;
   }
-  .pdf canvas {
-    display: block;
-  }
-  .pager {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+  .large .richbox {
+    height: calc(88vh - 128px);
+    min-height: 260px;
   }
   .text,
   .md,
-  .csv,
   .arch {
     max-height: 420px;
     overflow: auto;
@@ -294,7 +240,6 @@
   }
   .large .text,
   .large .md,
-  .large .csv,
   .large .arch {
     max-height: 70vh;
   }
@@ -329,19 +274,6 @@
   }
   .md :global(a) {
     color: var(--accent);
-  }
-  .csv table {
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-  .csv td {
-    border: 1px solid var(--stroke-2);
-    padding: 2px 6px;
-    white-space: nowrap;
-  }
-  .csv tr.h td {
-    font-weight: 600;
-    background: var(--stroke);
   }
   .ai {
     display: flex;

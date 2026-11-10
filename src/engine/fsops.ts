@@ -228,13 +228,14 @@ export function fsHandlers(ctx: EngineCtx) {
           .on('error', reject)
       }),
     /** Recursive size; emits 'size' {path, bytes, files, dirs, done} as it goes. */
-    'fs.size': async (paths: string[], token: string) => {
+    'fs.size': async (paths: string[], token: string, cluster = 0) => {
       const ac = new AbortController()
       sizeJobs.set(token, ac)
       try {
         await Promise.all(
           paths.map(async (root) => {
             let bytes = 0
+            let disk = 0
             let files = 0
             let dirs = 0
             let last = 0
@@ -243,14 +244,16 @@ export function fsHandlers(ctx: EngineCtx) {
               else {
                 files++
                 bytes += e.size
+                // size on disk: whole clusters (an estimate; compressed and sparse files use less)
+                if (cluster) disk += Math.ceil(e.size / cluster) * cluster
               }
               const now = Date.now()
               if (now - last > 250) {
                 last = now
-                ctx.emit('size', { token, path: root, bytes, files, dirs, done: false })
+                ctx.emit('size', { token, path: root, bytes, disk, files, dirs, done: false })
               }
             }, { signal: ac.signal })
-            ctx.emit('size', { token, path: root, bytes, files, dirs, done: !ac.signal.aborted })
+            ctx.emit('size', { token, path: root, bytes, disk, files, dirs, done: !ac.signal.aborted })
           })
         )
       } finally {

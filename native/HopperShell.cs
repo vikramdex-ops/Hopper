@@ -95,22 +95,17 @@ namespace Hopper
                     object r = null;
                     ui.Invoke(delegate { r = Clip.Read(); });
                     return Json.Serialize(r);
-                case "properties":
-                    ui.Invoke(delegate { ShellUi.Properties(StrList(a, "paths")); });
+                case "props": return Json.Serialize(Props.Get(StrList(a, "paths")));
+                case "setAttrs": return Json.Serialize(Props.SetAttrs(StrList(a, "paths"), Int(a, "set"), Int(a, "clear")));
+                case "cluster": return Props.Cluster(Str(a, "path")).ToString();
+                case "shares": return Json.Serialize(Props.Shares());
+                case "openWithList": return Json.Serialize(OpenWith.List(Str(a, "path")));
+                case "openWithInvoke":
+                    ui.Invoke(delegate { OpenWith.Invoke(Str(a, "path"), Str(a, "name")); });
                     return "true";
-                case "openWith":
-                    ui.Invoke(delegate { ShellUi.OpenWith(Str(a, "path")); });
-                    return "true";
-                case "contextMenu":
-                    string chosen = null;
-                    ui.Invoke(delegate
-                    {
-                        chosen = ShellMenu.Show(StrList(a, "paths"), Int(a, "x"), Int(a, "y"), (long)Num(a, "hwnd"));
-                    });
-                    return Json.Serialize(chosen);
                 case "recycleList": return Json.Serialize(Recycle.List());
                 case "recycleRestore": return Json.Serialize(Recycle.Restore(StrList(a, "paths")));
-                default: throw new Exception("unknown command " + cmd);
+                default: return PreviewTools.Dispatch(cmd, a); // preview helpers live in PreviewTools.cs
             }
         }
 
@@ -414,213 +409,6 @@ namespace Hopper
     }
 
     // -----------------------------------------------------------------------
-    // Shell dialogs
-
-    static class ShellUi
-    {
-        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-        static extern bool SHObjectProperties(IntPtr hwnd, int shopObjectType, string pszObjectName, string pszPropertyPage);
-        [DllImport("shell32.dll")]
-        static extern int SHMultiFileProperties(System.Runtime.InteropServices.ComTypes.IDataObject pdtobj, int dwFlags);
-        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-        static extern int SHOpenWithDialog(IntPtr hwnd, ref OPENASINFO info);
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        struct OPENASINFO { public string pcszFile; public string pcszClass; public int oaifInFlags; }
-
-        public static void Properties(List<string> paths)
-        {
-            if (paths.Count == 0) return;
-            if (paths.Count == 1) { SHObjectProperties(IntPtr.Zero, 2 /* SHOP_FILEPATH */, paths[0], null); return; }
-            var files = new StringCollection();
-            foreach (var p in paths) files.Add(p);
-            var data = new DataObject();
-            data.SetFileDropList(files);
-            SHMultiFileProperties((System.Runtime.InteropServices.ComTypes.IDataObject)data, 0);
-        }
-
-        public static void OpenWith(string path)
-        {
-            var info = new OPENASINFO { pcszFile = path, oaifInFlags = 0x1 | 0x4 | 0x8 /* ALLOW_REGISTRATION | REGISTER_EXT | EXEC */ };
-            SHOpenWithDialog(IntPtr.Zero, ref info);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // The real Explorer context menu (7-Zip, WinRAR, Send to, Open with…)
-
-    static class ShellMenu
-    {
-        [ComImport, Guid("000214E6-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        interface IShellFolder
-        {
-            void ParseDisplayName(IntPtr hwnd, IntPtr pbc, [MarshalAs(UnmanagedType.LPWStr)] string name, out uint eaten, out IntPtr pidl, ref uint attrs);
-            void EnumObjects(IntPtr hwnd, int flags, out IntPtr enumIDList);
-            void BindToObject(IntPtr pidl, IntPtr pbc, [In] ref Guid riid, out IntPtr ppv);
-            void BindToStorage(IntPtr pidl, IntPtr pbc, [In] ref Guid riid, out IntPtr ppv);
-            [PreserveSig] int CompareIDs(IntPtr lParam, IntPtr pidl1, IntPtr pidl2);
-            void CreateViewObject(IntPtr hwnd, [In] ref Guid riid, out IntPtr ppv);
-            void GetAttributesOf(uint cidl, [MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl, ref uint rgfInOut);
-            void GetUIObjectOf(IntPtr hwnd, uint cidl, [MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl, [In] ref Guid riid, IntPtr rgfReserved, out IntPtr ppv);
-            void GetDisplayNameOf(IntPtr pidl, uint flags, IntPtr name);
-            void SetNameOf(IntPtr hwnd, IntPtr pidl, [MarshalAs(UnmanagedType.LPWStr)] string name, uint flags, out IntPtr ppidlOut);
-        }
-
-        [ComImport, Guid("000214e4-0000-0000-c000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        interface IContextMenu
-        {
-            [PreserveSig] int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-            [PreserveSig] int InvokeCommand(ref CMINVOKECOMMANDINFOEX info);
-            [PreserveSig] int GetCommandString(UIntPtr idcmd, uint uflags, IntPtr reserved, [MarshalAs(UnmanagedType.LPStr)] StringBuilder commandstring, int cch);
-        }
-
-        [ComImport, Guid("000214f4-0000-0000-c000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        interface IContextMenu2
-        {
-            [PreserveSig] int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-            [PreserveSig] int InvokeCommand(ref CMINVOKECOMMANDINFOEX info);
-            [PreserveSig] int GetCommandString(UIntPtr idcmd, uint uflags, IntPtr reserved, [MarshalAs(UnmanagedType.LPStr)] StringBuilder commandstring, int cch);
-            [PreserveSig] int HandleMenuMsg(int uMsg, IntPtr wParam, IntPtr lParam);
-        }
-
-        [ComImport, Guid("bcfce0a0-ec17-11d0-8d10-00a0c90f2719"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        interface IContextMenu3
-        {
-            [PreserveSig] int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-            [PreserveSig] int InvokeCommand(ref CMINVOKECOMMANDINFOEX info);
-            [PreserveSig] int GetCommandString(UIntPtr idcmd, uint uflags, IntPtr reserved, [MarshalAs(UnmanagedType.LPStr)] StringBuilder commandstring, int cch);
-            [PreserveSig] int HandleMenuMsg(int uMsg, IntPtr wParam, IntPtr lParam);
-            [PreserveSig] int HandleMenuMsg2(int uMsg, IntPtr wParam, IntPtr lParam, out IntPtr result);
-        }
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        struct CMINVOKECOMMANDINFOEX
-        {
-            public int cbSize;
-            public int fMask;
-            public IntPtr hwnd;
-            public IntPtr lpVerb;
-            [MarshalAs(UnmanagedType.LPStr)] public string lpParameters;
-            [MarshalAs(UnmanagedType.LPStr)] public string lpDirectory;
-            public int nShow;
-            public int dwHotKey;
-            public IntPtr hIcon;
-            [MarshalAs(UnmanagedType.LPStr)] public string lpTitle;
-            public IntPtr lpVerbW;
-            public string lpParametersW;
-            public string lpDirectoryW;
-            public string lpTitleW;
-            public POINT ptInvoke;
-        }
-
-        [StructLayout(LayoutKind.Sequential)] struct POINT { public int x; public int y; }
-
-        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-        static extern int SHParseDisplayName(string name, IntPtr pbc, out IntPtr pidl, uint sfgaoIn, out uint psfgaoOut);
-        [DllImport("shell32.dll")]
-        static extern int SHBindToParent(IntPtr pidl, [In] ref Guid riid, out IntPtr ppv, out IntPtr ppidlLast);
-        [DllImport("user32.dll")] static extern IntPtr CreatePopupMenu();
-        [DllImport("user32.dll")] static extern bool DestroyMenu(IntPtr hMenu);
-        [DllImport("user32.dll")] static extern int TrackPopupMenuEx(IntPtr hmenu, uint flags, int x, int y, IntPtr hwnd, IntPtr lptpm);
-        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetMenuString(IntPtr hMenu, uint uIDItem, StringBuilder lpString, int nMaxCount, uint uFlag);
-        [DllImport("ole32.dll")] static extern void CoTaskMemFree(IntPtr pv);
-
-        static IContextMenu2 cm2;
-        static IContextMenu3 cm3;
-
-        class Hook : NativeWindow
-        {
-            protected override void WndProc(ref Message m)
-            {
-                const int WM_INITMENUPOPUP = 0x117, WM_DRAWITEM = 0x2B, WM_MEASUREITEM = 0x2C, WM_MENUCHAR = 0x120;
-                if (cm3 != null && (m.Msg == WM_INITMENUPOPUP || m.Msg == WM_DRAWITEM || m.Msg == WM_MEASUREITEM || m.Msg == WM_MENUCHAR))
-                {
-                    IntPtr res;
-                    if (cm3.HandleMenuMsg2(m.Msg, m.WParam, m.LParam, out res) == 0) { m.Result = res; return; }
-                }
-                else if (cm2 != null && (m.Msg == WM_INITMENUPOPUP || m.Msg == WM_DRAWITEM || m.Msg == WM_MEASUREITEM))
-                {
-                    if (cm2.HandleMenuMsg(m.Msg, m.WParam, m.LParam) == 0) { m.Result = IntPtr.Zero; return; }
-                }
-                base.WndProc(ref m);
-            }
-        }
-
-        /// <summary>Shows the native menu for items that share one parent folder; returns the verb run, or null.</summary>
-        public static string Show(List<string> paths, int x, int y, long ownerHwnd)
-        {
-            if (paths.Count == 0) return null;
-            var pidls = new List<IntPtr>();
-            IntPtr parentPtr = IntPtr.Zero, menu = IntPtr.Zero, cmPtr = IntPtr.Zero;
-            var hook = new Hook();
-            try
-            {
-                IntPtr full;
-                uint dummy;
-                if (SHParseDisplayName(paths[0], IntPtr.Zero, out full, 0, out dummy) != 0) throw new Exception("cannot parse " + paths[0]);
-                pidls.Add(full);
-                Guid iidShellFolder = typeof(IShellFolder).GUID;
-                IntPtr last;
-                if (SHBindToParent(full, ref iidShellFolder, out parentPtr, out last) != 0) throw new Exception("cannot bind parent");
-                var parent = (IShellFolder)Marshal.GetObjectForIUnknown(parentPtr);
-                var children = new List<IntPtr> { last };
-                for (int i = 1; i < paths.Count; i++)
-                {
-                    IntPtr p;
-                    if (SHParseDisplayName(paths[i], IntPtr.Zero, out p, 0, out dummy) != 0) continue;
-                    pidls.Add(p);
-                    IntPtr childParent, childLast;
-                    if (SHBindToParent(p, ref iidShellFolder, out childParent, out childLast) == 0)
-                    {
-                        Marshal.Release(childParent);
-                        children.Add(childLast);
-                    }
-                }
-                Guid iidCm = typeof(IContextMenu).GUID;
-                parent.GetUIObjectOf(IntPtr.Zero, (uint)children.Count, children.ToArray(), ref iidCm, IntPtr.Zero, out cmPtr);
-                var cm = (IContextMenu)Marshal.GetObjectForIUnknown(cmPtr);
-                cm2 = cm as IContextMenu2;
-                cm3 = cm as IContextMenu3;
-
-                menu = CreatePopupMenu();
-                const uint CMF_NORMAL = 0, CMF_EXTENDEDVERBS = 0x100;
-                bool shift = (Control.ModifierKeys & Keys.Shift) != 0;
-                cm.QueryContextMenu(menu, 0, 1, 0x7FFF, CMF_NORMAL | (shift ? CMF_EXTENDEDVERBS : 0));
-
-                var host = Application.OpenForms[0];
-                hook.AssignHandle(host.Handle);
-                SetForegroundWindow(host.Handle);
-                const uint TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 0x2;
-                int cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, host.Handle, IntPtr.Zero);
-                if (cmd <= 0) return null;
-
-                var verb = new StringBuilder(256);
-                cm.GetCommandString((UIntPtr)(uint)(cmd - 1), 0 /* GCS_VERBA */, IntPtr.Zero, verb, verb.Capacity);
-                var info = new CMINVOKECOMMANDINFOEX();
-                info.cbSize = Marshal.SizeOf(typeof(CMINVOKECOMMANDINFOEX));
-                info.fMask = 0x4000 /* CMIC_MASK_UNICODE */ | 0x20000000 /* PTINVOKE */;
-                info.hwnd = ownerHwnd != 0 ? new IntPtr(ownerHwnd) : host.Handle;
-                info.lpVerb = (IntPtr)(cmd - 1);
-                info.lpVerbW = (IntPtr)(cmd - 1);
-                info.nShow = 1;
-                info.ptInvoke = new POINT { x = x, y = y };
-                cm.InvokeCommand(ref info);
-                return verb.Length > 0 ? verb.ToString() : "cmd:" + (cmd - 1);
-            }
-            finally
-            {
-                hook.ReleaseHandle();
-                cm2 = null; cm3 = null;
-                if (menu != IntPtr.Zero) DestroyMenu(menu);
-                if (cmPtr != IntPtr.Zero) Marshal.Release(cmPtr);
-                if (parentPtr != IntPtr.Zero) Marshal.Release(parentPtr);
-                foreach (var p in pidls) CoTaskMemFree(p);
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // Recycle Bin: list and restore by parsing $I records (language independent).
 
     static class Recycle
@@ -705,6 +493,244 @@ namespace Hopper
             var d = new Dictionary<string, object>();
             d["restored"] = restored; d["failed"] = failed;
             return d;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Properties for Hopper's own Properties window (no Explorer dialogs)
+
+    static class Props
+    {
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint GetCompressedFileSizeW(string name, out uint high);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool GetDiskFreeSpaceW(string root, out uint sectorsPerCluster, out uint bytesPerSector, out uint freeClusters, out uint totalClusters);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool SetFileAttributesW(string name, uint attrs);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint GetFileAttributesW(string name);
+
+        public static long Cluster(string path)
+        {
+            try
+            {
+                uint spc, bps, free, total;
+                if (GetDiskFreeSpaceW(Path.GetPathRoot(path), out spc, out bps, out free, out total)) return (long)spc * bps;
+            }
+            catch { }
+            return 4096;
+        }
+
+        public static List<Dictionary<string, object>> Get(List<string> paths)
+        {
+            var list = new List<Dictionary<string, object>>();
+            foreach (var p in paths)
+            {
+                var d = new Dictionary<string, object>();
+                d["path"] = p;
+                try
+                {
+                    bool isDir = Directory.Exists(p);
+                    FileSystemInfo fi = isDir ? (FileSystemInfo)new DirectoryInfo(p) : new FileInfo(p);
+                    d["dir"] = isDir;
+                    d["attrs"] = (int)fi.Attributes;
+                    d["created"] = ToMs(fi.CreationTimeUtc);
+                    d["modified"] = ToMs(fi.LastWriteTimeUtc);
+                    d["accessed"] = ToMs(fi.LastAccessTimeUtc);
+                    if (!isDir)
+                    {
+                        long size = ((FileInfo)fi).Length;
+                        d["size"] = size;
+                        uint high;
+                        uint low = GetCompressedFileSizeW(p, out high);
+                        long onDisk = low == 0xFFFFFFFF && Marshal.GetLastWin32Error() != 0 ? size : ((long)high << 32) | low;
+                        long c = Cluster(p);
+                        d["sizeOnDisk"] = ((onDisk + c - 1) / c) * c;
+                    }
+                    try
+                    {
+                        System.Security.AccessControl.FileSystemSecurity sec = isDir
+                            ? (System.Security.AccessControl.FileSystemSecurity)Directory.GetAccessControl(p)
+                            : File.GetAccessControl(p);
+                        d["owner"] = Translate(sec.GetOwner(typeof(System.Security.Principal.SecurityIdentifier)));
+                        var rules = new List<Dictionary<string, object>>();
+                        foreach (System.Security.AccessControl.FileSystemAccessRule r in sec.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier)))
+                        {
+                            var rd = new Dictionary<string, object>();
+                            rd["who"] = Translate(r.IdentityReference);
+                            rd["allow"] = r.AccessControlType == System.Security.AccessControl.AccessControlType.Allow;
+                            rd["rights"] = Rights(r.FileSystemRights);
+                            rd["inherited"] = r.IsInherited;
+                            rules.Add(rd);
+                            if (rules.Count >= 40) break;
+                        }
+                        d["access"] = rules;
+                    }
+                    catch (Exception ex) { d["securityError"] = ex.Message; }
+                    if ((fi.Attributes & FileAttributes.ReparsePoint) != 0) d["link"] = true;
+                }
+                catch (Exception ex) { d["error"] = ex.Message; }
+                list.Add(d);
+            }
+            return list;
+        }
+
+        static string Translate(System.Security.Principal.IdentityReference id)
+        {
+            try { return id.Translate(typeof(System.Security.Principal.NTAccount)).Value; }
+            catch { return id.Value; }
+        }
+
+        static string Rights(System.Security.AccessControl.FileSystemRights r)
+        {
+            var F = System.Security.AccessControl.FileSystemRights.FullControl;
+            var M = System.Security.AccessControl.FileSystemRights.Modify;
+            var X = System.Security.AccessControl.FileSystemRights.ReadAndExecute;
+            var R = System.Security.AccessControl.FileSystemRights.Read;
+            var W = System.Security.AccessControl.FileSystemRights.Write;
+            if ((r & F) == F) return "Full control";
+            if ((r & M) == M) return "Modify";
+            if ((r & X) == X) return (r & W) == W ? "Read, write and run" : "Read and run";
+            if ((r & R) == R) return (r & W) == W ? "Read and write" : "Read";
+            if ((r & W) == W) return "Write";
+            return "Special";
+        }
+
+        static long ToMs(DateTime utc) { return (long)(utc - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds; }
+
+        public static Dictionary<string, object> SetAttrs(List<string> paths, int set, int clear)
+        {
+            var failed = new List<string>();
+            int ok = 0;
+            foreach (var p in paths)
+            {
+                uint cur = GetFileAttributesW(p);
+                if (cur == 0xFFFFFFFF) { failed.Add(p); continue; }
+                // only read-only (1), hidden (2), system (4) and archive (0x20) may be changed
+                uint mask = 0x27;
+                uint next = (cur | ((uint)set & mask)) & ~((uint)clear & mask);
+                if (next == cur || SetFileAttributesW(p, next)) ok++; else failed.Add(p);
+            }
+            var d = new Dictionary<string, object>();
+            d["ok"] = ok; d["failed"] = failed;
+            return d;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct SHARE_INFO_2
+        {
+            public string netname; public uint type; public string remark; public uint permissions;
+            public uint max_uses; public uint current_uses; public string path; public string passwd;
+        }
+        [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+        static extern int NetShareEnum(string server, int level, out IntPtr buf, int prefMax, out int read, out int total, ref int resume);
+        [DllImport("netapi32.dll")]
+        static extern int NetApiBufferFree(IntPtr buf);
+
+        /// <summary>Folders this PC shares (name + local path); empty when the account may not list them.</summary>
+        public static List<Dictionary<string, object>> Shares()
+        {
+            var list = new List<Dictionary<string, object>>();
+            IntPtr buf; int read, total, resume = 0;
+            if (NetShareEnum(null, 2, out buf, -1, out read, out total, ref resume) != 0) return list;
+            try
+            {
+                int size = Marshal.SizeOf(typeof(SHARE_INFO_2));
+                for (int i = 0; i < read; i++)
+                {
+                    var si = (SHARE_INFO_2)Marshal.PtrToStructure(new IntPtr(buf.ToInt64() + (long)i * size), typeof(SHARE_INFO_2));
+                    if ((si.type & 0xFF) != 0 || string.IsNullOrEmpty(si.path)) continue; // disk shares only
+                    var d = new Dictionary<string, object>();
+                    d["name"] = si.netname; d["path"] = si.path;
+                    list.Add(d);
+                }
+            }
+            finally { NetApiBufferFree(buf); }
+            return list;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // "Open with": the apps Windows has registered for a file type, listed and launched by Hopper
+
+    static class OpenWith
+    {
+        [ComImport, Guid("F04061AC-1659-4a3f-A954-775AA57FC083"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IAssocHandler
+        {
+            [PreserveSig] int GetName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+            [PreserveSig] int GetUIName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+            [PreserveSig] int GetIconLocation([MarshalAs(UnmanagedType.LPWStr)] out string path, out int index);
+            [PreserveSig] int IsRecommended();
+            [PreserveSig] int MakeDefault([MarshalAs(UnmanagedType.LPWStr)] string description);
+            [PreserveSig] int Invoke(System.Runtime.InteropServices.ComTypes.IDataObject data);
+            [PreserveSig] int CreateInvoker(System.Runtime.InteropServices.ComTypes.IDataObject data, out IntPtr invoker);
+        }
+
+        [ComImport, Guid("973810ae-9599-4b88-9e4d-6ee98c9552da"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IEnumAssocHandlers
+        {
+            [PreserveSig] int Next(int count, [MarshalAs(UnmanagedType.Interface)] out IAssocHandler handler, out int fetched);
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        static extern int SHAssocEnumHandlers(string extra, int filter, out IEnumAssocHandlers handlers);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        static extern int SHCreateItemFromParsingName(string path, IntPtr bc, [In] ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IShellItem item);
+
+        [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IShellItem
+        {
+            [PreserveSig] int BindToHandler(IntPtr bc, [In] ref Guid bhid, [In] ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out object ppv);
+        }
+
+        static List<IAssocHandler> Handlers(string path)
+        {
+            var list = new List<IAssocHandler>();
+            string ext = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(ext)) return list;
+            IEnumAssocHandlers en;
+            if (SHAssocEnumHandlers(ext, 0 /* ASSOC_FILTER_NONE */, out en) != 0 || en == null) return list;
+            IAssocHandler h; int fetched;
+            while (en.Next(1, out h, out fetched) == 0 && fetched == 1) list.Add(h);
+            return list;
+        }
+
+        public static List<Dictionary<string, object>> List(string path)
+        {
+            var list = new List<Dictionary<string, object>>();
+            foreach (var h in Handlers(path))
+            {
+                string name, ui, icon; int idx;
+                h.GetName(out name); h.GetUIName(out ui);
+                var d = new Dictionary<string, object>();
+                d["name"] = name ?? "";
+                d["label"] = string.IsNullOrEmpty(ui) ? Path.GetFileNameWithoutExtension(name ?? "") : ui;
+                d["recommended"] = h.IsRecommended() == 0;
+                if (h.GetIconLocation(out icon, out idx) == 0) d["icon"] = icon;
+                list.Add(d);
+            }
+            return list;
+        }
+
+        public static void Invoke(string path, string name)
+        {
+            foreach (var h in Handlers(path))
+            {
+                string n; h.GetName(out n);
+                if (!string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) continue;
+                Guid iidItem = typeof(IShellItem).GUID;
+                IShellItem item;
+                if (SHCreateItemFromParsingName(path, IntPtr.Zero, ref iidItem, out item) != 0) throw new Exception("cannot open " + path);
+                Guid bhidDataObject = new Guid("b8c0bd9f-ed24-455c-83e6-d5390c4fe8c4");
+                Guid iidDataObject = new Guid("0000010e-0000-0000-C000-000000000046");
+                object data;
+                if (item.BindToHandler(IntPtr.Zero, ref bhidDataObject, ref iidDataObject, out data) != 0) throw new Exception("cannot prepare " + path);
+                int hr = h.Invoke((System.Runtime.InteropServices.ComTypes.IDataObject)data);
+                if (hr != 0) throw new Exception("the app could not be started (0x" + hr.ToString("x") + ")");
+                return;
+            }
+            throw new Exception("app not found");
         }
     }
 }

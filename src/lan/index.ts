@@ -8,10 +8,13 @@ import { join } from 'node:path'
 import { serve, type Handlers } from '@shared/rpc'
 import { HopperShell } from '@shared/hshell'
 import type { InboxItem, ShareSpec } from '@shared/types'
+import { Announcements, type AnnouncementDraft } from './announce'
 import { postCliq } from './cliq'
 import { Discovery } from './discovery'
+import { Sent } from './history'
 import { Inbox } from './inbox'
-import { officeKeyBytes } from './protocol'
+import { Invites } from './invite'
+import { keyFingerprint, officeKeyBytes } from './protocol'
 import { ServerPickup } from './server-inbox'
 import { Shares } from './shares'
 import { TransferServer } from './transfer-server'
@@ -49,6 +52,7 @@ const ctx: LanCtx = {
   office: null,
   settings: null,
   key: null,
+  officePath: '',
   me: { user: '', displayName: '', host: hostname(), domain: '', email: '', status: 'online' },
   inboxRoot: () => inbox.root()
 }
@@ -65,9 +69,12 @@ const discovery = new Discovery(ctx, () => {
     emit('peers', discovery.list())
   }, 100)
 })
-const transfer = new TransferServer(ctx, admit, onReceived)
+const announcements = new Announcements(ctx, discovery)
+const invites = new Invites(ctx, discovery)
+const sent = new Sent(ctx)
+const transfer = new TransferServer(ctx, admit, onReceived, (identity, frame, fromName) => announcements.onFrame(identity, frame, fromName))
 const pickup = new ServerPickup(ctx, admit, onReceived, (id) => inbox.has(id))
-const shares = new Shares(ctx, discovery)
+const shares = new Shares(ctx, discovery, sent)
 
 let status: Status = { enabled: false, ready: false, reason: 'starting' }
 let helper: { user: string; displayName: string; host: string; domain: string } | null = null
@@ -75,7 +82,14 @@ let retryTimer: NodeJS.Timeout | null = null
 let shuttingDown = false
 
 function statusView() {
-  return { ...status, self: discovery.self(), port: transfer.port }
+  return {
+    ...status,
+    self: discovery.self(),
+    port: transfer.port,
+    fingerprint: keyFingerprint(ctx.key),
+    admin: invites.isAdmin(),
+    canAnnounce: announcements.canPost()
+  }
 }
 
 function setStatus(next: Status) {
@@ -148,12 +162,29 @@ async function doReconcile() {
   if (shuttingDown) return
   if (!ctx.settings || !ctx.office) return setStatus({ enabled: false, ready: false, reason: 'waiting-for-settings' })
   const enabled = ctx.settings.lan?.enabled !== false
-  ctx.key = officeKeyBytes(ctx.office.officeKey)
+  // the shared config's key, else the one this PC joined with (pasted or accepted from an invite)
+  const before = keyFingerprint(ctx.key)
+  ctx.key = officeKeyBytes(ctx.office.officeKey) ?? officeKeyBytes(ctx.settings.officeKeyOverride)
+  const keyChanged = keyFingerprint(ctx.key) !== before
+  if (keyChanged) discovery.forget()
+  invites.keyChanged()
   applyProfile()
-  if (!enabled || !ctx.key) {
+  // announcements are read from the office folder, so they work whatever the LAN state is
+  announcements.start()
+  if (!enabled) {
     await stopNetwork(true)
-    const reason = !enabled ? 'disabled' : ctx.office.officeKey?.trim() ? 'bad-office-key' : 'no-office-key'
-    return setStatus({ enabled, ready: false, reason })
+    setStatus({ enabled, ready: false, reason: 'disabled' })
+    return emit('lan-status', statusView())
+  }
+  if (!ctx.key) {
+    // no key yet: stay silent, but keep listening so an admin's invite can reach this PC
+    pickup.stop()
+    shares.cancelAll()
+    await transfer.close()
+    if (!discovery.running) await discovery.start(0).catch((e) => ctx.log('invite listener', e?.message ?? e))
+    const reason = ctx.office.officeKey?.trim() || ctx.settings.officeKeyOverride?.trim() ? 'bad-office-key' : 'no-office-key'
+    setStatus({ enabled, ready: false, reason })
+    return emit('lan-status', statusView())
   }
   if (!transfer.listening && (await transfer.listen()) === null) {
     scheduleRetry()
@@ -171,7 +202,10 @@ async function doReconcile() {
   discovery.announce()
   pickup.start()
   setStatus({ enabled, ready: true })
+  // always: the fingerprint or the admin flag may have changed while the state stayed 'ready'
+  emit('lan-status', statusView())
   emit('peers', discovery.list()) // self may have a new name/status
+  if (keyChanged) void announcements.sync()
 }
 
 let chain: Promise<void>
@@ -182,7 +216,7 @@ function reconcile() {
 chain = (async () => {
   discovery.id = await loadId()
   await resolveIdentity()
-  await Promise.all([inbox.load(), discovery.load(), transfer.load()])
+  await Promise.all([inbox.load(), discovery.load(), transfer.load(), announcements.load(), sent.load()])
 })().catch((e) => ctx.log('startup', e?.message ?? e))
 
 const needReady = () => {
@@ -204,6 +238,23 @@ const handlers: Handlers = {
   'inbox.markSeen': (id: string) => inbox.markSeen(id),
   'inbox.answer': (requestId: string, accept: boolean) => inbox.answer(requestId, accept),
   'inbox.pending': () => inbox.pendingList(),
+  'history.with': (user: string) => sent.with(user, inbox.list()),
+  'announce.list': () => announcements.list(),
+  'announce.canPost': () => announcements.canPost(),
+  'announce.post': (draft: AnnouncementDraft) => announcements.post(draft),
+  'announce.withdraw': (id: string) => announcements.withdraw(String(id)),
+  'announce.read': (id: string) => announcements.markRead(String(id)),
+  'announce.ack': (id: string) => announcements.ack(String(id)),
+  'announce.sync': async () => {
+    await announcements.sync()
+    return announcements.list()
+  },
+  'invite.start': () => invites.start(),
+  'invite.stop': () => invites.stop(),
+  'invite.status': () => invites.status(),
+  'invite.list': () => invites.list(),
+  'invite.accept': (id: string) => invites.accept(String(id)),
+  'invite.ignore': (id: string) => invites.ignore(String(id)),
   'cliq.test': (email: string) =>
     postCliq(
       ctx.office?.cliq,
@@ -216,8 +267,10 @@ async function shutdown() {
   if (shuttingDown) return
   shuttingDown = true
   inbox.declineAll()
+  invites.stop()
+  announcements.stop()
   // bye beacon, close sockets, flush history; never hang the exit for more than 1.5 s
-  await Promise.race([Promise.all([stopNetwork(true), inbox.flush()]).catch(() => {}), sleep(1500)])
+  await Promise.race([Promise.all([stopNetwork(true), inbox.flush(), sent.flush(), announcements.flush()]).catch(() => {}), sleep(1500)])
   shell.dispose()
   process.exit(0)
 }
@@ -237,6 +290,8 @@ process.parentPort.on('message', (e) => {
   } else if (data?.type === 'office') {
     ctx.office = data.office
     ctx.settings = data.settings
+    // main's reply to 'office-request' carries no path: keep the last one, else the configured path
+    ctx.officePath = String(data.officePath || ctx.officePath || data.settings?.officeConfigPath || '')
     reconcile()
   } else if (data?.type === 'shutdown') {
     void shutdown()

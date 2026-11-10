@@ -13,6 +13,8 @@ import { undoHandlers, Undo } from './undo'
 import { watchHandlers } from './watch'
 import { searchHandlers } from './search'
 import { officeHandlers } from './office'
+import { pubshareHandlers } from './pubshare'
+import { previewHandlers } from './preview'
 
 export interface EngineCtx {
   emit: (event: string, data: unknown) => void
@@ -60,7 +62,9 @@ const handlers: Handlers = {
   ...undoHandlers(ctx),
   ...watchHandlers(ctx),
   ...searchHandlers(ctx),
-  ...officeHandlers(ctx)
+  ...officeHandlers(ctx),
+  ...pubshareHandlers(ctx),
+  ...previewHandlers(ctx)
 }
 
 process.parentPort.on('message', (e) => {

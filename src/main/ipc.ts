@@ -9,6 +9,7 @@ import { applyTheme, ctx, pushOfficeToUtilities } from './ctx'
 import { clearThumbCache } from './protocol'
 import { checkForUpdates, installUpdate, updaterState } from './updater'
 import defmgr from './defmgr'
+import { officeMeta, officeUser, saveOffice } from './officeops'
 import type { OfficeConfig, Settings } from '@shared/types'
 
 const h = (name: string, fn: (...args: any[]) => unknown) => ipcMain.handle(name, (_e, ...args) => fn(...args))
@@ -76,23 +77,24 @@ export function registerIpc() {
   h('settings:get', () => ctx.settings.data)
   h('settings:set', (patch: Partial<Settings>) => {
     const themeChanged = patch.theme && patch.theme !== ctx.settings.data.theme
-    const lanChanged = ['lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset'].some((k) => k in patch)
+    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset'].some((k) => k in patch)
     ctx.settings.set(patch)
     if (themeChanged) applyTheme()
     if (lanChanged) pushOfficeToUtilities()
     return true
   })
-  h('office:get', () => ({ config: ctx.office.data, path: ctx.office.loadedFrom, error: ctx.office.error }))
+  h('office:get', async () => ({ config: ctx.office.data, path: ctx.office.loadedFrom, error: ctx.office.error, meta: officeMeta(officeUser(await whoAmI())) }))
   h('office:load', async (path: string) => {
     ctx.settings.set({ officeConfigPath: path })
     await ctx.office.load(path)
     pushOfficeToUtilities()
-    return { config: ctx.office.data, path, error: ctx.office.error }
+    return { config: ctx.office.data, path: ctx.office.loadedFrom || path, error: ctx.office.error, meta: officeMeta(officeUser(await whoAmI())) }
   })
-  h('office:save', async (cfg: OfficeConfig) => {
-    await ctx.office.save(ctx.settings.data.officeConfigPath, cfg)
+  h('office:save', async (cfg: OfficeConfig, opts?: { moveTo?: string }) => {
+    // admins only; enforced here, not just in the UI
+    const r = await saveOffice(officeUser(await whoAmI()), cfg, opts)
     pushOfficeToUtilities()
-    return true
+    return r
   })
 
   // --- dialogs ------------------------------------------------------------
@@ -116,13 +118,16 @@ export function registerIpc() {
     return true
   })
   h('shell:openExternal', (url: string) => (/^(https?|mailto):/i.test(url) ? shell.openExternal(url) : false))
-  h('shell:reveal', (p: string) => shell.showItemInFolder(p))
-  h('shell:openWith', (p: string) => ctx.shell.call('openWith', { path: p }, 0))
-  h('shell:properties', (paths: string[]) => ctx.shell.call('properties', { paths }, 0))
-  h('shell:contextMenu', (paths: string[], x: number, y: number) => {
-    const hwnd = ctx.win ? Number(ctx.win.getNativeWindowHandle().readBigUInt64LE(0)) : 0
-    return ctx.shell.call('contextMenu', { paths, x, y, hwnd }, 0)
+  h('shell:openWithList', (p: string) => ctx.shell.call('openWithList', { path: p }, 15000))
+  h('shell:openWithInvoke', (p: string, name: string) => ctx.shell.call('openWithInvoke', { path: p, name }, 30000))
+  h('shell:openWithApp', (exe: string, p: string) => {
+    execFile(exe, [p], { windowsHide: false }).unref()
+    return true
   })
+  h('shell:props', (paths: string[]) => ctx.shell.call('props', { paths }, 60000))
+  h('shell:setAttrs', (paths: string[], set: number, clear: number) => ctx.shell.call('setAttrs', { paths, set, clear }, 60000))
+  h('shell:cluster', (p: string) => ctx.shell.call('cluster', { path: p }, 8000))
+  h('shell:shares', () => ctx.shell.call('shares', {}, 8000))
   h('shell:print', (paths: string[]) =>
     Promise.all(
       paths.map(

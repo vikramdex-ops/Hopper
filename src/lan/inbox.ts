@@ -64,7 +64,10 @@ export class Inbox {
     const from = r.from.toLowerCase()
     const has = (list?: string[]) => (list ?? []).some((u) => u.toLowerCase() === from)
     if (has(lan?.blocked)) return 'blocked'
-    if (lan?.acceptFrom === 'ask' || has(lan?.askFor)) return (await this.ask(r)) ? true : 'declined'
+    // a note carries no bytes: nothing to accept, it just shows up in the Inbox
+    if (r.kind && r.kind !== 'files') return true
+    if (lan?.acceptFrom
+ === 'ask' || has(lan?.askFor)) return (await this.ask(r)) ? true : 'declined'
     return true
   }
 

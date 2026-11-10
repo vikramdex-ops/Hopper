@@ -3,7 +3,7 @@
 import { createHash, type Hash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { connect, type TLSSocket } from 'node:tls'
-import type { Peer } from '@shared/types'
+import type { Peer, ShareKind, ShareLink } from '@shared/types'
 import { FrameConn, MAX_STREAMS, PROTOCOL_VERSION, PSK_CIPHERS, pskFor, splitRanges } from './protocol'
 import type { FileItem, LanCtx } from './types'
 import { CHUNK, hashFile, sleep } from './util'
@@ -25,11 +25,22 @@ export class Declined extends Error {
 /** Not worth retrying (file changed, verification failed twice, protocol mismatch). */
 export class Fatal extends Error {}
 
+/** The receiver runs Hopper 2.0, which takes no offer without files; the server inbox still reaches it. */
+export class TooOld extends Error {
+  constructor() {
+    super('their Hopper is older and takes messages only through the office server')
+  }
+}
+
 export interface DirectJob {
   shareId: string
   items: FileItem[]
   dirs: string[]
   message: string
+  /** default files; the other kinds are an offer with no files that the receiver completes at once */
+  kind?: ShareKind
+  link?: ShareLink
+  replyTo?: string
   /** looked up again before each attempt: the peer may have changed address */
   peer: () => Peer | undefined
   signal: AbortSignal
@@ -63,8 +74,9 @@ export async function sendDirect(ctx: LanCtx, job: DirectJob): Promise<string> {
       return await once()
     } catch (e: any) {
       if (job.signal.aborted) throw job.signal.reason ?? new Error('cancelled')
-      if (e instanceof Declined || e instanceof Fatal) throw e
+      if (e instanceof Declined || e instanceof Fatal || e instanceof TooOld) throw e
       if (sent > bestSent) {
+
         bestSent = sent
         attempt = 0
       }
@@ -92,12 +104,20 @@ export async function sendDirect(ctx: LanCtx, job: DirectJob): Promise<string> {
         shareId: job.shareId,
         message: job.message,
         files: job.items.map((f) => ({ path: f.rel, size: f.size, mtime: f.mtime })),
-        dirs: job.dirs
+        dirs: job.dirs,
+        ...(job.kind && job.kind !== 'files' ? { kind: job.kind } : {}),
+        ...(job.link ? { link: job.link } : {}),
+        ...(job.replyTo ? { replyTo: job.replyTo } : {})
       })
       let r = await control.readFrame(FRAME_MS)
       while (r?.t === 'wait') r = await control.readFrame(FRAME_MS)
       if (r?.t === 'complete') return String(r.folder ?? '')
-      if (r?.t === 'decline') throw r.reason === 'bad-share' || r.reason === 'bad-offer' ? new Fatal(`receiver rejected the offer (${r.reason})`) : new Declined(String(r.reason))
+      if (r?.t === 'decline') {
+        if (r.reason !== 'bad-share' && r.reason !== 'bad-offer') throw new Declined(String(r.reason))
+        // Hopper 2.0 refuses an offer without files
+        if (job.kind && job.kind !== 'files') throw new TooOld()
+        throw new Fatal(`receiver rejected the offer (${r.reason})`)
+      }
       if (r?.t !== 'accept' || typeof r.token !== 'string') throw new Fatal(`unexpected reply ${r?.t}${r?.message ? `: ${r.message}` : ''}`)
       accepted = true
       const token: string = r.token
@@ -236,7 +256,26 @@ export async function sendDirect(ctx: LanCtx, job: DirectJob): Promise<string> {
   }
 }
 
+const SMALL_MS = 15_000
+
+/**
+ * One small authenticated frame to a peer (an announcement or an acknowledgement): hello, the
+ * frame, then wait for the receiver to say 'ok'. Rejects when it is refused or does not answer.
+ */
+export async function sendSmall(ctx: LanCtx, peer: Peer, frame: unknown, signal: AbortSignal) {
+  const conn = await open(ctx, peer, signal)
+  try {
+    conn.send({ t: 'hello', v: PROTOCOL_VERSION, role: 'small', from: ctx.me.user, fromName: ctx.me.displayName, host: ctx.me.host, version: ctx.version })
+    conn.send(frame)
+    const r = await conn.readFrame(SMALL_MS)
+    if (r?.t !== 'ok') throw new Fatal(`refused (${r?.code ?? r?.t})`)
+  } finally {
+    conn.close()
+  }
+}
+
 function open(ctx: LanCtx, peer: Peer, signal: AbortSignal) {
+
   const key = ctx.key
   if (!key) return Promise.reject(new Fatal('no office key'))
   const user = ctx.me.user

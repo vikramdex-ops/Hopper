@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { trace } from '@shared/trace'
 import type { HopperShell } from '@shared/hshell'
 import type { OfficeStore, SettingsStore } from './store'
+import { effectiveOffice } from './officeops'
 
 export const res = (...p: string[]) => (app.isPackaged ? join(process.resourcesPath, ...p) : join(app.getAppPath(), ...p))
 export const paths = {
@@ -41,7 +42,8 @@ export function connectPorts() {
 
 export function pushOfficeToUtilities() {
   for (const name of ['engine', 'lan'] as const) {
-    ctx[name]?.postMessage({ type: 'office', office: ctx.office.data, settings: ctx.settings.data })
+    // the key the LAN really uses (shared config, else the joined one) and where announcements live
+    ctx[name]?.postMessage({ type: 'office', office: effectiveOffice(), settings: ctx.settings.data, officePath: ctx.office.loadedFrom })
   }
 }
 

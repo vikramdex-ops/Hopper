@@ -18,7 +18,10 @@
 
   onMount(() => {
     const first = el.querySelector<HTMLElement>('[autofocus], input:not([type=checkbox]):not([type=radio]), textarea, select, .btn.primary')
+    // always put focus inside the dialog so Esc and Enter reach it
     first?.focus()
+    // a disabled control can't take focus; fall back to the dialog itself
+    if (!el.contains(document.activeElement)) el.focus()
   })
 
   function key(e: KeyboardEvent) {
@@ -33,12 +36,14 @@
 <div class="scrim" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
   <form
     class="dlg"
+    tabindex="-1"
     bind:this={el}
     style:width={`${width}px`}
     role="dialog"
     aria-modal="true"
     aria-label={title}
     onkeydown={key}
+    onfocusout={() => queueMicrotask(() => el && !el.contains(document.activeElement) && document.activeElement === document.body && el.focus())}
     onsubmit={(e) => {
       e.preventDefault()
       onsubmit?.()

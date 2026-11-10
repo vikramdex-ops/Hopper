@@ -4,6 +4,7 @@
   import { handleGlobalKey } from './lib/commands'
   import TitleBar from './components/TitleBar.svelte'
   import CommandBar from './components/CommandBar.svelte'
+  import LanBanner from './components/LanBanner.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import PaneView from './components/PaneView.svelte'
   import Inspector from './components/Inspector.svelte'
@@ -45,6 +46,7 @@
   <TitleBar />
   {#if app.ready && app.settings}
     <CommandBar />
+    <LanBanner />
     <div class="body">
       <Sidebar />
       <main class="panes" class:dual={app.dual}>

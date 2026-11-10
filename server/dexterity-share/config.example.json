@@ -1,0 +1,22 @@
+{
+  "server": {
+    "port": 47880,
+    "store": "D:\\Shares\\office-share\\_Hopper\\PublicShares",
+    "allowedOrigins": ["https://vikramdex-ops.github.io"],
+    "maxConcurrentDownloads": 24,
+    "maxDownloadsPerIp": 6,
+    "graceHours": 24
+  },
+  "tunnel": {
+    "mode": "quick",
+    "cloudflared": "C:\\Program Files (x86)\\cloudflared\\cloudflared.exe"
+  },
+  "pointer": {
+    "github": {
+      "repo": "OWNER/dexterity-share-pointer",
+      "branch": "main",
+      "path": "pointer.json",
+      "tokenFile": "pointer-token.txt"
+    }
+  }
+}

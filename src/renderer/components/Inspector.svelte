@@ -2,7 +2,8 @@
   import { app } from '../lib/app.svelte'
   import { host, engine } from '../lib/api'
   import { isArchivePath, isVirtual } from '../lib/pane.svelte'
-  import { typeLabel, kindOf } from '../lib/filetypes'
+  import { typeLabel, kindOf, richMode } from '../lib/filetypes'
+  import { openDocViewer } from '../lib/docviewer.svelte'
   import { fmtDateFull, fmtSize, plural, basename, dirname } from '../lib/format'
   import { dialogs } from '../lib/commands'
   import { ATTR, type Entry } from '@shared/types'
@@ -88,10 +89,13 @@
       <div class="caption type">{typeLabel(e.ext, e.dir)}{e.dir ? '' : ` · ${fmtSize(e.size)}`}</div>
       <div class="actions">
         <button class="btn sm" onclick={() => app.openEntry(e)}><Icon name="open" /> Open</button>
+        {#if !e.dir && !isArchivePath(e.path) && richMode(e.ext)}
+          <button class="btn sm" title="View in full window" onclick={() => openDocViewer(e)}><Icon name="fullscreen" /> View</button>
+        {/if}
         {#if !isVirtual(e.path) && !isArchivePath(e.path)}
           <button class="btn sm" onclick={() => dialogs.share?.()}><Icon name="share" /> Share</button>
           <button class="btn subtle icon sm" title="Copy path" onclick={() => copy(e.path)}><Icon name="copyPath" /></button>
-          <button class="btn subtle icon sm" title="Properties" onclick={() => host.shell.properties([e.path])}><Icon name="info" /></button>
+          <button class="btn subtle icon sm" title="Properties" onclick={() => dialogs.properties?.([e.path])}><Icon name="info" /></button>
         {/if}
       </div>
       <dl class="meta">

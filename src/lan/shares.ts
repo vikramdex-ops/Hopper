@@ -7,10 +7,11 @@ import { basename, join } from 'node:path'
 import type { ShareSpec } from '@shared/types'
 import { postCliq, shareText } from './cliq'
 import type { Discovery } from './discovery'
-import { sanitizeName, stamp } from './protocol'
+import type { Sent } from './history'
+import { MAX_MESSAGE, parseKind, parseLink, replyId, sanitizeName, stamp } from './protocol'
 import { dropToServer } from './server-inbox'
-import { Declined, Fatal, sendDirect } from './transfer-client'
-import type { FileItem, LanCtx, OutgoingShare, RecipientState, ShareEvent, ShareState } from './types'
+import { Declined, Fatal, sendDirect, TooOld } from './transfer-client'
+import type { FileItem, LanCtx, NoteEvent, OutgoingShare, RecipientState, ShareEvent, ShareState } from './types'
 import { pool, rateMeter, walk } from './util'
 
 const RECIPIENTS_AT_ONCE = 3
@@ -30,12 +31,25 @@ export class Shares {
 
   constructor(
     private ctx: LanCtx,
-    private discovery: Discovery
+    private discovery: Discovery,
+    private sent: Sent
   ) {}
 
   send(spec: ShareSpec): string {
     if (!this.ctx.key) throw new Error('LAN sharing needs the office key (Settings > Office)')
-    if (!spec || !Array.isArray(spec.paths) || !spec.paths.length) throw new Error('nothing to share')
+    const kind = parseKind(spec?.kind)
+    if (!spec || !kind) throw new Error('nothing to share')
+    const paths = Array.isArray(spec.paths) ? spec.paths : []
+    const message = String(spec.message ?? '').trim().slice(0, MAX_MESSAGE)
+    if (kind === 'files') {
+      if (!paths.length) throw new Error('nothing to share')
+    } else {
+      // a note is the message (or the link) itself: no files, no zip
+      spec = { ...spec, paths: [], zipFirst: false, link: kind === 'link' ? (parseLink(spec.link) ?? undefined) : undefined }
+      if (kind === 'link' && !spec.link) throw new Error('the link must be a full path (\\\\server\\share\\folder or X:\\folder)')
+      if (kind !== 'link' && !message) throw new Error('write a message first')
+    }
+    spec = { ...spec, kind, message: message || undefined, replyTo: replyId(spec.replyTo) }
     const to = this.expand(Array.isArray(spec.to) ? spec.to : [])
     if (!to.length) throw new Error('no recipients')
     const shareId = `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`
@@ -45,6 +59,7 @@ export class Shares {
       paths: [...spec.paths],
       message: spec.message,
       zipFirst: !!spec.zipFirst,
+      kind,
       createdAt: Date.now(),
       files: 0,
       bytes: 0,
@@ -75,6 +90,7 @@ export class Shares {
   list(): OutgoingShare[] {
     return [...this.shares.values()]
       .sort((a, b) => b.createdAt - a.createdAt)
+      .filter((s) => s.kind === 'files')
       .map(({ ac, spec, last, ...pub }) => ({ ...pub, recipients: pub.recipients.map((r) => ({ ...r })) }))
   }
 
@@ -97,6 +113,7 @@ export class Shares {
     const signal = s.ac.signal
     let zipDir = ''
     try {
+      if (s.kind !== 'files') return await pool(s.recipients, RECIPIENTS_AT_ONCE, (r) => this.deliver(s, r, [], []))
       const walked = await walk(s.paths)
       for (const e of walked.errors) this.ctx.log('share', s.shareId, e)
       if (!walked.files.length && !walked.dirs.length) throw new Error('nothing readable to send')
@@ -141,6 +158,9 @@ export class Shares {
           items,
           dirs,
           message: s.message ?? '',
+          kind: s.kind,
+          link: s.spec.link,
+          replyTo: s.spec.replyTo,
           peer: () => this.discovery.find(r.user),
           signal,
           onState: (st) => this.set(s, r, st, { via: 'direct' }),
@@ -151,6 +171,7 @@ export class Shares {
         if (signal.aborted) return this.set(s, r, 'cancelled')
         if (e instanceof Declined || e instanceof Fatal) return this.set(s, r, 'failed', { error: e.message, via: 'direct' })
         folderNote = e?.message ?? String(e)
+        if (!(e instanceof TooOld) && s.kind !== 'files' && !this.ctx.office?.serverInbox) folderNote = `could not reach their PC (${folderNote})`
         this.ctx.log('share', s.shareId, `direct to ${r.user} failed (${folderNote}); using the server inbox`)
       }
     } else if (r.user === this.ctx.me.user) {
@@ -163,7 +184,18 @@ export class Shares {
       r.done = 0
       this.set(s, r, 'server', { via: 'server' })
       try {
-        await dropToServer(this.ctx, { shareId: s.shareId, to: r.user, items, dirs, message: s.message ?? '', signal, onProgress: progress })
+        await dropToServer(this.ctx, {
+          shareId: s.shareId,
+          to: r.user,
+          items,
+          dirs,
+          message: s.message ?? '',
+          kind: s.kind,
+          link: s.spec.link,
+          replyTo: s.spec.replyTo,
+          signal,
+          onProgress: progress
+        })
         via = 'server'
       } catch (e: any) {
         if (signal.aborted) return this.set(s, r, 'cancelled')
@@ -172,6 +204,20 @@ export class Shares {
     }
     r.done = r.total
     this.set(s, r, 'done', { via })
+    this.sent.add({
+      id: `${s.shareId}|${r.user}`,
+      dir: 'out',
+      user: r.user,
+      at: Date.now(),
+      kind: s.kind,
+      message: s.message,
+      link: s.spec.link,
+      names: s.paths.slice(0, 20).map((p) => basename(p.replace(/[\\/]+$/, '')) || p),
+      files: s.files,
+      bytes: s.bytes,
+      via,
+      replyTo: s.spec.replyTo
+    })
     if (s.spec.notifyCliq !== false) void this.notify(s, r.user, via)
   }
 
@@ -180,7 +226,7 @@ export class Shares {
     if (!cliq?.enabled) return
     const email = this.discovery.emailFor(user)
     if (!email) return this.ctx.log('cliq', `no Zoho email known for ${user}; notice skipped`)
-    const text = shareText({ fromName: this.ctx.me.displayName, files: s.files, bytes: s.bytes, message: s.message ?? '', zipped: s.zipFirst, via })
+    const text = shareText({ fromName: this.ctx.me.displayName, files: s.files, bytes: s.bytes, message: s.message ?? '', zipped: s.zipFirst, via, kind: s.kind, linkPath: s.spec.link?.path })
     const res = await postCliq(cliq, [email], text)
     this.ctx.log('cliq', res.ok ? `notified ${user} (HTTP ${res.status})` : `notice to ${user} failed: ${res.status ? `HTTP ${res.status} ` : ''}${res.error ?? ''}`)
   }
@@ -244,6 +290,11 @@ export class Shares {
     const now = Date.now()
     if (!force && now - (s.last.get(r.user) ?? 0) < EMIT_MS) return
     s.last.set(r.user, now)
+    if (s.kind !== 'files') {
+      // notes stay out of the transfer drawer; the Person panel follows them
+      const note: NoteEvent = { shareId: s.shareId, to: r.user, kind: s.kind, state: r.state, via: r.via, ...(r.error ? { error: r.error } : {}) }
+      return this.ctx.emit('note', note)
+    }
     const ev: ShareEvent = { shareId: s.shareId, to: r.user, state: r.state, done: r.done, total: r.total, rate: r.rate, via: r.via, ...(r.error ? { error: r.error } : {}) }
     this.ctx.emit('share', ev)
   }

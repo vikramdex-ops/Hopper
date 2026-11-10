@@ -1,6 +1,8 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte'
-  import { typeLabel } from '../lib/filetypes'
+  import { typeLabel, richMode } from '../lib/filetypes'
+  import { docViewer, openDocViewer } from '../lib/docviewer.svelte'
+  import DocViewer from './viewers/DocViewer.svelte'
   import { fmtDate, fmtSize } from '../lib/format'
   import Preview from './Preview.svelte'
   import Icon from './Icon.svelte'
@@ -13,7 +15,8 @@
   })
 
   function key(e: KeyboardEvent) {
-    if (!app.quickLook) return
+    // The full-window viewer sits on top and owns the keyboard while it is open.
+    if (!app.quickLook || docViewer.entry) return
     if (e.key === 'Escape' || (e.key === ' ' && !(e.target instanceof HTMLInputElement))) {
       e.preventDefault()
       e.stopPropagation()
@@ -45,6 +48,9 @@
         <div class="name ellipsis">{e.name}</div>
         <div class="caption">{typeLabel(e.ext, e.dir)}{e.dir ? '' : ` · ${fmtSize(e.size)}`} · {fmtDate(e.mtime)}</div>
       </div>
+      {#if !e.dir && richMode(e.ext)}
+        <button class="btn sm" title="View in full window" onclick={() => openDocViewer(e)}><Icon name="fullscreen" /> View</button>
+      {/if}
       <button class="btn sm" onclick={() => { app.quickLook = null; void app.openEntry(e) }}><Icon name="open" /> Open</button>
       <button class="btn subtle icon sm" aria-label="Close" onclick={() => (app.quickLook = null)}><Icon name="close" /></button>
     </header>
@@ -54,6 +60,8 @@
     <footer class="caption">↑ ↓ next / previous · Enter open · Space or Esc close</footer>
   </div>
 {/if}
+
+<DocViewer />
 
 <style>
   .scrim {

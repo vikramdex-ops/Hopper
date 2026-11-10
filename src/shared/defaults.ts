@@ -60,6 +60,8 @@ export function defaultSettings(home: string, docs: string): Settings {
     profile: { displayName: '', email: '', status: 'online' },
     lan: { enabled: true, acceptFrom: 'all', blocked: [], askFor: [] },
     recentShares: [],
+    recentFolders: [],
+    pathCopy: { quote: 'never', defaultMode: 'path' },
     tagColors: {}
   }
 }
@@ -69,6 +71,7 @@ export function defaultOffice(): OfficeConfig {
     officeName: 'Dexterity Design Services',
     officeKey: '',
     serverInbox: '\\\\10.0.0.2\\office-share\\_Hopper\\Inbox',
+    publicShare: { enabled: false, store: '', pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 },
     cliq: { enabled: false, endpoint: 'https://cliq.zoho.in/api/v2/bots/hopper/message', zapikey: '' },
     groups: [],
     templates: [
@@ -93,6 +96,9 @@ export function defaultOffice(): OfficeConfig {
       ],
       order: []
     },
-    conventions: []
+    conventions: [],
+    admins: ['asha'],
+    announcers: []
   }
+
 }

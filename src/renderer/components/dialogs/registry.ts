@@ -34,6 +34,14 @@ export function registerDialogs(d: Record<string, (...args: any[]) => unknown>) 
     compare: lazy('CompareDialog'),
     workspaces: lazy('WorkspacesDialog'),
     undoHistory: lazy('UndoHistoryDialog'),
-    people: lazy('PeopleDialog')
+    people: lazy('PeopleDialog'),
+    person: lazy('PersonDialog', (user: string, tab?: string, replyTo?: string) => ({ user, tab, replyTo })),
+    announce: lazy('AnnounceDialog', (path?: string) => ({ path })),
+    announcements: lazy('AnnouncementsDialog'),
+    publicLink: lazy('PublicLinkDialog', (paths?: string[]) => ({ paths })),
+    publicLinks: lazy('PublicLinksDialog'),
+    properties: lazy('PropertiesDialog', (paths: string[]) => ({ paths })),
+    openWith: lazy('OpenWithDialog', (entry) => ({ entry })),
+    pickFolder: lazy('FolderPickerDialog', (opts) => ({ ...(opts ?? {}) }))
   })
 }

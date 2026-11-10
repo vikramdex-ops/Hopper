@@ -5,6 +5,7 @@ import { engine, host, lan } from './api'
 import { Pane, VIRTUAL, isArchivePath, isVirtual, splitArchive, titleFor } from './pane.svelte'
 import { basename, dirname, fmtSize, join, plural } from './format'
 import { kindOf } from './filetypes'
+import { lanx, receivedBody, receivedTitle } from './lan2.svelte'
 import type {
   Conflict, DriveInfo, Entry, InboxItem, JobInfo, OfficeConfig, Peer, PeerGroup, QuickDest, Settings, ShareSpec, TabState, UndoRecord, Workspace
 } from '@shared/types'
@@ -72,7 +73,8 @@ export class App {
   lanStatus = $state<any>(null)
   incoming = $state.raw<any[]>([])
   toasts = $state<Toast[]>([])
-  dialogs = $state<DialogEntry[]>([])
+  // raw: dialog props must stay plain objects (they are sent over IPC, which cannot clone proxies)
+  dialogs = $state.raw<DialogEntry[]>([])
   menu = $state<{ x: number; y: number; items: MenuItem[]; native?: string[] } | null>(null)
   palette = $state(false)
   paletteMode = $state<'commands' | 'go'>('commands')
@@ -118,6 +120,7 @@ export class App {
     this.panes = [new Pane(this, 0, settings.panes[0]), new Pane(this, 1, settings.panes[1])]
     this.activeIndex = settings.activePane ?? 0
     this.wireEvents()
+    lanx.init()
     this.ready = true
     await Promise.all(this.panes.map((p) => p.load()))
     void this.refreshDrives()
@@ -156,12 +159,14 @@ export class App {
     lan.on('incoming', (r) => (this.incoming = [...this.incoming, r]))
     lan.on('received', (item: InboxItem) => {
       this.inbox = [item, ...this.inbox.filter((i) => i.id !== item.id)]
-      this.toast('success', `${item.fromName} sent you ${plural(item.files, 'file')}`, item.message || fmtSize(item.bytes), [
-        { label: 'Open', run: () => this.active.navigate(item.folder) },
+      // files land in a folder; messages, folder links and requests have none
+      this.toast('success', receivedTitle(item), receivedBody(item), [
+        ...(item.folder ? [{ label: 'Open', run: () => void this.active.navigate(item.folder) }] : []),
+        ...(item.link ? [{ label: 'Open folder', run: () => void lanx.openLink(item.link!) }] : []),
         { label: 'Inbox', run: () => this.active.navigate(VIRTUAL.inbox) }
       ])
-      if (!document.hasFocus()) new Notification(`${item.fromName} sent you ${plural(item.files, 'file')}`, { body: item.message || 'Saved to your Hopper Inbox' })
-      for (const p of this.panes) if (p.path === VIRTUAL.inbox || p.path.toLowerCase() === item.folder.toLowerCase()) void p.refresh()
+      if (!document.hasFocus()) new Notification(receivedTitle(item), { body: receivedBody(item) || 'Saved to your Hopper Inbox' })
+      for (const p of this.panes) if (p.path === VIRTUAL.inbox || (item.folder && p.path.toLowerCase() === item.folder.toLowerCase())) void p.refresh()
     })
     host.onOpen((p: string) => void this.active.navigate(p, { newTab: true }))
     host.onTheme(({ dark }: { dark: boolean }) => {
@@ -262,6 +267,10 @@ export class App {
     const dirs = this.panes.filter((p, i) => i === 0 || this.dual).map((p) => p.path).filter((p) => !isVirtual(p) && !isArchivePath(p))
     void engine.call('watch.set', dirs)
     this.persistSoon()
+    const p = _p.path
+    if (this.settings && !isVirtual(p) && !isArchivePath(p) && this.settings.recentFolders?.[0]?.toLowerCase() !== p.toLowerCase()) {
+      this.updateSettings({ recentFolders: [p, ...(this.settings.recentFolders ?? []).filter((x) => x.toLowerCase() !== p.toLowerCase())].slice(0, 15) })
+    }
   }
 
   toggleDual() {

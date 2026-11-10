@@ -4,6 +4,41 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — 2026-11-10
+
+### Added
+- **Dexterity Share**: create a download link for a client from any selection. Files stay on
+  the office server and are reachable only through that link; expiry of 1, 3, 7, 14, 30, 60 or
+  90 days, optional password and download limit, a branded download page, ready-made e-mail
+  text that states the expiry date, and a "My client links" list to extend or revoke.
+  Needs the server part installed once by IT (docs/DEXTERITY-SHARE-IT.md).
+- **Person panel**: click a colleague to message them, send files, send a *folder link* that
+  opens the same server folder in their Hopper, or ask them for files.
+- **Announcements**: office-wide notices with a banner and acknowledgement, kept for PCs that
+  were switched off.
+- **Path Copy** menu: Name, Path, Parent Folder Path, UNC Path, UNC Parent Folder Path,
+  Internet Path and Samba Path, with settings for quoting and the Ctrl+Shift+C default.
+- **Viewers**: PDF with continuous scroll and Ctrl+wheel zoom; Excel workbooks; Word documents;
+  the preview saved inside DWG drawings; MicroStation V7 drawings (.dgn, .i01…) drawn by Hopper
+  with zoom, pan and levels; stored details for SmartSketch .sha files. No design software
+  needed. A full-window document viewer.
+- Hopper's own **Properties** window (size on disk, contents, attributes, path forms, access),
+  **Open with** list and **folder / file picker**.
+
+### Changed
+- **Only the office admin** can create the office key or edit office settings. Other PCs join
+  from the shared config, a pasted key, or an invite the admin sends over the network.
+- Hopper no longer hands anything to Windows Explorer: "Show more options" and "Show in
+  Explorer" are gone, and folders always open inside Hopper.
+- The last tab of a pane can't be closed. Home is a start page (recent folders, pinned, Inbox,
+  people, low-disk warnings); Home, Inbox and Activity stay pinned at the top of the sidebar.
+- Clicking a person no longer opens Share with whatever row happened to be focused.
+
+### Fixed
+- Scanned PDF pages that lost most of their content in the preview.
+- Dialogs that could not send their inputs to the helper process, and Esc not closing a dialog
+  whose default button was disabled.
+
 ## [2.0.0] — 2026-11-05
 
 A ground-up rebuild, renamed **Hopper**. Windows 10/11 only.

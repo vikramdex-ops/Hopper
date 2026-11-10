@@ -62,7 +62,7 @@ function startUtility(name: 'engine' | 'lan') {
 
 function onUtilityMessage(name: string, msg: any) {
   if (msg?.type === 'office-request') {
-    ctx[name as 'lan']?.postMessage({ type: 'office', office: ctx.office.data, settings: ctx.settings.data })
+    pushOfficeToUtilities()
   } else if (msg?.type === 'attention') {
     if (ctx.win && !ctx.win.isFocused()) ctx.win.flashFrame(true)
   }

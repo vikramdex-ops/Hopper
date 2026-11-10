@@ -45,7 +45,8 @@
   function personMenu(e: MouseEvent, user: string) {
     e.preventDefault()
     app.openMenu(e.clientX, e.clientY, [
-      { label: 'Send selected files', icon: 'send', disabled: !app.active.targets().length, run: () => dialogs.share?.([user]) },
+      { label: 'Message…', icon: 'at', run: () => dialogs.person?.(user) },
+      { label: 'Send files…', icon: 'send', run: () => dialogs.person?.(user, 'files') },
       { label: 'Open Inbox', icon: 'inbox', run: () => app.active.navigate(VIRTUAL.inbox) }
     ])
   }
@@ -68,14 +69,15 @@
 </script>
 
 <aside class="sidebar" style:width={`${s.sidebarWidth}px`}>
-  <div class="scroll">
+  <div class="top">
     <button class="row" class:on={here === VIRTUAL.home} onclick={() => go(VIRTUAL.home)}><Icon name="home" /><span>Home</span></button>
     <button class="row" class:on={here === VIRTUAL.inbox} onclick={() => go(VIRTUAL.inbox)}>
       <Icon name="inbox" /><span>Inbox</span>
       {#if app.unseenInbox}<span class="badge">{app.unseenInbox}</span>{/if}
     </button>
     <button class="row" class:on={here === VIRTUAL.activity} onclick={() => go(VIRTUAL.activity)}><Icon name="activity" /><span>Activity</span></button>
-
+  </div>
+  <div class="scroll">
     <div class="head">Quick access</div>
     {#each special as sp (sp.path)}
       <button class="row" class:on={here === sp.path.toLowerCase()} class:drop={dropKey === sp.path} onclick={(e) => go(sp.path, e)} onauxclick={(e) => go(sp.path, e)}
@@ -128,14 +130,14 @@
     {/if}
     {#each online as p (p.id)}
       <button class="row person" class:drop={dropKey === `person:${p.user}`} title={`${p.displayName} · ${p.host}\nDrop files here to send`}
-        onclick={() => dialogs.share?.([p.user])} oncontextmenu={(e) => personMenu(e, p.user)}
+        onclick={() => dialogs.person?.(p.user)} oncontextmenu={(e) => personMenu(e, p.user)}
         ondragover={(e) => over(e, `person:${p.user}`)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, `person:${p.user}`)}>
         <span class="avatar" style:background={personColor(p.user)}>{initials(p.displayName)}<span class="presence {p.status}"></span></span>
         <span class="ellipsis">{p.displayName}</span>
       </button>
     {/each}
     {#each offline.slice(0, 20) as p (p.id)}
-      <button class="row person dim" title={`${p.displayName} is offline — files go to the server inbox`} onclick={() => dialogs.share?.([p.user])}
+      <button class="row person dim" title={`${p.displayName} is offline — files go to the server inbox`} onclick={() => dialogs.person?.(p.user)}
         ondragover={(e) => over(e, `person:${p.user}`)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, `person:${p.user}`)}>
         <span class="avatar" style:background={personColor(p.user)}>{initials(p.displayName)}<span class="presence offline"></span></span>
         <span class="ellipsis">{p.displayName}</span>
@@ -155,8 +157,16 @@
     min-height: 0;
     padding: 0 4px 0 8px;
   }
+  .top {
+    flex: none;
+    padding-right: 2px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--divider);
+    margin-bottom: 2px;
+  }
   .scroll {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 2px;

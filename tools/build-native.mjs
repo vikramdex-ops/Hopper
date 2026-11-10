@@ -1,6 +1,6 @@
 // Compiles native/HopperShell.cs with the .NET Framework 4.8 compiler that ships with Windows.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,7 +17,7 @@ mkdirSync(out, { recursive: true })
 const refs = ['System.Web.Extensions.dll', 'System.Windows.Forms.dll', 'System.Drawing.dll'].map((r) => `/r:${join(fw, r)}`)
 execFileSync(
   csc,
-  ['/nologo', '/optimize+', '/platform:x64', '/target:winexe', `/out:${join(out, 'HopperShell.exe')}`, ...refs, join(root, 'native', 'HopperShell.cs')],
+  ['/nologo', '/optimize+', '/platform:x64', '/target:winexe', `/out:${join(out, 'HopperShell.exe')}`, ...refs, ...readdirSync(join(root, 'native')).filter((f) => f.endsWith('.cs')).map((f) => join(root, 'native', f))],
   { stdio: 'inherit' }
 )
 console.log('built native/bin/HopperShell.exe')

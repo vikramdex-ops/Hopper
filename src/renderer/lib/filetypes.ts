@@ -23,6 +23,8 @@ add('cad', 'dwg dxf dgn i01 rvt nwd nwc ifc step stp igs iges sat 3dm skp pcf id
 add('font', 'ttf otf woff woff2')
 add('app', 'exe msi appx msix com')
 add('link', 'lnk url')
+// Isometric sheet files (.i00 … .i99) are MicroStation V7 design files.
+for (let i = 0; i < 100; i++) MAP[`i${String(i).padStart(2, '0')}`] = 'cad'
 
 export const kindOf = (ext: string, dir = false): Kind => (dir ? 'folder' : MAP[ext] ?? 'file')
 
@@ -55,3 +57,15 @@ export function typeLabel(ext: string, dir = false) {
 
 /** Kinds with a shell thumbnail worth asking Windows for. */
 export const THUMB_KINDS = new Set<Kind>(['image', 'video', 'pdf', 'cad', 'doc', 'sheet', 'slides', 'font'])
+
+/** Files with a built-in interactive viewer (see components/viewers). */
+export type RichMode = 'pdf' | 'sheet' | 'word' | 'cad'
+
+const RICH: Record<string, RichMode> = {}
+const rich = (mode: RichMode, exts: string) => exts.split(' ').forEach((e) => (RICH[e] = mode))
+rich('pdf', 'pdf')
+rich('sheet', 'xlsx xlsm xls xlsb ods csv tsv')
+rich('word', 'docx doc')
+rich('cad', 'dwg dgn sha')
+
+export const richMode = (ext: string): RichMode | null => RICH[ext] ?? (/^i[0-9][0-9]$/.test(ext) ? 'cad' : null)

@@ -3,8 +3,8 @@
 // scans its own folder at start and every 60 s and moves complete drops into the local Inbox.
 import { promises as fsp } from 'node:fs'
 import { join } from 'node:path'
-import type { InboxItem } from '@shared/types'
-import { safeRel, sanitizeName, stamp } from './protocol'
+import type { InboxItem, ShareKind, ShareLink } from '@shared/types'
+import { MAX_MESSAGE, parseKind, parseLink, replyId, safeRel, sanitizeName, stamp } from './protocol'
 import type { Admit, FileItem, LanCtx, Manifest, OnReceived } from './types'
 import { copyWithHash, freeName, makeFreshDir, readJson, sleep, writeJsonAtomic } from './util'
 
@@ -17,6 +17,9 @@ export interface DropJob {
   items: FileItem[]
   dirs: string[]
   message: string
+  kind?: ShareKind
+  link?: ShareLink
+  replyTo?: string
   signal: AbortSignal
   onProgress: (done: number) => void
 }
@@ -60,7 +63,10 @@ export async function dropToServer(ctx: LanCtx, job: DropJob) {
       at: Date.now(),
       message: job.message,
       files,
-      dirs: job.dirs
+      dirs: job.dirs,
+      ...(job.kind && job.kind !== 'files' ? { kind: job.kind } : {}),
+      ...(job.link ? { link: job.link } : {}),
+      ...(job.replyTo ? { replyTo: job.replyTo } : {})
     }
     await writeJsonAtomic(join(folder, 'manifest.json'), manifest)
     return folder
@@ -136,7 +142,10 @@ export class ServerPickup {
     const from = String(m.from ?? '').toLowerCase()
     const fromName = String(m.fromName || from)
     const bytes = m.files.reduce((a, f) => a + (Number(f.size) || 0), 0)
-    const verdict = await this.admit({ from, fromName, files: m.files.length, bytes, message: String(m.message ?? ''), via: 'server' })
+    const kind = parseKind(m.kind)
+    if (!kind) throw new Error(`unknown kind ${String(m.kind)}`)
+    const message = String(m.message ?? '').slice(0, MAX_MESSAGE)
+    const verdict = await this.admit({ from, fromName, files: m.files.length, bytes, message, via: 'server', kind })
     if (verdict === 'blocked') {
       this.skipped.add(dir)
       this.ctx.log('server pickup', `left a drop from blocked user ${from} on the server`)
@@ -147,6 +156,27 @@ export class ServerPickup {
       return
     }
     const at = Number(m.at) || Date.now()
+    if (kind !== 'files') {
+      // a message, folder link or request: the manifest is the whole share
+      const link = kind === 'link' ? parseLink(m.link) : null
+      if ((kind === 'link' && !link) || (kind !== 'link' && !message.trim()) || m.files.length) throw new Error('bad manifest')
+      await fsp.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch((e) => this.ctx.log('server pickup', 'could not remove', dir, e?.message))
+      this.onReceived({
+        id: String(m.shareId || dir),
+        from,
+        fromName,
+        at,
+        message: message || undefined,
+        folder: '',
+        files: 0,
+        bytes: 0,
+        via: 'server',
+        kind,
+        ...(link ? { link } : {}),
+        ...(replyId(m.replyTo) ? { replyTo: replyId(m.replyTo) } : {})
+      })
+      return
+    }
     const local = await makeFreshDir(join(this.ctx.inboxRoot(), `${stamp(new Date(at))} from ${sanitizeName(fromName)}`))
     try {
       for (const f of m.files) {
@@ -177,8 +207,11 @@ export class ServerPickup {
       folder: local,
       files: m.files.length,
       bytes,
-      via: 'server'
+      via: 'server',
+      kind: 'files',
+      ...(replyId(m.replyTo) ? { replyTo: replyId(m.replyTo) } : {})
     }
     this.onReceived(item)
+
   }
 }

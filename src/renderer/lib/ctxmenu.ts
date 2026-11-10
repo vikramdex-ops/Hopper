@@ -1,11 +1,29 @@
-// Right-click menus for files and folder backgrounds. Common actions first; the full
-// Windows shell menu (7-Zip, WinRAR, Send to…) is one click away under "Show more options".
+// Right-click menus for files and folder backgrounds. Everything here is Hopper's own:
+// no Explorer menus or dialogs are involved.
 import { app, type MenuItem } from './app.svelte'
 import { byId, run, dialogs } from './commands'
 import { host, engine } from './api'
 import { isArchivePath, isVirtual, VIRTUAL, type Pane, type Row } from './pane.svelte'
 import { kindOf } from './filetypes'
 import { basename } from './format'
+import { copyPaths, PATH_MODES } from './pathcopy'
+
+const pathCopyMenu = (paths: string[]): MenuItem[] => [
+  { label: 'Name', run: () => copyPaths('name', paths) },
+  { separator: true },
+  { label: 'Path', keys: 'Ctrl+Shift+C', run: () => copyPaths('path', paths) },
+  { separator: true },
+  { label: 'Parent Folder Path', run: () => copyPaths('parent', paths) },
+  { separator: true },
+  { label: 'UNC Path', run: () => copyPaths('unc', paths) },
+  { separator: true },
+  { label: 'UNC Parent Folder Path', run: () => copyPaths('uncParent', paths) },
+  { separator: true },
+  { label: 'Internet Path', run: () => copyPaths('internet', paths) },
+  { label: 'Samba Path', run: () => copyPaths('samba', paths) },
+  { separator: true },
+  { label: 'Settings…', icon: 'settings', run: () => dialogs.settings?.('files') }
+]
 
 const cmd = (id: string, extra: Partial<MenuItem> = {}): MenuItem => {
   const c = byId.get(id)!
@@ -82,7 +100,9 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   if (!virt && !inArchive) {
     m.push({ separator: true })
     m.push({ label: 'Share with', icon: 'share', submenu: shareMenu(paths) })
+    m.push({ label: 'Create client link…', icon: 'link', run: () => dialogs.publicLink?.(paths) })
     m.push({ label: 'Compress to zip', icon: 'zip', submenu: zipMenu(paths) })
+    if (one?.dir && app.lanStatus?.canAnnounce) m.push({ label: 'Announce about this folder…', icon: 'bell', run: () => dialogs.announce?.(one.path) })
   }
   m.push({ separator: true })
   if (!virt) m.push(cmd('file.rename'))
@@ -103,9 +123,9 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
     m.unshift({ label: 'Restore', icon: 'restore', run: async () => { const r = await host.shell.restore(paths); app.toast(r.failed.length ? 'warning' : 'success', `Restored ${r.restored.length} item(s)`, r.failed.length ? `${r.failed.length} could not be restored` : undefined); void pane.refresh() } }, { separator: true })
   }
   m.push({ separator: true })
-  m.push(cmd('file.copyPath'))
+  m.push({ label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu(paths) })
   if (allDirs && one && !inArchive) m.push({ label: 'Pin to Quick access', icon: 'pin', run: () => app.updateSettings({ pinned: [...(app.settings?.pinned ?? []), one.path] }) })
-  if (!virt && !inArchive) m.push(cmd('file.properties'))
+  if (!virt && !inArchive) m.push({ label: 'Properties', icon: 'info', keys: 'Alt+Enter', run: () => dialogs.properties?.(paths) })
   return m
 }
 
@@ -122,7 +142,7 @@ export function backgroundMenu(pane: Pane): MenuItem[] {
   if (!virt && !inArchive) {
     m.push({ label: 'New', icon: 'plus', submenu: [cmd('file.newFolder'), cmd('file.newFile'), { separator: true }, cmd('file.template')] })
     m.push({ separator: true }, cmd('sel.all'), cmd('file.terminal'), cmd('file.size'), cmd('tools.pin'))
-    m.push({ separator: true }, { label: 'Properties', icon: 'info', run: () => host.shell.properties([pane.path]) })
+    m.push({ separator: true }, { label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu([pane.path]) }, { label: 'Properties', icon: 'info', run: () => dialogs.properties?.([pane.path]) })
   }
   return m
 }

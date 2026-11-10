@@ -1,0 +1,28 @@
+# Dexterity Share on Linux (systemd). Copy to /etc/systemd/system/, adjust the paths and the user,
+# then: systemctl daemon-reload && systemctl enable --now dexterity-share
+# (c) Dexterity Design Services Private Limited. Internal software.
+[Unit]
+Description=Dexterity Share (client download server and tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dxshare
+Group=dxshare
+WorkingDirectory=/opt/dexterity-share
+ExecStart=/usr/bin/node --no-warnings /opt/dexterity-share/supervisor.mjs
+Restart=always
+RestartSec=5
+# time for running downloads to finish on stop
+TimeoutStopSec=30
+KillSignal=SIGTERM
+# the service needs to write only its own state and logs, and the store
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/dexterity-share/state /opt/dexterity-share/logs /srv/share/_Hopper/PublicShares
+
+[Install]
+WantedBy=multi-user.target

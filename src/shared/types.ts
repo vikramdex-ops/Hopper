@@ -202,6 +202,16 @@ export interface PeerGroup {
   members: string[] // user names
 }
 
+/** What a share carries: files, a text note, a pointer to a folder on a shared drive, or a request for files. */
+export type ShareKind = 'files' | 'message' | 'link' | 'request'
+
+export interface ShareLink {
+  /** UNC or drive path as the receiver should open it */
+  path: string
+  /** false when the link points at a file (the receiver's Hopper reveals it in its folder) */
+  dir: boolean
+}
+
 export interface ShareSpec {
   /** user names (stable across PCs) */
   to: string[]
@@ -209,6 +219,11 @@ export interface ShareSpec {
   message?: string
   zipFirst?: boolean
   notifyCliq?: boolean
+  /** default 'files'; the other kinds carry no bytes (paths is empty) */
+  kind?: ShareKind
+  link?: ShareLink
+  /** id of the request this share answers */
+  replyTo?: string
 }
 
 export interface InboxItem {
@@ -222,6 +237,97 @@ export interface InboxItem {
   bytes: number
   via: 'direct' | 'server'
   seen?: boolean
+  /** absent on items from before 2.1: files */
+  kind?: ShareKind
+  link?: ShareLink
+  replyTo?: string
+}
+
+/** One line of the conversation with a person: something received from or sent to them. */
+export interface HistoryItem {
+  id: string
+  dir: 'in' | 'out'
+  user: string
+  at: number
+  kind: ShareKind
+  message?: string
+  link?: ShareLink
+  folder?: string
+  /** top-level names that were sent (outgoing only) */
+  names?: string[]
+  files: number
+  bytes: number
+  via: 'direct' | 'server'
+  replyTo?: string
+}
+
+export type AnnouncementLevel = 'info' | 'important' | 'urgent'
+
+export interface Announcement {
+  id: string
+  title: string
+  body: string
+  level: AnnouncementLevel
+  /** optional folder the announcement is about (UNC where possible) */
+  path?: string
+  /** ms; absent = never expires */
+  expires?: number
+  at: number
+  /** Windows account name of the author, lower-case */
+  by: string
+  byName: string
+  host?: string
+  withdrawn?: boolean
+}
+
+export interface AnnouncementAck {
+  user: string
+  name: string
+  at: number
+}
+
+/** An announcement plus this PC's read/acknowledged state (and, for announcers, who acknowledged). */
+export interface AnnouncementView extends Announcement {
+  read: boolean
+  acked: boolean
+  ackedAt?: number
+  acks?: AnnouncementAck[]
+  /** set on the reply to a post when the office folder could not be written */
+  notStored?: boolean
+}
+
+/** A join invite heard on the LAN. The key itself stays in the LAN process until Join is clicked. */
+export interface OfficeInvite {
+  id: string
+  officeName: string
+  adminUser: string
+  adminName: string
+  host: string
+  address: string
+  configPath: string
+  /** first 8 hex of SHA-256 of the key */
+  fingerprint: string
+  at: number
+  /** this PC already has a (different) office key: show as a notice only */
+  haveKey: boolean
+}
+
+/** How this PC got its office key, when it was not read from the shared config. */
+export interface OfficeJoined {
+  officeName: string
+  by: string
+  at: number
+  fingerprint: string
+  via: 'paste' | 'invite'
+}
+
+/** What office:get adds for the Office page. */
+export interface OfficeMeta {
+  /** Windows account of this user, lower-case */
+  user: string
+  admin: boolean
+  keySource: 'config' | 'override' | 'none'
+  fingerprint: string
 }
 
 export interface Profile {
@@ -262,6 +368,8 @@ export interface OfficeConfig {
   /** hex PSK shared by every Hopper in the office */
   officeKey: string
   serverInbox: string
+  /** Dexterity Share: client download links served from the office server */
+  publicShare?: import('./pubshare').PublicShareConfig
   cliq: {
     enabled: boolean
     /** e.g. https://cliq.zoho.in/api/v2/bots/hopper/message */
@@ -272,6 +380,12 @@ export interface OfficeConfig {
   templates: FolderTemplate[]
   revisions: RevisionRules
   conventions: NamingConvention[]
+  /** Windows account names (lower-case) who may create the key and edit this config */
+  admins: string[]
+  /** besides the admins, who may post announcements */
+  announcers: string[]
+  /** set in the old file when an admin moved the config: other PCs follow it */
+  movedTo?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -349,5 +463,12 @@ export interface Settings {
   lan: { enabled: boolean; acceptFrom: 'all' | 'ask'; blocked: string[]; askFor: string[] }
   windowBounds?: { x: number; y: number; width: number; height: number; maximized: boolean }
   recentShares: string[]
+  /** most recently visited folders, newest first */
+  recentFolders: string[]
+  pathCopy: { quote: 'never' | 'spaces' | 'always'; defaultMode: string }
   tagColors: Record<string, string>
+  /** office key pasted or accepted from an invite; used when the shared config has none or is unreachable */
+  officeKeyOverride?: string
+  officeJoined?: OfficeJoined
 }
+
