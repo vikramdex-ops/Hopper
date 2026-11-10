@@ -4,7 +4,7 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [2.3.0] — 2026-11-11
+## [2.3.0] — 2026-11-10
 
 ### Added
 - **Progress window** for copy, move, delete, zip and extract: percentage, items done, current
