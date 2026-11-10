@@ -27,6 +27,11 @@ const zip = await win.evaluate(() => window.__hopper.jobs.find((j) => j.kind ===
 console.log('zip', zip.state, zip.error ?? '', existsSync(join(demo, 'Site photos.zip')))
 const info = await win.evaluate((p) => window.__hopper.__engine('pdf.info', p), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'ISO-1003_Rev2.pdf'))
 console.log('pdf.info pages', info.pages)
+// the viewers' parser worker and its libraries must load from inside the packaged archive
+const book = await win.evaluate((p) => window.__hopper.__engine('preview.sheetBook', p), join(demo, 'P12513 Refinery Revamp', '02_Working', 'Lot 07', 'Comment register.csv'))
+console.log('sheet preview sheets', book.sheets?.length ?? JSON.stringify(book).slice(0, 120))
+const props = await win.evaluate((p) => window.hopper.shell.props([p]), join(demo, 'Site photos'))
+console.log('props owner', props[0].owner ? 'ok' : JSON.stringify(props[0]).slice(0, 120))
 const m = await app.evaluate(({ app }) => app.getAppMetrics().reduce((a, p) => a + p.memory.workingSetSize, 0))
 console.log('total memory MB', Math.round(m / 1024))
 await app.close()
