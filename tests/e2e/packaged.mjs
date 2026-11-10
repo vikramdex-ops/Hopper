@@ -32,6 +32,13 @@ const book = await win.evaluate((p) => window.__hopper.__engine('preview.sheetBo
 console.log('sheet preview sheets', book.sheets?.length ?? JSON.stringify(book).slice(0, 120))
 const props = await win.evaluate((p) => window.hopper.shell.props([p]), join(demo, 'Site photos'))
 console.log('props owner', props[0].owner ? 'ok' : JSON.stringify(props[0]).slice(0, 120))
+// "Check now" must work in the installed app (2.0.0 shipped with the updater failing to load)
+const upd = await win.evaluate(() => window.hopper.update.check())
+console.log('update check', JSON.stringify(upd))
+if (upd.status === 'error' && !/connection|published|busy/i.test(upd.error ?? '')) {
+  console.log('UPDATE CHECK FAILED')
+  process.exitCode = 1
+}
 const m = await app.evaluate(({ app }) => app.getAppMetrics().reduce((a, p) => a + p.memory.workingSetSize, 0))
 console.log('total memory MB', Math.round(m / 1024))
 await app.close()

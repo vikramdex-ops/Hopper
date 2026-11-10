@@ -536,7 +536,8 @@
       case 'downloading': return `Downloading the update… ${upd.percent ?? 0}%`
       case 'ready': return `Hopper ${upd.version ?? ''} is ready to install`
       case 'none': return 'Hopper is up to date'
-      case 'error': return `Update check failed: ${upd.error ?? 'unknown error'}`
+      case 'error': return `Couldn't check for updates. ${upd.error ?? ''}`
+      case 'unavailable': return 'This is a development build; updates apply to the installed app.'
       default: return 'Not checked yet this session'
     }
   })
