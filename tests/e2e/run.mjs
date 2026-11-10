@@ -1,6 +1,6 @@
 // End-to-end smoke suite: drives the real app and checks the core flows actually work.
 // Usage: npm run build && npm run e2e
-import { existsSync, mkdirSync, rmSync, statSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launch, makeDemo, WORK } from './harness.mjs'
 
@@ -250,6 +250,106 @@ await step('project template: preview, create, and a second run keeps what exist
   rmSync(dest, { recursive: true, force: true })
 })
 
+await step('search: refining a search keeps the folder; *.ext finds files', async () => {
+  const lot = join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07')
+  await ev((p) => window.__hopper.panes[0].navigate(p), lot)
+  await until((p) => window.__hopper.panes[0].path === p && !window.__hopper.panes[0].loading, lot)
+  const box = win.locator('.titlebar .search input')
+  await box.fill('iso')
+  await box.press('Enter')
+  await until(() => window.__hopper.panes[0].searchInfo?.done === true)
+  const first = await ev(() => window.__hopper.panes[0].rows.length)
+  if (!first) throw new Error('"iso" found nothing')
+  // a second search typed on the results page must look in the same folder
+  await box.fill('*.pdf')
+  await box.press('Enter')
+  await until(() => window.__hopper.panes[0].path.includes('q=*.pdf') && window.__hopper.panes[0].searchInfo?.done === true)
+  const r = await ev(() => ({ root: window.__hopper.panes[0].searchRoot, names: window.__hopper.panes[0].rows.map((x) => x.name) }))
+  if (r.root !== lot) throw new Error('search folder lost: ' + r.root)
+  if (!r.names.length || !r.names.every((n) => n.toLowerCase().endsWith('.pdf'))) throw new Error('*.pdf results wrong: ' + r.names.slice(0, 5).join(', '))
+  await ev((p) => window.__hopper.panes[0].navigate(p), lot)
+})
+
+await step('New menu: document types from the installed programs make real files', async () => {
+  const dir = join(demo, '_new test')
+  mkdirSync(dir, { recursive: true })
+  await ev((p) => window.__hopper.panes[0].navigate(p), dir)
+  await until((p) => window.__hopper.panes[0].path === p && !window.__hopper.panes[0].loading, dir)
+  await until(() => Array.isArray(window.__hopper.newTypes), null, 20000)
+  const types = await ev(() => window.__hopper.newTypes.map((t) => ({ ext: t.ext, label: t.label, hasTemplate: !!t.template })))
+  console.log('     New types on this PC:', types.map((t) => t.ext).join(' ') || '(none)')
+  for (const t of types.filter((x) => ['.docx', '.xlsx', '.pptx'].includes(x.ext))) {
+    await ev((ext) => window.__hopper.newDocument(window.__hopper.newTypes.find((x) => x.ext === ext)), t.ext)
+    await until((ext) => window.__hopper.panes[0].rows.some((r) => r.name.toLowerCase().endsWith(ext)), t.ext)
+    const f = readdirSync(dir).find((n) => n.toLowerCase().endsWith(t.ext))
+    const size = statSync(join(dir, f)).size
+    if (t.ext === ".xlsx" && t.hasTemplate && size < 1000) throw new Error(`${f} is only ${size} bytes`) // Word and PowerPoint ship empty blank templates
+    await win.keyboard.press('Escape')
+  }
+  // a file made by another program shows up by itself
+  writeFileSync(join(dir, 'made elsewhere.txt'), 'x')
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'made elsewhere.txt'), null, 15000)
+  await ev((p) => window.__hopper.panes[0].navigate(p), demo)
+  rmSync(dir, { recursive: true, force: true })
+})
+
+await step('file picker: one click highlights a file or a folder, a double click opens it', async () => {
+  await ev((p) => void window.__hopper.__dialogs.pickFolder({ mode: 'file', title: 'Choose a file', start: p }), demo)
+  const dlg = win.locator('.dlg')
+  await dlg.locator('.item').first().waitFor({ timeout: 15000 })
+  const folder = dlg.locator('.item:has-text("Site photos")').first()
+  await folder.click()
+  if (!(await folder.evaluate((el) => el.classList.contains('on')))) throw new Error('a clicked folder is not highlighted')
+  if (!(await dlg.locator('button:has-text("Open folder")').count())) throw new Error('no "Open folder" button for the highlighted folder')
+  const file = dlg.locator('.item:has-text("Site photos.zip")').first()
+  await file.click()
+  if (!(await file.evaluate((el) => el.classList.contains('on')))) throw new Error('a clicked file is not highlighted')
+  if (!(await dlg.count())) throw new Error('a single click on a file closed the picker')
+  await folder.dblclick()
+  await win.waitForFunction(() => !document.querySelector('.dlg .item')?.textContent?.includes('Downloads'), null, { timeout: 15000 })
+  await win.keyboard.press('Escape')
+  await win.waitForFunction(() => !document.querySelector('.dlg'), null, { timeout: 10000 })
+})
+
+await step('title bar switches between one and two panes and remembers it', async () => {
+  const before = await ev(() => window.__hopper.dual)
+  await win.locator('.titlebar .layout button[aria-label="One pane"]').click()
+  await until(() => window.__hopper.dual === false && document.querySelectorAll('.pane').length === 1)
+  await win.locator('.titlebar .layout button[aria-label="Two panes"]').click()
+  await until(() => window.__hopper.dual === true && document.querySelectorAll('.pane').length === 2)
+  if (!before) await ev(() => window.__hopper.toggleDual())
+})
+
+await step('copy shows the progress window; the Transfers panel stays closed', async () => {
+  const src = join(demo, '_copy src')
+  const dst = join(demo, '_copy dst')
+  mkdirSync(src, { recursive: true })
+  mkdirSync(dst, { recursive: true })
+  for (let i = 0; i < 6; i++) writeFileSync(join(src, `big-${i}.bin`), Buffer.alloc(24 * 1024 * 1024, i))
+  await ev(() => (window.__hopper.drawer = false))
+  await ev(([s, d]) => void window.__hopper.transfer('copy', [s], d), [src, dst])
+  await win.locator('.pp').waitFor({ timeout: 15000 })
+  const text = await win.locator('.pp').innerText()
+  if (!/Copying|operations/.test(text)) throw new Error('unexpected window text: ' + text.slice(0, 120))
+  if (!(await win.locator('.pp button:has-text("Cancel")').count())) throw new Error('no Cancel button')
+  if (await ev(() => window.__hopper.drawer)) throw new Error('the Transfers panel opened by itself')
+  await win.screenshot({ path: join(shots, '10-progress.png') })
+  await until(() => !window.__hopper.jobs.some((j) => j.kind === 'copy' && ['running', 'queued', 'paused', 'waiting'].includes(j.state)), null, 120000)
+  if (!existsSync(join(dst, '_copy src', 'big-5.bin'))) throw new Error('copy did not finish')
+  // a clean finish closes the window by itself
+  await until(() => !document.querySelector('.pp'), null, 10000)
+
+  // the same copy again: the name conflict is asked in the window, and Cancel stops the job
+  await ev(([s, d]) => void window.__hopper.transfer('copy', [s], d), [src, dst])
+  await win.locator('.pp .conflict').waitFor({ timeout: 15000 })
+  await win.screenshot({ path: join(shots, '11-progress-conflict.png') })
+  await win.locator('.pp .job button:has-text("Cancel")').first().click()
+  await until(() => !window.__hopper.jobs.some((j) => j.kind === 'copy' && ['running', 'queued', 'paused', 'waiting'].includes(j.state)), null, 30000)
+  await until(() => !document.querySelector('.pp'), null, 10000)
+  rmSync(src, { recursive: true, force: true })
+  rmSync(dst, { recursive: true, force: true })
+})
+
 await step('sidebar shows free space and collapses to a rail', async () => {
   const free = await ev(() => [...document.querySelectorAll('.sidebar .free')].map((e) => e.textContent).filter((t) => /free of/.test(t)).length)
   if (!free) throw new Error('no "free of" lines on drives')
@@ -268,7 +368,8 @@ await step('memory stays reasonable', async () => {
 })
 
 await step('no console errors', async () => {
-  const real = errors.filter((e) => !/favicon|Autofill|DevTools/.test(e))
+  // an empty new Word or PowerPoint file has no thumbnail yet; the preview falls back to its icon
+  const real = errors.filter((e) => !/favicon|Autofill|DevTools/.test(e) && !(e.startsWith("[New menu") && /404/.test(e)))
   if (real.length) throw new Error(real.slice(0, 5).join(' | '))
 })
 

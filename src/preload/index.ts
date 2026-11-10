@@ -37,6 +37,7 @@ const api = {
   shell: {
     open: invoke('shell:open'),
     openExternal: invoke('shell:openExternal'),
+    shellNew: invoke('shell:shellNew'),
     openWithList: invoke('shell:openWithList'),
     openWithInvoke: invoke('shell:openWithInvoke'),
     openWithApp: invoke('shell:openWithApp'),
@@ -52,6 +53,8 @@ const api = {
     drives: invoke('shell:drives'),
     firewall: invoke('shell:firewall')
   },
+  /** Network node: discovery, share lists, sign-in (passwords go straight to the native helper) */
+  net: { computers: invoke('net:computers'), shares: invoke('net:shares'), connect: invoke('net:connect'), disconnect: invoke('net:disconnect') },
   clip: { writeFiles: invoke('clip:writeFiles'), read: invoke('clip:read'), writeText: invoke('clip:writeText') },
   drag: { start: (paths: string[]) => ipcRenderer.send('drag:start', paths) },
   /** Real paths for files dropped in from Explorer (File.path no longer exists). */

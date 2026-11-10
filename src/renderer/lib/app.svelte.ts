@@ -3,7 +3,7 @@
 import type { Component } from 'svelte'
 import { engine, host, lan } from './api'
 import { Pane, VIRTUAL, isArchivePath, isVirtual, splitArchive, titleFor } from './pane.svelte'
-import { basename, dirname, fmtSize, join, plural } from './format'
+import { basename, collator, dirname, fmtSize, join, plural } from './format'
 import { kindOf } from './filetypes'
 import { lanx, receivedBody, receivedTitle } from './lan2.svelte'
 import type {
@@ -82,6 +82,11 @@ export class App {
   quickLook = $state<Entry | null>(null)
   viewer = $state<{ entries: Entry[]; index: number } | null>(null)
   drawer = $state(false)
+
+  /** Work has started: the progress window covers it; without that window, open the Transfers panel. */
+  showProgress() {
+    if (this.settings?.progressPopup === false) this.drawer = true
+  }
   maximized = $state(false)
   indexStatus = $state<any>(null)
   dark = $state(false)
@@ -125,6 +130,7 @@ export class App {
     this.ready = true
     await Promise.all(this.panes.map((p) => p.load()))
     void this.refreshDrives()
+    void this.loadNewTypes()
     setInterval(() => void this.refreshDrives(), 30000)
     window.addEventListener('focus', () => void this.refreshDrives())
     void engine.call('undo.list').then((l) => (this.undoList = l.slice(0, 30)))
@@ -241,6 +247,16 @@ export class App {
     const p = this.active.path
     if (!isVirtual(p) && !isArchivePath(p)) return [p]
     return this.settings?.indexRoots.length ? this.settings.indexRoots : this.defaultIndexRoots()
+  }
+
+  /** Where a search from Home, Inbox or another page with no folder looks: the indexed folders plus every local disk. */
+  searchEverywhereRoots() {
+    const want = [...(this.settings?.indexRoots.length ? this.settings.indexRoots : this.defaultIndexRoots()), ...this.drives.filter((d) => d.ready && d.kind === 'fixed').map((d) => d.root)]
+    const norm = (p: string) => (p.endsWith('\\') ? p : p + '\\').toLowerCase()
+    const out: string[] = []
+    // widest first, so a folder inside an already listed disk is not searched twice
+    for (const r of [...new Set(want)].sort((a, b) => a.length - b.length)) if (!out.some((o) => norm(r).startsWith(norm(o)))) out.push(r)
+    return out
   }
 
   /** set by the screenshot studio so demo drives are not replaced by the real ones */
@@ -399,7 +415,7 @@ export class App {
       return engine.call('archive.extractEntries', file, archived.map((s) => splitArchive(s).inner), dest)
     }
     this.rememberDest(dest)
-    this.drawer = true
+    this.showProgress()
     return engine.call('transfer.start', { op, sources, dest, policy: opts.policy ?? 'ask', verify: opts.verify ?? this.settings?.verifyCopies, filter: opts.filter })
   }
 
@@ -464,6 +480,36 @@ export class App {
     pane.renaming = p.toLowerCase()
   }
 
+  /** document types the installed programs offer under "New" (Word, Excel, …), read once */
+  newTypes = $state.raw<{ ext: string; label: string; template: string | null; data: string | null }[]>([])
+
+  async loadNewTypes() {
+    try {
+      const list = (await host.shell.shellNew()) as { ext: string; label: string; template: string | null; data: string | null }[]
+      // text files have their own entry; show the rest by name
+      this.newTypes = list.filter((t) => t.ext !== '.txt' && t.label && (t.template || t.data || !/^[A-Z0-9]+ file$/.test(t.label))).sort((a, b) => collator.compare(a.label, b.label))
+    } catch {
+      this.newTypes = []
+    }
+  }
+
+  async newDocument(t: { ext: string; label: string; template: string | null; data: string | null }) {
+    const pane = this.active
+    if (isVirtual(pane.path) || isArchivePath(pane.path)) return
+    try {
+      const p = await engine.call<string>('fs.newFrom', pane.path, `New ${t.label}${t.ext}`, { template: t.template, data: t.data })
+      await pane.load({ select: p })
+      pane.renaming = p.toLowerCase()
+    } catch (e) {
+      this.toast('error', `Couldn't create the ${t.label}`, String((e as Error)?.message ?? e).replace(/^Error:\s*/, ''))
+    }
+  }
+
+  /** The entries of every "New" menu, so the toolbar, the right-click menu and the palette agree. */
+  newMenu(): { label: string; icon: string; run: () => void }[] {
+    return this.newTypes.map((t) => ({ label: t.label, icon: 'newFile', run: () => void this.newDocument(t) }))
+  }
+
   async newFile(name = 'New Text Document.txt') {
     const pane = this.active
     if (isVirtual(pane.path) || isArchivePath(pane.path)) return
@@ -486,20 +532,20 @@ export class App {
 
   async zip(presetId?: string, sources = this.active.targets().map((e) => e.path)) {
     if (!sources.length || sources.some((s) => isVirtual(s) || isArchivePath(s))) return
-    this.drawer = true
+    this.showProgress()
     await engine.call('archive.create', sources, { presetId })
   }
 
   async extract(mode: 'smart' | 'here' | 'each' | 'to', dest?: string, files = this.active.targets().filter((e) => kindOf(e.ext) === 'archive').map((e) => e.path)) {
     if (!files.length) return
-    this.drawer = true
+    this.showProgress()
     await engine.call('archive.extract', files, { mode, dest })
   }
 
   async share(spec: ShareSpec) {
     try {
       await lan.call('share.send', spec)
-      this.drawer = true
+      this.showProgress()
       if (this.settings) this.updateSettings({ recentShares: [...new Set([...spec.to, ...this.settings.recentShares])].slice(0, 12) })
     } catch (e: any) {
       this.toast('error', 'Sharing failed', e.message)

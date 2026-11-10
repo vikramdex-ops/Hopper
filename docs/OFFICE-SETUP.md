@@ -117,7 +117,9 @@ All of these reach an offline colleague through the server inbox when they next 
 
 ## 7. Optional extras (admin, Settings → Office)
 
-- **Zoho Cliq bot**: one bot DMs each recipient. Steps: [CLIQ-SETUP.md](CLIQ-SETUP.md).
+- **Zoho Cliq bot**: one bot DMs each recipient. The endpoint already points at the office's
+  Hopper Bot; the admin pastes the bot's webhook token once under *Zoho Cliq bot*, ticks the
+  switch and saves. Every PC gets it from the office config. Details: [CLIQ-SETUP.md](CLIQ-SETUP.md).
 - **Dexterity Share** (client download links): on one office PC that stays on, **Set up
   Dexterity Share on this PC…** under *Dexterity Share*. Three steps, done in Hopper:
   [DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md). How staff use it: [DEXTERITY-SHARE.md](DEXTERITY-SHARE.md).

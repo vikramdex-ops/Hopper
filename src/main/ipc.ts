@@ -10,6 +10,7 @@ import { clearThumbCache } from './protocol'
 import { checkForUpdates, installUpdate, updaterState } from './updater'
 import defmgr from './defmgr'
 import { officeMeta, officeUser, saveOffice } from './officeops'
+import { registerNetworkIpc } from './network'
 import type { OfficeConfig, Settings } from '@shared/types'
 
 const h = (name: string, fn: (...args: any[]) => unknown) => ipcMain.handle(name, (_e, ...args) => fn(...args))
@@ -37,6 +38,7 @@ function assoc() {
 }
 
 export function registerIpc() {
+  registerNetworkIpc()
   // --- app / window -------------------------------------------------------
   h('app:info', async () => ({
     version: app.getVersion(),
@@ -118,6 +120,7 @@ export function registerIpc() {
     return true
   })
   h('shell:openExternal', (url: string) => (/^(https?|mailto):/i.test(url) ? shell.openExternal(url) : false))
+  h('shell:shellNew', () => ctx.shell.call('shellNew', {}, 20000))
   h('shell:openWithList', (p: string) => ctx.shell.call('openWithList', { path: p }, 15000))
   h('shell:openWithInvoke', (p: string, name: string) => ctx.shell.call('openWithInvoke', { path: p, name }, 30000))
   h('shell:openWithApp', (exe: string, p: string) => {

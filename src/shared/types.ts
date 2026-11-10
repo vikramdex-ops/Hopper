@@ -454,6 +454,8 @@ export interface Settings {
   inspector: boolean
   sidebarWidth: number
   sidebarCollapsed: boolean
+  /** show Hopper's progress window for copy, move, delete, zip and extract (the Transfers panel stays closed) */
+  progressPopup: boolean
   inspectorWidth: number
   groupRevisions: boolean
   thumbSize: number
@@ -485,5 +487,7 @@ export interface Settings {
   /** office key pasted or accepted from an invite; used when the shared config has none or is unreachable */
   officeKeyOverride?: string
   officeJoined?: OfficeJoined
+  /** Network node: saved network places (this PC only) and view options */
+  network?: import('./network').NetworkSettings
 }
 

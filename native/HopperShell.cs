@@ -82,6 +82,7 @@ namespace Hopper
 
         static string Dispatch(string cmd, Dictionary<string, object> a)
         {
+            if (cmd.StartsWith("net", StringComparison.Ordinal)) return Network.Dispatch(cmd, a); // native/Network.cs
             switch (cmd)
             {
                 case "ping": return "\"pong\"";
@@ -99,6 +100,7 @@ namespace Hopper
                 case "setAttrs": return Json.Serialize(Props.SetAttrs(StrList(a, "paths"), Int(a, "set"), Int(a, "clear")));
                 case "cluster": return Props.Cluster(Str(a, "path")).ToString();
                 case "shares": return Json.Serialize(Props.Shares());
+                case "shellNew": return Json.Serialize(ShellNew.List());
                 case "openWithList": return Json.Serialize(OpenWith.List(Str(a, "path")));
                 case "openWithInvoke":
                     ui.Invoke(delegate { OpenWith.Invoke(Str(a, "path"), Str(a, "name")); });

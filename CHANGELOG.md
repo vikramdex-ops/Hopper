@@ -4,6 +4,34 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — 2026-11-11
+
+### Added
+- **Progress window** for copy, move, delete, zip and extract: percentage, items done, current
+  file, speed and time left, with Pause, Cancel and Hide. A name conflict is asked in the same
+  window. The Transfers panel now stays closed unless you open it (Ctrl+J); Settings → Files has
+  a switch to go back to the panel.
+- **One pane / two panes** switch at the top right of the window, next to the window buttons.
+  The choice is remembered.
+- **Network** in the sidebar: computers found on the office network and your saved network
+  places. Opening a computer lists its shared folders; "Add a network place" takes a
+  `\\server` or `\\server\share` address. Hopper asks for a user name and password itself
+  when a server needs them.
+- **New** menu lists the document types the installed programs offer (Word, Excel, PowerPoint
+  and others) and creates them from each program's own blank template.
+
+### Fixed
+- Searching again from a results page looked in the indexed folders instead of the folder you
+  were in, so refining a search (for example `dll` to `*.dll`) could find nothing. A search from
+  Home now covers every local disk.
+- In Hopper's Open dialog a single click did nothing on a folder but selected a file. One click
+  now highlights either, and a double click opens either.
+- Folders on shares that do not send change notices are now re-checked every few seconds, so a
+  file made by another program appears without a manual refresh.
+
+### Changed
+- The default Zoho Cliq endpoint points at the office's Hopper Bot.
+
 ## [2.2.0] — 2026-11-10
 
 ### Added

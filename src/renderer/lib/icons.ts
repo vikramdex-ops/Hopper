@@ -35,6 +35,7 @@ const I: Record<string, string> = {
   list: '<path d="M3 5h5M3 10h5M3 15h5M12 5h5M12 10h5M12 15h5"/>',
   grid: '<rect x="3" y="3" width="5.5" height="5.5" rx="1"/><rect x="11.5" y="3" width="5.5" height="5.5" rx="1"/><rect x="3" y="11.5" width="5.5" height="5.5" rx="1"/><rect x="11.5" y="11.5" width="5.5" height="5.5" rx="1"/>',
   view: '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 8h14M8 8v9"/>',
+  singlePane: '<rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/>',
   dualPane: '<rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M10 3.5v13"/>',
   sidebar: '<rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 3.5v13"/>',
   inspector: '<rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M12.5 3.5v13"/>',

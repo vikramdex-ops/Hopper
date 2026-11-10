@@ -12,7 +12,7 @@ file sharing to colleagues over the office LAN with an `@mention`, and download 
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-22) ·
+[What's new](#whats-new-in-23) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -30,9 +30,9 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 | :-- | :-- |
 | **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page. Expiry of 1–90 days, optional password and download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. |
 | **Viewers** — PDF (continuous scroll, `Ctrl`+wheel zoom), Excel, Word, the preview saved in DWG files, MicroStation V7 drawings (`.dgn`, `.i01`…) with zoom, pan and levels, and SmartSketch `.sha` details. No design software needed. | **Project folders** — the *Dexterity project* template asks for job number, name, type, 3D platform, disciplines, sub-projects, areas and review gates, shows the exact tree first and never overwrites. A second template makes a dated issue pack. |
-| **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **A real transfer queue** — every copy, move, zip and share runs in the background with speed, ETA, pause/resume and one conflict prompt with *apply to all*. Same-drive moves are instant. Optional checksum verify. Survives flaky network shares. |
+| **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **Copies you can watch** — copy, move, delete, zip and extract show a progress window (percentage, current file, speed, time left, Pause / Cancel / Hide) that also asks about name conflicts, with *apply to all*. Everything runs in one background queue; the Transfers panel (`Ctrl+J`) keeps the history. Same-drive moves are instant; flaky shares are retried. |
 | **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Revisions (`RevA / RevB / Rev0`) group under the latest; unknown orders are flagged, never guessed. | **Hopper's own, top to bottom** — its own context menu, Properties, Open with and folder picker; nothing is handed to Windows Explorer. Path Copy (UNC, Internet, Samba forms), Recycle Bin restore, `Ctrl+Z` undo, the Windows clipboard both ways and drag-out to Outlook or Cliq. |
-| **Find it instantly** — a background index of your drives answers as you type; content search on demand; duplicates by content. | **Fluent and fast** — Windows 11 look (Mica, light and dark), a Home start page, drives with "free of total", a sidebar that collapses to a rail (`Ctrl+Shift+B`), announcements, workspaces and lists that stay smooth at 100,000 items. |
+| **Find it instantly** — a background index of your drives answers as you type; content search on demand; duplicates by content. **Network**: computers and NAS shares on the office network and your saved places, with Hopper's own sign-in. | **Fluent and fast** — Windows 11 look (Mica, light and dark), one pane or two (switch at the top right, `F10`), a *New* menu with your installed document types, a Home start page, drives with "free of total", a sidebar that collapses to a rail (`Ctrl+Shift+B`), announcements, workspaces and lists that stay smooth at 100,000 items. |
 
 <table>
 <tr>
@@ -50,7 +50,7 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td colspan="2"><img src="docs/screenshots/f-template.png" alt="Project folder template with a live tree preview"><br><sub><b>Project folders.</b> Fill in the job, see the exact tree, create it.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/f-transfers.png" alt="Transfer queue"><br><sub><b>The transfer queue.</b> Speed, ETA, pause and resume for everything.</sub></td>
+<td><img src="docs/screenshots/f-progress.png" alt="Progress window"><br><sub><b>Progress window.</b> Speed, time left, Pause, Cancel, Hide; conflicts asked in place.</sub></td>
 <td><img src="docs/screenshots/f-zip.png" alt="Compress dialog with presets"><br><sub><b>Presets.</b> One key for the zip you make every day.</sub></td>
 </tr>
 <tr>
@@ -59,9 +59,32 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 </tr>
 <tr>
 <td><img src="docs/screenshots/f-home.png" alt="Home page"><br><sub><b>Home.</b> Recent folders, pinned, Inbox, people and low-disk warnings.</sub></td>
-<td><img src="docs/screenshots/02-workspace-dark.png" alt="Dark theme"><br><sub><b>Dark theme</b> that follows Windows.</sub></td>
+<td><img src="docs/screenshots/f-network.png" alt="Network page"><br><sub><b>Network.</b> A server's shared folders and the sidebar's Network node.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/f-transfers.png" alt="Transfers panel"><br><sub><b>Transfers panel</b> (<code>Ctrl+J</code>). The whole queue and its history.</sub></td>
+<td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.3
+
+- **Progress window** for copy, move, delete, zip and extract: percentage, items, current file,
+  speed and time left, with Pause, Cancel and Hide; a name conflict is asked in the same window.
+  The Transfers panel stays closed unless you open it (`Ctrl+J`); Settings → Files can switch
+  back to the panel.
+- **One pane / two panes** switch at the top right of the window (also `F10`), remembered.
+- **Network** in the sidebar: computers and NAS shares on the office network and your saved
+  network places. Opening a computer lists its shared folders; *Add a network place* takes a
+  `\\server` or `\\server\share` address; Hopper asks for a user name and password itself when
+  a server needs them.
+- **New** menu lists the document types your installed programs offer (Word, Excel, PowerPoint
+  and others) and creates them from each program's own blank template.
+- Fixes: searching again from a results page stays in the folder you were in (and a search from
+  Home covers every local disk); one click selects a folder in Hopper's Open dialog; folders on
+  shares without change notices refresh by themselves.
+- The Zoho Cliq endpoint defaults to the office's Hopper Bot, so the admin only pastes its token
+  once ([docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)).
 
 ## What's new in 2.2
 
@@ -130,7 +153,8 @@ A one-time setup, about five minutes:
 3. **Everyone else joins**: automatically from the shared config, from an invite the admin sends
    over the network (**Invite PCs**), or by pasting the key. Then **Settings → Sharing → Allow
    through Windows Firewall** (asks for admin once) and fill in your name and Zoho email.
-4. Optional: the Cliq bot ([docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)), groups, folder templates,
+4. Optional: Cliq DMs (the endpoint already points at the office's Hopper Bot; the admin pastes
+   its webhook token once — [docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)), groups, folder templates,
    naming conventions and revision rules.
 5. Optional, for client links: on one office PC that stays on, the admin runs **Set up Dexterity
    Share on this PC…** (Settings → Office → Dexterity Share). See
@@ -146,7 +170,7 @@ Details: [docs/OFFICE-SETUP.md](docs/OFFICE-SETUP.md).
 | `Ctrl+K` | command palette (every action, with its shortcut) |
 | `Ctrl+G` | go to any folder by name |
 | `Ctrl+E` | search |
-| `Tab` | switch pane · `F10` dual pane on/off |
+| `Tab` | switch pane · `F10` one pane / two panes |
 | `Alt+←` `Alt+→` `Alt+↑` / `Backspace` | back, forward, up |
 | `Ctrl+T` `Ctrl+W` `Ctrl+Shift+T` | new, close, reopen tab |
 | `Ctrl+C` `Ctrl+X` `Ctrl+V` | copy, cut, paste — through the Windows clipboard |
@@ -163,7 +187,7 @@ Details: [docs/OFFICE-SETUP.md](docs/OFFICE-SETUP.md).
 | `Del` / `Shift+Del` / `Ctrl+Z` | recycle / delete permanently / undo |
 | `Space` | Quick Look |
 | `Ctrl+Shift+P` | package a lot / transmittal |
-| `Ctrl+J` | transfers |
+| `Ctrl+J` | Transfers panel (queue and history) |
 | `Ctrl+,` / `F1` | settings / all shortcuts |
 
 ## Build from source (maintainers)

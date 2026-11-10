@@ -10,6 +10,7 @@
   import HomeView from './HomeView.svelte'
   import InboxView from './InboxView.svelte'
   import ActivityView from './ActivityView.svelte'
+  import NetworkView from './NetworkView.svelte'
   import Icon from './Icon.svelte'
 
   let { pane }: { pane: Pane } = $props()
@@ -61,6 +62,8 @@
       <InboxView {pane} />
     {:else if pane.path === VIRTUAL.activity}
       <ActivityView {pane} />
+    {:else if pane.path.startsWith(VIRTUAL.network)}
+      <NetworkView {pane} />
     {:else}
       <FileList {pane} />
     {/if}

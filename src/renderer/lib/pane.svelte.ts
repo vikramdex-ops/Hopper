@@ -6,13 +6,16 @@ import { kindOf } from './filetypes'
 import { groupRevisions } from '@shared/revisions'
 import { ATTR, type ColumnSpec, type Entry, type PaneState, type TabState, type ViewMode } from '@shared/types'
 import type { App } from './app.svelte'
+import { networkHostOf, networkHostPath, serverOnlyUnc, shareRootHost } from '@shared/network'
 
 export const VIRTUAL = {
   home: 'hopper:home',
   inbox: 'hopper:inbox',
   activity: 'hopper:activity',
   recycle: 'hopper:recycle',
-  search: 'hopper:search'
+  search: 'hopper:search',
+  /** Network node: computers and saved places; ?host=NAME lists that computer's shares */
+  network: 'hopper:network'
 } as const
 
 export const isVirtual = (p: string) => p.startsWith('hopper:')
@@ -27,6 +30,8 @@ export function titleFor(p: string) {
   if (p === VIRTUAL.inbox) return 'Inbox'
   if (p === VIRTUAL.activity) return 'Activity'
   if (p === VIRTUAL.recycle) return 'Recycle Bin'
+  if (p === VIRTUAL.network) return 'Network'
+  if (networkHostOf(p)) return networkHostOf(p)!
   if (p.startsWith(VIRTUAL.search)) return `Search: ${new URLSearchParams(p.split('?')[1] ?? '').get('q') ?? ''}`
   if (isArchivePath(p)) {
     const { file, inner } = splitArchive(p)
@@ -88,6 +93,7 @@ export class Pane {
   }
   get canUp() {
     const p = this.path
+    if (networkHostOf(p) || shareRootHost(p)) return true
     if (isVirtual(p)) return false
     if (isArchivePath(p)) return true
     return dirname(p) !== p || /^[a-zA-Z]:\\?$/.test(p)
@@ -171,6 +177,8 @@ export class Pane {
 
   async navigate(path: string, opts: { push?: boolean; select?: string; newTab?: boolean } = {}) {
     path = normalize(path)
+    // \\server on its own is not a folder: show that computer's shares
+    if (serverOnlyUnc(path)) path = networkHostPath(serverOnlyUnc(path)!)
     if (opts.newTab || this.tab.locked) {
       this.openTab(path)
       return this.load({ select: opts.select })
@@ -207,6 +215,8 @@ export class Pane {
       return this.navigate(parent, { select: inner ? `${file}::${inner}` : file })
     }
     if (/^[a-zA-Z]:\\?$/.test(p)) return this.navigate(VIRTUAL.home)
+    if (networkHostOf(p)) return this.navigate(VIRTUAL.network)
+    if (shareRootHost(p)) return this.navigate(networkHostPath(shareRootHost(p)!), { select: p })
     const parent = dirname(p)
     if (parent !== p) void this.navigate(parent, { select: p })
   }
@@ -220,6 +230,7 @@ export class Pane {
 
   openTab(path: string, activate = true) {
     path = normalize(path)
+    if (serverOnlyUnc(path)) path = networkHostPath(serverOnlyUnc(path)!)
     const t: TabState = { id: newTabId(), path, history: [path], index: 0 }
     this.tabs = [...this.tabs.slice(0, this.active + 1), t, ...this.tabs.slice(this.active + 1)]
     if (activate) this.active = this.active + 1
@@ -272,7 +283,7 @@ export class Pane {
     try {
       let entries: Entry[]
       const t0 = performance.now()
-      if (path === VIRTUAL.home || path === VIRTUAL.inbox || path === VIRTUAL.activity) entries = []
+      if (path === VIRTUAL.home || path === VIRTUAL.inbox || path === VIRTUAL.activity || path.startsWith(VIRTUAL.network)) entries = []
       else if (path === VIRTUAL.recycle) {
         const list = await window.hopper.shell.recycleList()
         entries = (list as any[]).map((r) => ({ name: basename(r.path), path: r.path, dir: false, size: r.size, mtime: r.deleted, ctime: r.deleted, atime: 0, attrs: 0, ext: (r.path.split('.').pop() ?? '').toLowerCase() }))
@@ -321,6 +332,12 @@ export class Pane {
     return this.load({ keepSelection: true })
   }
 
+  /** The folder a search typed in this pane should look in ('' = everywhere). */
+  get searchRoot(): string {
+    if (this.path.startsWith(VIRTUAL.search)) return new URLSearchParams(this.path.split('?')[1] ?? '').get('root') ?? ''
+    return isVirtual(this.path) || isArchivePath(this.path) ? '' : this.path
+  }
+
   private startSearch(path: string, token: number) {
     const params = new URLSearchParams(path.split('?')[1] ?? '')
     const q = params.get('q') ?? ''
@@ -345,7 +362,7 @@ export class Pane {
       this.searchInfo = { scanned: d.scanned, hits: Math.max(d.hits, seen.size), done: d.done }
       if (d.done) off()
     })
-    const roots = root ? [root] : this.app.searchRoots()
+    const roots = root ? [root] : this.app.searchEverywhereRoots()
     void engine.call('search.run', st, { roots, name: q, content: content || undefined, limit: 20000 })
   }
 

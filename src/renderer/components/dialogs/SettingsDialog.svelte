@@ -691,6 +691,7 @@
         </div>
       {:else if current === 'files'}
         <h3 class="subtitle">Copying</h3>
+        {@render toggle('Show a progress window', 'Copy, move, delete, zip and extract show their progress in a small window with pause and cancel. When this is off, the Transfers panel opens instead.', s.progressPopup !== false, (v) => set({ progressPopup: v }))}
         {@render toggle('Verify copies with a checksum', 'Each copied file is read back and compared with SHA-256. Slower, but catches bad network copies.', s.verifyCopies, (v) => set({ verifyCopies: v }))}
         <div class="item">
           <span class="txt"><span>Small files copied at once</span><span class="caption">More is faster for many small files on fast disks; fewer is gentler on the server</span></span>

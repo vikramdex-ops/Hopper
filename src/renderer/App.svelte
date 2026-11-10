@@ -10,6 +10,7 @@
   import Inspector from './components/Inspector.svelte'
   import TransferDrawer from './components/TransferDrawer.svelte'
   import Toasts from './components/Toasts.svelte'
+  import ProgressPopup from './components/ProgressPopup.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import Palette from './components/Palette.svelte'
   import QuickLook from './components/QuickLook.svelte'
@@ -76,6 +77,7 @@
 <Palette />
 <QuickLook />
 <ImageViewer />
+<ProgressPopup />
 <DialogHost />
 <Toasts />
 

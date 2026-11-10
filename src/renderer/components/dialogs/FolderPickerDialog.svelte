@@ -42,11 +42,15 @@
     ...(app.settings?.quickDests ?? []).slice(0, 6).map((d) => ({ label: d.label || basename(d.path), path: d.path, icon: 'history' }))
   ].filter((p, i, a) => a.findIndex((x) => x.path.toLowerCase() === p.path.toLowerCase()) === i))
 
+  /** the folder highlighted in a file picker (not part of the answer) */
+  let cursor = $state('')
+
   async function load(p: string) {
     const my = ++token
     path = p
     typed = p
     picked = []
+    cursor = ''
     error = ''
     if (p === HOME) {
       entries = []
@@ -76,7 +80,14 @@
   }
 
   function click(e: Entry, ev: MouseEvent) {
-    if (mode === 'folder' ? !e.dir : e.dir) return (picked = e.dir && mode === 'file' ? [] : picked)
+    if (mode === 'folder' && !e.dir) return
+    if (mode === 'file' && e.dir) {
+      // a folder cannot be the answer here, but it is highlighted like a file; Open goes into it
+      picked = []
+      cursor = e.path
+      return
+    }
+    cursor = ''
     if (multiple && ev.ctrlKey) picked = picked.includes(e.path) ? picked.filter((p) => p !== e.path) : [...picked, e.path]
     else picked = [e.path]
   }
@@ -139,7 +150,7 @@
         <div class="caption pad">{mode === 'folder' ? 'No folders in here.' : 'Nothing to pick in here.'}</div>
       {/if}
       {#each entries as e (e.path)}
-        <button type="button" class="item" class:on={picked.includes(e.path)} class:dim={mode === 'folder' ? !e.dir : false} onclick={(ev) => click(e, ev)} ondblclick={() => dbl(e)}>
+        <button type="button" class="item" class:on={picked.includes(e.path) || cursor === e.path} class:dim={mode === 'folder' ? !e.dir : false} onclick={(ev) => click(e, ev)} ondblclick={() => dbl(e)}>
           <span class="ic" class:folder={e.dir}>
             {#if e.dir}<Icon name="folder" />{:else}<img src={`hopper://icon/?p=${encodeURIComponent(e.path)}&e=${e.ext}&z=small`} alt="" width="16" height="16" />{/if}
           </span>
@@ -150,7 +161,11 @@
   </div>
   {#snippet footer()}
     <span class="caption sel ellipsis">{Array.isArray(result) ? `${result.length} selected` : result || 'Nothing selected'}</span>
-    <button type="submit" class="btn primary" disabled={!result || (Array.isArray(result) && !result.length)}>{ok ?? (mode === 'folder' ? 'Choose this folder' : 'Choose')}</button>
+    {#if cursor}
+      <button type="button" class="btn primary" onclick={() => load(cursor)}>Open folder</button>
+    {:else}
+      <button type="submit" class="btn primary" disabled={!result || (Array.isArray(result) && !result.length)}>{ok ?? (mode === 'folder' ? 'Choose this folder' : 'Choose')}</button>
+    {/if}
     <button type="button" class="btn" onclick={() => close()}>Cancel</button>
   {/snippet}
 </Dialog>

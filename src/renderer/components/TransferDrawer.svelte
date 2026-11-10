@@ -16,7 +16,8 @@
   const icon = (j: JobInfo) => ({ copy: 'copy', move: 'cut', zip: 'zip', extract: 'extract', delete: 'delete', share: 'send', receive: 'inbox', pdf: 'pdf', package: 'package', hash: 'duplicate', size: 'size' })[j.kind] ?? 'activity'
 
   $effect(() => {
-    if (conflict) app.drawer = true
+    // a conflict question shows in the progress window; without that window it shows here
+    if (conflict && app.settings?.progressPopup === false) app.drawer = true
   })
 </script>
 

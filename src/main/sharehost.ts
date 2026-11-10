@@ -146,6 +146,8 @@ export function initShareHost() {
     const next = { ...shareSettings(), ...patch }
     const turningOn = next.enabled && !shareSettings().enabled
     ctx.settings.set({ shareServer: next, ...(turningOn ? { keepInTray: true } : {}) } as any)
+    // the share server must come back after a crash or power cut: write this now, not on the usual delay
+    ctx.settings.flushSync()
     if (turningOn && app.isPackaged) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] })
     pushShareConfig(true)
     return next

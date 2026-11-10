@@ -140,7 +140,7 @@ export function backgroundMenu(pane: Pane): MenuItem[] {
     cmd('file.paste', { disabled: virt })
   ]
   if (!virt && !inArchive) {
-    m.push({ label: 'New', icon: 'plus', submenu: [cmd('file.newFolder'), cmd('file.newFile'), { separator: true }, cmd('file.template')] })
+    m.push({ label: 'New', icon: 'plus', submenu: [cmd('file.newFolder'), cmd('file.newFile'), ...(app.newTypes.length ? [{ separator: true } as MenuItem, ...app.newMenu()] : []), { separator: true }, cmd('file.template')] })
     m.push({ separator: true }, cmd('sel.all'), cmd('file.terminal'), cmd('file.size'), cmd('tools.pin'))
     m.push({ separator: true }, { label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu([pane.path]) }, { label: 'Properties', icon: 'info', run: () => dialogs.properties?.([pane.path]) })
   }

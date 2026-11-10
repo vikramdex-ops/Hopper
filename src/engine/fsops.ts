@@ -1,7 +1,7 @@
 // Directory listing, metadata and small file operations.
 // Listing goes through HopperShell's FindFirstFileEx (attributes + sizes + times in one pass,
 // which is several times faster than readdir+stat on SMB shares); Node is the fallback.
-import { createReadStream, promises as fsp } from 'node:fs'
+import { constants as fsConstants, createReadStream, promises as fsp } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { ATTR, type Entry, type ListResult } from '@shared/types'
@@ -138,6 +138,17 @@ export function fsHandlers(ctx: EngineCtx) {
     'fs.newFile': async (dir: string, name: string, content = '') => {
       const p = await freeName(join(dir, name))
       await fsp.writeFile(p, content, { flag: 'wx' })
+      ctx.undo.record({ kind: 'new', label: `New file ${name}`, pairs: [['', p]] })
+      return p
+    },
+    /** "New > Word document": copy the program's own blank template, or write its starter bytes. */
+    'fs.newFrom': async (dir: string, name: string, src: { template?: string | null; data?: string | null }) => {
+      const p = await freeName(join(dir, name))
+      if (src.template) await fsp.copyFile(src.template, p, fsConstants.COPYFILE_EXCL)
+      else await fsp.writeFile(p, src.data ? Buffer.from(src.data, 'base64') : '', { flag: 'wx' })
+      // a template is often read-only; the new file must not be
+      await fsp.chmod(p, 0o666).catch(() => {})
+      await fsp.utimes(p, new Date(), new Date()).catch(() => {})
       ctx.undo.record({ kind: 'new', label: `New file ${name}`, pairs: [['', p]] })
       return p
     },

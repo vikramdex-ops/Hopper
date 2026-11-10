@@ -3,12 +3,18 @@
 When someone shares files with you in Hopper, the office bot sends you a direct message in Zoho
 Cliq, for example:
 
-> Asha sent you 3 files (420 MB): "Lot 7 isos for check" — saved to your Hopper Inbox
+> Arun Kumar sent you 3 files (420 MB): "Lot 7 isos for check" — saved to your Hopper Inbox
 
 If your PC was off and the files went to the office server instead, the message ends with "on the
 office server, it will appear in your Hopper Inbox when Hopper starts".
 
-Setup needs one Cliq admin (about 10 minutes) and one field from every user.
+The office already has a bot for this, **Hopper Bot**, and Hopper's built-in endpoint points at
+it: `https://cliq.zoho.in/api/v2/bots/spreadsheetstatus/message`. So the usual setup is one step
+for the office admin: paste the bot's webhook token once (step 3) and save. Every PC reads it from
+the shared office config; nobody configures the bot on their own PC. Each person only fills in
+their Zoho email and subscribes to the bot (step 4).
+
+Steps 1 and 2 are needed only to make a new bot or a new token.
 
 ## How Hopper calls Cliq
 
@@ -31,7 +37,7 @@ Content-Type: application/json
   sends notices one at a time and never writes the zapikey to a log.
 - A failed notice never fails the share; the files are delivered either way.
 
-## 1. Cliq admin: create the bot
+## 1. Cliq admin: create a bot (only if you are not using Hopper Bot)
 
 1. In Zoho Cliq (web or desktop), click your profile picture (top right) and choose
    **Bots & Tools**.
@@ -45,7 +51,7 @@ Content-Type: application/json
    The permalink looks like `https://cliq.zoho.in/bots/hopper`, and the last part (`hopper`) is
    the unique name.
 
-## 2. Cliq admin: create a webhook token (the zapikey)
+## 2. Cliq admin: create a webhook token (the zapikey), if you do not have one
 
 1. Profile picture > **Bots & Tools** > **Webhook Tokens**. Cliq asks for two-factor
    verification, and the session lasts 15 minutes.
@@ -54,25 +60,27 @@ Content-Type: application/json
    - The token belongs to the person who generated it. If that account is deactivated or the
      token is deleted, notices stop. Consider generating it from a long-lived admin account.
 
-## 3. Cliq admin: enter them in Hopper
+## 3. Office admin: paste the token in Hopper, once
 
-On any PC with Hopper, open **Settings > Office > Cliq** and fill in:
+On the admin's PC, open **Settings > Office > Zoho Cliq bot**:
 
 | Field | Value |
 |---|---|
-| Enabled | on |
-| Endpoint | `https://cliq.zoho.in/api/v2/bots/<unique-name>/message` (for example `https://cliq.zoho.in/api/v2/bots/hopper/message`) |
-| Zapikey | the webhook token from step 2 |
+| Send a Cliq DM to each recipient… | on |
+| Bot endpoint | already filled in with the office's Hopper Bot (`https://cliq.zoho.in/api/v2/bots/spreadsheetstatus/message`). Change it only for a different bot: `https://cliq.zoho.in/api/v2/bots/<unique-name>/message`. |
+| zapikey | the bot's webhook token (from step 2, or from whoever made the token) |
+
+Then **Save**. Only an office admin can change these fields.
 
 Use the domain your Cliq account opens on. An account on `cliq.zoho.in` is in the India data
 centre; use `cliq.zoho.com`, `.eu` and so on for other centres. Enter the endpoint **without**
-`?zapikey=`, because Hopper adds it.
+`?zapikey=`, because Hopper adds it. Never paste the token into a message, a ticket or a document.
 
 These values are saved to the shared office config (`office.json` on the server), so every Hopper
-in the office uses the same bot. Anyone who can read that file can post as the bot, so keep the
+in the office uses the same bot with no setup on the other PCs. Anyone who can read that file can post as the bot, so keep the
 folder's permissions limited to staff.
 
-Click **Send test** with your own Zoho email. Hopper calls the `cliq.test` method and shows the
+Click **Send test DM** with your own Zoho email. Hopper calls the `cliq.test` method and shows the
 HTTP status. A 2xx status means it worked. These are the typical failures:
 
 | Result | Meaning |

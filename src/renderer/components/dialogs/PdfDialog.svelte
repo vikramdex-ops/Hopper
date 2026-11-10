@@ -158,7 +158,7 @@
       else if (mode === 'extract') await engine.call('pdf.extract', source, expand(pagesText, pageCount), out)
       else if (mode === 'rotate') await engine.call('pdf.rotate', source, rotateAll ? 'all' : expand(pagesText, pageCount), degrees, inPlace ? source : out)
       else await engine.call('pdf.reorder', source, expand(orderText, pageCount), out)
-      app.drawer = true
+      app.showProgress()
       close(true)
     } catch (e: any) {
       runError = e?.message ?? String(e)

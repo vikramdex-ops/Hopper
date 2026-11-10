@@ -52,7 +52,7 @@
     }
     if (makeDefault) app.updateSettings({ defaultPreset: id })
     void engine.call('archive.create', sources, { presetId: id, dest, name, password: password || undefined })
-    app.drawer = true
+    app.showProgress()
     close(true)
   }
 </script>

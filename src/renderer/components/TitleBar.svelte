@@ -3,6 +3,7 @@
   import { VIRTUAL } from '../lib/pane.svelte'
   import { dialogs } from '../lib/commands'
   import Icon from './Icon.svelte'
+  import { basename } from '../lib/format'
 
   let q = $state('')
   let input: HTMLInputElement
@@ -11,7 +12,7 @@
     e.preventDefault()
     const text = q.trim()
     if (!text) return
-    const root = app.active.path.startsWith('hopper:') ? '' : app.active.path
+    const root = app.active.searchRoot
     const params = new URLSearchParams({ q: text })
     if (root) params.set('root', root)
     void app.active.navigate(`${VIRTUAL.search}?${params}`)
@@ -35,13 +36,17 @@
     <input
       bind:this={input}
       bind:value={q}
-      placeholder={app.ready ? `Search ${app.active?.path.startsWith('hopper:') ? 'indexed drives' : app.active?.tab ? app.tabTitle(app.active.tab) : ''}` : 'Search'}
+      placeholder={app.ready ? `Search ${app.active?.searchRoot ? basename(app.active.searchRoot) || app.active.searchRoot : 'this PC'}` : 'Search'}
       spellcheck="false"
       onkeydown={(e) => e.key === 'Escape' && (q = '', input.blur())}
     />
     <span class="kbd">Ctrl+E</span>
   </form>
   <div class="drag"></div>
+  <div class="layout" role="group" aria-label="Pane layout">
+    <button class:on={!app.dual} title="One pane (F10)" aria-label="One pane" aria-pressed={!app.dual} onclick={() => app.dual && app.toggleDual()}><Icon name="singlePane" size={15} /></button>
+    <button class:on={app.dual} title="Two panes (F10)" aria-label="Two panes" aria-pressed={app.dual} onclick={() => !app.dual && app.toggleDual()}><Icon name="dualPane" size={15} /></button>
+  </div>
   <div class="caption-space"></div>
 </header>
 
@@ -98,6 +103,33 @@
   .drag {
     flex: 1;
     height: 100%;
+  }
+  .layout {
+    flex: none;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    background: var(--hover);
+    -webkit-app-region: no-drag;
+  }
+  .layout button {
+    width: 28px;
+    height: 22px;
+    border: 0;
+    border-radius: calc(var(--r-sm) - 1px);
+    background: transparent;
+    color: var(--text-2);
+    display: grid;
+    place-items: center;
+  }
+  .layout button:hover {
+    color: var(--text);
+  }
+  .layout button.on {
+    background: var(--card-solid);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px var(--stroke-2);
   }
   .caption-space {
     width: 140px;

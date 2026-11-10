@@ -86,8 +86,8 @@ try {
 if (process.argv.includes('--publish')) {
   const site = join(root, 'site', 'assets', 'shots')
   const docs = join(root, 'docs', 'screenshots')
-  const siteSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-zip', 'f-transfers', 'f-packager', 'f-person', 'f-pathcopy', 'f-properties', 'f-home', 'f-rail']
-  const docsSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-transfers', 'f-packager', 'f-zip', 'f-person', 'f-pathcopy', 'f-home', 'f-palette']
+  const siteSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-zip', 'f-progress', 'f-network', 'f-packager', 'f-person', 'f-pathcopy', 'f-home', 'f-rail']
+  const docsSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-progress', 'f-conflict', 'f-network', 'f-transfers', 'f-packager', 'f-zip', 'f-person', 'f-pathcopy', 'f-home', 'f-palette']
   for (const n of siteSet) copyFileSync(join(out, `${n}.png`), join(site, `${n}.png`))
   for (const n of docsSet) copyFileSync(join(out, `${n}.png`), join(docs, `${n}.png`))
   console.log('published to', site, 'and', docs)
@@ -169,11 +169,11 @@ async function studio() {
     const now = Date.now()
     const h = window.__hopper
     h.peers = [
-      { id: 'p1', user: 'arun', displayName: 'Arun Kumar', host: 'WS-12', address: '', port: 0, version: '2.2.0', status: 'online', lastSeen: now },
-      { id: 'p2', user: 'priya', displayName: 'Priya Raman', host: 'WS-21', address: '', port: 0, version: '2.2.0', status: 'online', lastSeen: now },
-      { id: 'p3', user: 'ravi', displayName: 'Ravi Shankar', host: 'WS-07', address: '', port: 0, version: '2.2.0', status: 'busy', lastSeen: now },
-      { id: 'p4', user: 'meena', displayName: 'Meena Iyer', host: 'WS-30', address: '', port: 0, version: '2.2.0', status: 'away', lastSeen: now },
-      { id: 'p5', user: 'suresh', displayName: 'Suresh Babu', host: 'WS-15', address: '', port: 0, version: '2.2.0', status: 'offline', lastSeen: now - 3600e3 }
+      { id: 'p1', user: 'arun', displayName: 'Arun Kumar', host: 'WS-12', address: '', port: 0, version: '2.3.0', status: 'online', lastSeen: now },
+      { id: 'p2', user: 'priya', displayName: 'Priya Raman', host: 'WS-21', address: '', port: 0, version: '2.3.0', status: 'online', lastSeen: now },
+      { id: 'p3', user: 'ravi', displayName: 'Ravi Shankar', host: 'WS-07', address: '', port: 0, version: '2.3.0', status: 'busy', lastSeen: now },
+      { id: 'p4', user: 'meena', displayName: 'Meena Iyer', host: 'WS-30', address: '', port: 0, version: '2.3.0', status: 'away', lastSeen: now },
+      { id: 'p5', user: 'suresh', displayName: 'Suresh Babu', host: 'WS-15', address: '', port: 0, version: '2.3.0', status: 'offline', lastSeen: now - 3600e3 }
     ]
     h.groups = [{ id: 'piping', name: 'Piping team', members: ['arun', 'priya', 'ravi'] }]
     // Demo drives only: never the real machine's shares. C: is nearly full so Home shows its warning.
@@ -203,6 +203,41 @@ async function studio() {
       if (!h.lanStatus?.ready) h.lanStatus = { ...h.lanStatus, ready: true, enabled: true }
     }, 100)
   })
+
+  // Network: made-up computers and shares (as tests/e2e/network.mjs does), so no real machine,
+  // share or user from this office appears. Installed before the first capture; anything the
+  // first unstubbed render fetched is forgotten.
+  await until(() => !!window.__hopperNet, null, 30000)
+  await ev(() => {
+    const { netApi, net } = window.__hopperNet
+    const shares = {
+      'NAS-DEMO': [{ name: 'Projects', type: 0, remark: 'Live jobs' }, { name: 'Scans', type: 0, remark: 'Scanner drop folder' }, { name: 'Standards', type: 0, remark: 'Office standards, read-only' }, { name: 'Archive', type: 0, remark: 'Closed jobs' }, { name: 'IPC$', type: 0x80000003, remark: 'Remote IPC' }, { name: 'Plotter', type: 1, remark: 'A0 plotter' }],
+      'FILES-DEMO': [{ name: 'Archive', type: 0, remark: '' }, { name: 'Transmittals', type: 0, remark: '' }]
+    }
+    netApi.computers = async (sources) => {
+      const all = {
+        connected: { id: 'connected', ms: 5, items: [{ name: 'FILES-DEMO' }] },
+        wsd: { id: 'wsd', ms: 40, items: [{ name: 'NAS-DEMO', address: '192.0.2.10' }, { name: 'PLOT-DEMO', address: '192.0.2.20' }] },
+        browse: { id: 'browse', ms: 60, items: [] },
+        serverEnum: { id: 'serverEnum', ms: 60, items: [] }
+      }
+      return { ms: 60, sources: sources.map((s) => all[s]).filter(Boolean) }
+    }
+    netApi.shares = async (server) => {
+      const k = server.toUpperCase()
+      return shares[k] ? { server, shares: shares[k], connected: false, remembered: null } : { server, error: { stage: 'resolve', code: 53 } }
+    }
+    netApi.connect = async (spec) => ({ ok: true, remote: spec.remote })
+    netApi.disconnect = async () => ({ closed: 0, failed: [], forgot: false })
+    net.raw = {}
+    net.scannedAt = 0
+    net.listings = {}
+    const bs = String.fromCharCode(92)
+    net.addPlaceRaw(bs + bs + 'FILES-DEMO' + bs + 'Transmittals', 'Transmittals on FILES-DEMO')
+    net.setExpanded(true)
+    net.scan(true)
+  })
+  await wait(800)
 
   // ---- hero: two panes, a lot and a PDF preview -------------------------------------------------
   await ev(({ lot, P }) => {
@@ -327,6 +362,26 @@ async function studio() {
   await crop('f-properties', '.dlg')
   await closeAll()
 
+  // ---- progress window: a copy in flight (demo job, so the numbers stay put while captured) -------
+  await ev(() => {
+    const now = Date.now()
+    const bs = String.fromCharCode(92)
+    window.__hopper.jobs = [{ id: 'pp1', kind: 'copy', title: 'Copying 340 items from Lot 07', dest: 'S:' + bs + 'Lots' + bs + 'Lot 07', state: 'running', done: 1.42e9, total: 2.31e9, files: 214, filesTotal: 340, rate: 96e6, startedAt: now - 15e3, errors: [], current: 'H:' + bs + 'Lot 07' + bs + 'ISO-1044_Rev0.pdf' }]
+  })
+  await until(() => !!document.querySelector('.pp'), null, 10000)
+  await crop('f-progress', '.pp', { pad: 36 })
+  await ev(() => {
+    const now = Date.now()
+    const bs = String.fromCharCode(92)
+    const j = window.__hopper.jobs[0]
+    window.__hopper.jobs = [{ ...j, state: 'waiting', rate: 0 }]
+    window.__hopper.conflicts = [{ jobId: 'pp1', conflictId: 'c1', src: { path: 'H:' + bs + 'Lot 07' + bs + 'ISO-1003_Rev2.pdf', size: 1073, mtime: now - 3600e3 }, dst: { path: 'S:' + bs + 'Lots' + bs + 'Lot 07' + bs + 'ISO-1003_Rev2.pdf', size: 1041, mtime: now - 3 * 86400e3 } }]
+  })
+  await until(() => !!document.querySelector('.pp .conflict'), null, 10000)
+  await crop('f-conflict', '.pp', { pad: 36 })
+  await ev(() => { window.__hopper.conflicts = []; window.__hopper.jobs = [] })
+  await until(() => !document.querySelector('.pp'), null, 10000).catch(() => {})
+
   // ---- transfer queue with live-looking jobs -----------------------------------------------------
   await ev(() => {
     const now = Date.now()
@@ -338,13 +393,15 @@ async function studio() {
       { id: 'd', kind: 'extract', title: 'Extracting Client markups.zip', state: 'done', done: 88e6, total: 88e6, files: 46, filesTotal: 46, rate: 0, startedAt: now - 60e3, endedAt: now - 52e3, errors: [] }
     ]
     h.shares = { 's|priya': { shareId: 's', to: 'priya', state: 'sending', done: 640e6, total: 1.1e9, rate: 104e6, via: 'direct' } }
+    // the panel on its own: no progress window over it
+    h.updateSettings({ progressPopup: false })
     h.drawer = true
   })
   await wait(500)
   await ev(() => { document.querySelector('.drawer').style.maxWidth = '760px' })
   await crop('f-transfers', '.drawer', { pad: 12 })
   await ev(() => { document.querySelector('.drawer').style.maxWidth = '' })
-  await ev(() => { window.__hopper.drawer = false; window.__hopper.jobs = []; window.__hopper.shares = {} })
+  await ev(() => { window.__hopper.drawer = false; window.__hopper.jobs = []; window.__hopper.shares = {}; window.__hopper.updateSettings({ progressPopup: true }) })
 
   // ---- zip presets -------------------------------------------------------------------------------
   await ev(() => { window.__hopper.panes[0].selectWhere((r) => r.ext === 'pdf'); void window.__hopper.__dialogs.zip() })
@@ -390,6 +447,16 @@ async function studio() {
   await clip('f-viewer', { x: 0, y: 0, width: 880, height: 560 })
   await win.keyboard.press('Escape')
   await until(() => !document.querySelector('.docv'), null, 5000)
+
+  // ---- Network: a demo server's shared folders, with the sidebar's Network node -------------------
+  await ev(() => { window.__hopper.updateSettings({ dual: false, inspector: false }); window.__hopper.panes[0].navigate('hopper:network?host=NAS-DEMO') })
+  await until(() => /Projects/.test(document.querySelector('.pane')?.innerText ?? '') && /NAS-DEMO/.test(document.querySelector('.sidebar')?.innerText ?? ''), null, 20000)
+  // a narrower window so the share cards wrap instead of running off the crop
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1120, 780))
+  await wait(1500)
+  await shot('f-network')
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 960))
+  await wait(1000)
 
   // ---- Home page and the collapsed sidebar rail ----------------------------------------------------
   await ev(({ P, lot }) => {

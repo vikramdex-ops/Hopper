@@ -1,16 +1,71 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { app } from '../lib/app.svelte'
   import { VIRTUAL } from '../lib/pane.svelte'
   import { basename, fmtSize, initials, personColor } from '../lib/format'
   import { dialogs } from '../lib/commands'
   import { dropPaths, dropOp } from '../lib/dnd'
   import Icon from './Icon.svelte'
+  import { net } from '../lib/network.svelte'
+  import { networkHostOf, networkHostPath, parseAddress, type NetworkPlace } from '@shared/network'
 
   const s = $derived(app.settings!)
   const here = $derived(app.active?.path.toLowerCase() ?? '')
   const online = $derived(app.peers.filter((p) => !p.self && p.status !== 'offline'))
   const offline = $derived(app.peers.filter((p) => !p.self && p.status === 'offline'))
   let dropKey = $state('')
+
+  // Network node: saved places first, then the computers Hopper found (scanned when the node is opened).
+  const netOpen = $derived(net.settings.expanded)
+  const hereHost = $derived(networkHostOf(app.active?.path ?? '')?.toUpperCase() ?? '')
+  const NET_MAX = 25
+  $effect(() => {
+    if (netOpen) untrack(() => net.scan())
+  })
+
+  function placeTarget(p: NetworkPlace) {
+    const a = parseAddress(p.path)
+    return a.ok ? a : null
+  }
+
+  function openPlace(p: NetworkPlace, e?: MouseEvent) {
+    void net.open(app.active, p.path, { newTab: !!e && (e.button === 1 || e.ctrlKey) })
+  }
+
+  function netMenu(e: MouseEvent) {
+    e.preventDefault()
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open Network', icon: 'network', run: () => go(VIRTUAL.network) },
+      { label: 'Add a network place…', icon: 'plus', run: () => void net.addPlace() },
+      { label: 'Look for computers again', icon: 'refresh', disabled: net.busy > 0, run: () => net.scan(true) },
+      { separator: true },
+      { label: netOpen ? 'Collapse' : 'Expand', icon: netOpen ? 'chevronUp' : 'chevronDown', run: () => net.setExpanded(!netOpen) }
+    ])
+  }
+
+  function placeMenu(e: MouseEvent, p: NetworkPlace) {
+    e.preventDefault()
+    const t = net.targetOf(p.path)
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open', icon: 'open', run: () => openPlace(p) },
+      { label: 'Open in new tab', icon: 'plus', run: () => void net.open(app.active, p.path, { newTab: true }) },
+      ...(app.dual && t ? [{ label: 'Open in other pane', icon: 'dualPane', run: () => void net.open(app.other, p.path) }] : []),
+      { separator: true },
+      { label: 'Rename…', icon: 'rename', run: () => void net.renamePlace(p.id) },
+      { label: 'Remove from Network', icon: 'delete', run: () => net.removePlace(p.id) }
+    ])
+  }
+
+  function computerMenu(e: MouseEvent, name: string) {
+    e.preventDefault()
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open', icon: 'open', run: () => go(networkHostPath(name)) },
+      { label: 'Open in new tab', icon: 'plus', run: () => app.active.openTab(networkHostPath(name)) },
+      { separator: true },
+      { label: 'Sign in…', icon: 'lock', run: () => void net.signIn(name) },
+      { label: 'Add as a network place', icon: 'pin', run: () => net.addPlaceRaw(`\\\\${name}`) }
+    ])
+  }
 
   const special = $derived([
     { icon: 'desktop', label: 'Desktop', path: app.info?.desktop },
@@ -20,7 +75,7 @@
   ].filter((x) => x.path))
 
   function go(path: string, e?: MouseEvent) {
-    if (e && (e.button === 1 || e.ctrlKey)) app.active.openTab(path)
+    // middle-click or Ctrl+click: one new tab (navigate opens it)
     void app.active.navigate(path, { newTab: !!e && (e.button === 1 || e.ctrlKey) })
   }
 
@@ -76,6 +131,7 @@
       <Icon name="inbox" />{#if app.unseenInbox}<span class="rdot"></span>{/if}
     </button>
     <button class="rbtn" class:on={here === VIRTUAL.activity} title="Activity" aria-label="Activity" onclick={() => go(VIRTUAL.activity)}><Icon name="activity" /></button>
+    <button class="rbtn" class:on={here.startsWith(VIRTUAL.network)} title="Network" aria-label="Network" onclick={() => go(VIRTUAL.network)} oncontextmenu={netMenu}><Icon name="network" /></button>
     <span class="rgrow"></span>
     <button class="rbtn" title="Settings (Ctrl+,)" aria-label="Settings" onclick={() => dialogs.settings?.()}><Icon name="settings" /></button>
   </aside>
@@ -90,16 +146,18 @@
     </button>
     <button class="row" class:on={here === VIRTUAL.activity} onclick={() => go(VIRTUAL.activity)}><Icon name="activity" /><span>Activity</span></button>
   </div>
-  <div class="scroll">
+  <!-- a middle-click must open a tab, not start Chromium's autoscroll (which swallows the click) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="scroll" onmousedown={(e) => e.button === 1 && e.preventDefault()}>
     <div class="head">Quick access</div>
     {#each special as sp (sp.path)}
-      <button class="row" class:on={here === sp.path.toLowerCase()} class:drop={dropKey === sp.path} onclick={(e) => go(sp.path, e)} onauxclick={(e) => go(sp.path, e)}
+      <button class="row" class:on={here === sp.path.toLowerCase()} class:drop={dropKey === sp.path} onclick={(e) => go(sp.path, e)} onauxclick={(e) => e.button === 1 && go(sp.path, e)}
         ondragover={(e) => over(e, sp.path)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, sp.path)}>
         <Icon name={sp.icon} /><span>{sp.label}</span>
       </button>
     {/each}
     {#each s.pinned.filter((p) => !special.some((x) => x.path?.toLowerCase() === p.toLowerCase())) as p (p)}
-      <button class="row" class:on={here === p.toLowerCase()} class:drop={dropKey === p} title={p} onclick={(e) => go(p, e)} onauxclick={(e) => go(p, e)} oncontextmenu={(e) => pinMenu(e, p)}
+      <button class="row" class:on={here === p.toLowerCase()} class:drop={dropKey === p} title={p} onclick={(e) => go(p, e)} onauxclick={(e) => e.button === 1 && go(p, e)} oncontextmenu={(e) => pinMenu(e, p)}
         ondragover={(e) => over(e, p)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, p)}>
         <span class="folder"><Icon name="folder" /></span><span class="ellipsis">{basename(p) || p}</span><Icon name="pin" size={12} cls="pin" />
       </button>
@@ -119,7 +177,7 @@
       {@const used = d.total ? 1 - d.free / d.total : 0}
       <button class="row drive" class:on={here.startsWith(d.root.toLowerCase()) && here.length <= 3} class:drop={dropKey === d.root} class:dim={!d.ready}
         title={`${d.remote ?? d.root}${d.ready ? `\n${fmtSize(d.free)} free of ${fmtSize(d.total)}` : '\nNot available'}`}
-        onclick={(e) => go(d.root, e)} onauxclick={(e) => go(d.root, e)}
+        onclick={(e) => go(d.root, e)} onauxclick={(e) => e.button === 1 && go(d.root, e)}
         ondragover={(e) => d.ready && over(e, d.root)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, d.root)}>
         <Icon name={driveIcon(d.kind, d.root)} />
         <span class="dl">
@@ -134,6 +192,46 @@
       </button>
     {/each}
     <button class="row" class:on={here === VIRTUAL.recycle} onclick={() => go(VIRTUAL.recycle)}><Icon name="trash" /><span>Recycle Bin</span></button>
+
+    <div class="netnode" role="group" aria-label="Network">
+      <div class="row nethead" class:on={here === VIRTUAL.network}>
+        <button class="twist" aria-expanded={netOpen} aria-label={netOpen ? 'Collapse Network' : 'Expand Network'} title={netOpen ? 'Collapse' : 'Show computers and saved places'} onclick={() => net.setExpanded(!netOpen)}>
+          <Icon name={netOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+        </button>
+        <button class="netlabel" onclick={(e) => go(VIRTUAL.network, e)} onauxclick={(e) => e.button === 1 && go(VIRTUAL.network, e)} oncontextmenu={netMenu}>
+          <Icon name="network" /><span>Network</span>
+        </button>
+        {#if netOpen}
+          <button class="mini" title="Add a network place" aria-label="Add a network place" onclick={() => void net.addPlace()}><Icon name="plus" size={14} /></button>
+          <button class="mini" class:spinning={net.busy > 0} title="Look for computers again" aria-label="Refresh network" disabled={net.busy > 0} onclick={() => net.scan(true)}><Icon name="refresh" size={14} /></button>
+        {/if}
+      </div>
+      {#if netOpen}
+        {#each net.places as p (p.id)}
+          {@const a = placeTarget(p)}
+          <button class="row sub" class:on={a ? (a.kind === 'server' ? hereHost === a.host.toUpperCase() : here === a.unc.toLowerCase()) : false} class:drop={dropKey === p.path} title={p.path}
+            onclick={(e) => openPlace(p, e)} onauxclick={(e) => e.button === 1 && openPlace(p, e)} oncontextmenu={(e) => placeMenu(e, p)}
+            ondragover={(e) => a && a.kind !== 'server' && over(e, p.path)} ondragleave={() => (dropKey = '')} ondrop={(e) => a && a.kind !== 'server' && dropOn(e, a.unc)}>
+            {#if a?.kind === 'server'}<Icon name="computer" />{:else}<span class="folder"><Icon name="folder" /></span>{/if}
+            <span class="ellipsis">{p.name || p.path}</span>
+          </button>
+        {/each}
+        {#each net.computers.slice(0, NET_MAX) as c (c.key)}
+          <button class="row sub" class:on={hereHost === c.name.toUpperCase()} title={`\\\\${c.name}${c.self ? ' (this PC)' : ''}`}
+            onclick={(e) => go(networkHostPath(c.name), e)} onauxclick={(e) => e.button === 1 && go(networkHostPath(c.name), e)} oncontextmenu={(e) => computerMenu(e, c.name)}>
+            <Icon name="computer" /><span class="ellipsis">{c.name}</span>
+          </button>
+        {/each}
+        {#if net.computers.length > NET_MAX}
+          <button class="row sub more" onclick={() => go(VIRTUAL.network)}><span class="ellipsis">All {net.computers.length} computers…</span></button>
+        {/if}
+        {#if net.busy && !net.computers.length}
+          <div class="empty caption">Looking for computers…</div>
+        {:else if !net.computers.length && !net.places.length}
+          <div class="empty caption">No computers found. <button class="link" onclick={() => void net.addPlace()}>Add a network place</button></div>
+        {/if}
+      {/if}
+    </div>
 
     <div class="head people-head">
       <span>People</span>
@@ -261,6 +359,75 @@
   }
   .people-head span {
     flex: 1;
+  }
+  .netnode {
+    margin-top: 2px;
+  }
+  .nethead {
+    gap: 2px;
+    padding: 0 4px 0 0;
+  }
+  .nethead > .twist,
+  .nethead > .mini {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    display: grid;
+    place-items: center;
+  }
+  .nethead > .twist {
+    margin-left: -4px;
+    width: 18px;
+  }
+  .nethead > .mini {
+    opacity: 0;
+  }
+  .nethead:hover > .mini,
+  .nethead > .mini:focus-visible,
+  .nethead > .mini.spinning {
+    opacity: 1;
+  }
+  .nethead > .twist:hover,
+  .nethead > .mini:hover:not(:disabled) {
+    background: var(--press);
+    color: var(--text);
+  }
+  .mini.spinning :global(svg) {
+    animation: netspin 0.9s linear infinite;
+  }
+  @keyframes netspin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .netlabel {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 0 0 2px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+  .netlabel span {
+    flex: 1;
+    min-width: 0;
+  }
+  .row.sub {
+    height: 30px;
+    padding-left: 34px;
+  }
+  .row.more {
+    color: var(--text-2);
+    font-size: 12px;
   }
   .link {
     border: 0;

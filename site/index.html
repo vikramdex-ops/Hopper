@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hopper — Dexterity's file manager</title>
-<meta name="description" content="Hopper is the internal file manager of Dexterity Design Services Private Limited: dual panes, a transfer queue, one-key zips, viewers for drawings and documents, project folders, @mention file sharing over the office LAN and download links for clients.">
+<meta name="description" content="Hopper is the internal file manager of Dexterity Design Services Private Limited: dual panes, a transfer queue, one-key zips, viewers for drawings and documents, project folders, the office network, @mention file sharing over the office LAN and download links for clients.">
 <meta name="robots" content="noindex">
 <meta property="og:title" content="Hopper — Dexterity's file manager">
 <meta property="og:description" content="Send files to a colleague with an @mention or to a client with one link, zip in one key, and trust every copy over the network.">
@@ -186,7 +186,7 @@ footer p { margin: 0; }
 
 <header class="hero" id="top">
   <div class="wrap">
-    <span class="tag"><b>2.2</b> Internal tool · Dexterity Design Services</span>
+    <span class="tag"><b>2.3</b> Internal tool · Dexterity Design Services</span>
     <h1>One file manager for <span>the whole office</span>.</h1>
     <p class="lede">Dual panes, a transfer queue you can trust and one-key zips. Send files to a colleague with an <b>@mention</b>, or to a client with a download link served from our own office server.</p>
     <div class="cta">
@@ -294,16 +294,16 @@ footer p { margin: 0; }
 <section class="feature flip" id="queue">
   <div class="wrap row">
     <div class="text">
-      <div class="kicker">Copy, move, paste</div>
-      <h2>A transfer queue you can trust on a network drive.</h2>
-      <p>Every copy, move, zip, extract and share joins one queue with live speed and time left. Keep working — nothing locks the window.</p>
+      <div class="kicker">Copy, move, paste · new in 2.3</div>
+      <h2>See every copy through, even on a network drive.</h2>
+      <p>Copy, move, delete, zip and extract open a small progress window: percentage, items done, the current file, speed and time left. A name conflict is asked right there.</p>
       <ul class="ticks">
-        <li>Pause, resume, cancel; one conflict question with “do this for all”; optional checksum verify.</li>
-        <li>Same-drive moves are instant; flaky shares are retried for you.</li>
+        <li>Pause, Cancel, or Hide to let it carry on in the background. “Do this for all conflicts” in one tick.</li>
+        <li>Everything joins one queue; the Transfers panel (<kbd>Ctrl</kbd>+<kbd>J</kbd>) keeps the history when you want it. Same-drive moves are instant and flaky shares are retried.</li>
         <li>Copy and paste with other Windows apps through the clipboard, and drag files out to Outlook or Cliq.</li>
       </ul>
     </div>
-    <div class="stage"><img class="wide" src="assets/shots/f-transfers.png" alt="Transfer queue with speed and time left" loading="lazy"></div>
+    <div class="stage"><img src="assets/shots/f-progress.png" alt="Progress window for a copy with speed and time left" loading="lazy"></div>
   </div>
 </section>
 
@@ -327,10 +327,10 @@ footer p { margin: 0; }
   <div class="wrap">
     <div class="kicker">Hopper's own, top to bottom</div>
     <h2>Nothing is handed off to Windows Explorer.</h2>
-    <p class="sub">The context menu, Properties, Open with and the folder picker are all Hopper's own, and folders always open inside Hopper.</p>
+    <p class="sub">The context menu, Properties, Open with, the folder picker, network browsing and sign-in are all Hopper's own, and folders always open inside Hopper.</p>
     <div class="gallery">
       <figure><a class="shot" href="assets/shots/f-pathcopy.png"><img src="assets/shots/f-pathcopy.png" alt="Context menu with the Path Copy submenu" loading="lazy"></a><figcaption><b>Path Copy</b> Name, path, parent, UNC, Internet and Samba forms. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies your default.</figcaption></figure>
-      <figure><a class="shot" href="assets/shots/f-properties.png"><img src="assets/shots/f-properties.png" alt="Hopper's Properties window" loading="lazy"></a><figcaption><b>Properties</b> Size on disk, contents, attributes, every path form and access.</figcaption></figure>
+      <figure><a class="shot" href="assets/shots/f-network.png"><img src="assets/shots/f-network.png" alt="Network page listing the shared folders of a demo server" loading="lazy"></a><figcaption><b>Network</b> Computers and NAS shares on the office network, and your saved places. Hopper asks for a password itself when a server needs one.</figcaption></figure>
       <figure><a class="shot" href="assets/shots/f-clientlinks.png"><img src="assets/shots/f-clientlinks.png" alt="My client links with download counts" loading="lazy"></a><figcaption><b>My client links</b> Opened, downloaded, days left. Extend or revoke.</figcaption></figure>
       <figure><a class="shot" href="assets/shots/f-person.png"><img src="assets/shots/f-person.png" alt="Person panel with a conversation" loading="lazy"></a><figcaption><b>Person panel</b> Messages, files, folder links and requests with one colleague.</figcaption></figure>
       <figure><a class="shot" href="assets/shots/f-home.png"><img src="assets/shots/f-home.png" alt="Home page with drives showing free space" loading="lazy"></a><figcaption><b>Home</b> Recent folders, pinned, Inbox, people and low-disk warnings. Every drive shows “free of total”.</figcaption></figure>
@@ -344,12 +344,12 @@ footer p { margin: 0; }
     <div class="kicker">And the everyday things</div>
     <h2>Done properly.</h2>
     <div class="cards">
-      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M10 3.5v13"/></svg></div><h3>Two panes, many tabs</h3><p>Each pane keeps its own tabs and history. Save whole layouts as workspaces.</p></div>
+      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M10 3.5v13"/></svg></div><h3>One pane or two</h3><p>Switch at the top right of the window or with <kbd>F10</kbd>. Each pane keeps its own tabs and history.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.2 12.2 4.3 4.3"/></svg></div><h3>Instant search</h3><p>A background index answers as you type; content search and duplicates when you need them.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h8.5a4 4 0 0 1 0 8H8M7.5 4.5 4 8l3.5 3.5"/></svg></div><h3>Undo that works</h3><p>Undo copies, moves, renames, new folders and deletes — even after a restart.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3a4.5 4.5 0 0 0-4.5 4.5c0 4-1.5 5.5-1.5 5.5h12s-1.5-1.5-1.5-5.5A4.5 4.5 0 0 0 10 3zM8.3 15.5a1.8 1.8 0 0 0 3.4 0"/></svg></div><h3>Announcements</h3><p>Office-wide notices with a banner and “Got it”. PCs that were switched off see them on start.</p></div>
       <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 8.5 10 3l6.5 5.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg></div><h3>Inbox and Activity</h3><p>Everything you received, sent, zipped or moved — and client downloads — in one place.</p></div>
-      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5 16 5v5c0 3.6-2.5 6.5-6 7.5-3.5-1-6-3.9-6-7.5V5z"/></svg></div><h3>Light on the PC</h3><p>Heavy work runs outside the window and big tools load only when used.</p></div>
+      <div class="card"><div class="b"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h6.5L15 6v11.5H5z"/><path d="M11.5 2.5V6H15M10 9v5M7.5 11.5h5"/></svg></div><h3>New documents</h3><p>The New menu offers what your installed programs make (Word, Excel, PowerPoint and more), from each program's own blank template.</p></div>
     </div>
   </div>
 </section>
@@ -365,6 +365,8 @@ footer p { margin: 0; }
       <div><span>Create client link</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></span></div>
       <div><span>Zip here</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></span></div>
       <div><span>Extract here</span><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></span></div>
+      <div><span>One pane / two panes</span><span><kbd>F10</kbd></span></div>
+      <div><span>Transfers panel</span><span><kbd>Ctrl</kbd>+<kbd>J</kbd></span></div>
       <div><span>Copy / move to other pane</span><span><kbd>Ctrl</kbd>+<kbd>F5</kbd> <kbd>Ctrl</kbd>+<kbd>F6</kbd></span></div>
       <div><span>Copy path</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></span></div>
       <div><span>Show / hide sidebar</span><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></span></div>

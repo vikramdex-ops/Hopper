@@ -6,6 +6,7 @@ import { VIRTUAL, isArchivePath, isVirtual } from './pane.svelte'
 import { kindOf } from './filetypes'
 import { dirname } from './format'
 import { copyPaths, PATH_MODES, type PathMode } from './pathcopy'
+import { net } from './network.svelte'
 
 export interface Command {
   id: string
@@ -41,6 +42,8 @@ export const commands: Command[] = [
   { id: 'nav.inbox', label: 'Open Inbox', group: 'Navigate', icon: 'inbox', keys: ['Ctrl+Shift+I'], run: () => app.active.navigate(VIRTUAL.inbox) },
   { id: 'nav.activity', label: 'Open Activity', group: 'Navigate', icon: 'activity', run: () => app.active.navigate(VIRTUAL.activity) },
   { id: 'nav.recycle', label: 'Open Recycle Bin', group: 'Navigate', icon: 'trash', run: () => app.active.navigate(VIRTUAL.recycle) },
+  { id: 'nav.network', label: 'Open Network', group: 'Navigate', icon: 'network', run: () => app.active.navigate(VIRTUAL.network) },
+  { id: 'net.addPlace', label: 'Add a network place…', group: 'Navigate', icon: 'network', run: () => net.addPlace() },
   { id: 'nav.switchPane', label: 'Switch pane', group: 'Navigate', icon: 'dualPane', keys: ['Tab'], when: () => app.dual, run: () => app.setActive(app.activeIndex === 0 ? 1 : 0) },
   { id: 'nav.mirror', label: 'Open this folder in the other pane', group: 'Navigate', icon: 'dualPane', keys: ['Ctrl+Shift+M'], when: () => app.dual, run: () => app.other.navigate(app.active.path) },
   { id: 'nav.swap', label: 'Swap panes', group: 'Navigate', icon: 'compare', keys: ['Ctrl+U'], when: () => app.dual, run: () => { const a = app.panes[0].path; const b = app.panes[1].path; void app.panes[0].navigate(b); void app.panes[1].navigate(a) } },

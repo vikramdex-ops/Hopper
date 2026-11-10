@@ -118,7 +118,7 @@
     runError = ''
     try {
       await engine.call('package.run', spec)
-      app.drawer = true
+      app.showProgress()
       close(true)
     } catch (e: any) {
       runError = e?.message ?? String(e)

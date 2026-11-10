@@ -8,6 +8,8 @@
   import { dropPaths, dropOp } from '../lib/dnd'
   import type { Entry } from '@shared/types'
   import Icon from './Icon.svelte'
+  import { net } from '../lib/network.svelte'
+  import { networkHostOf, networkHostPath, parseAddress, visibleShares } from '@shared/network'
 
   let { pane }: { pane: Pane } = $props()
   let editing = $state(false)
@@ -37,8 +39,11 @@
 
   const crumbs = $derived.by<Crumb[]>(() => {
     const p = pane.path
+    const netHost = networkHostOf(p)
+    if (netHost) return [{ label: 'Network', path: VIRTUAL.network }, { label: netHost, path: p }]
     if (isVirtual(p)) return [{ label: titleFor(p), path: p }]
-    const out: Crumb[] = [{ label: 'This PC', path: VIRTUAL.home }]
+    // network paths start at Network (then the computer's share list), local ones at This PC
+    const out: Crumb[] = [p.startsWith('\\\\') ? { label: 'Network', path: VIRTUAL.network } : { label: 'This PC', path: VIRTUAL.home }]
     let base = p
     let inner = ''
     if (isArchivePath(p)) {
@@ -49,7 +54,7 @@
     if (base.startsWith('\\\\')) {
       const parts = base.slice(2).split('\\').filter(Boolean)
       let acc = '\\\\' + parts[0]
-      out.push({ label: parts[0], path: acc })
+      out.push({ label: parts[0], path: networkHostPath(parts[0]) })
       for (const part of parts.slice(1)) {
         acc += '\\' + part
         out.push({ label: part, path: acc })
@@ -75,7 +80,8 @@
   })
 
   function startEdit() {
-    if (isVirtual(pane.path) && !pane.path.startsWith(VIRTUAL.search)) text = ''
+    if (networkHostOf(pane.path)) text = '\\\\' + networkHostOf(pane.path)
+    else if (isVirtual(pane.path) && !pane.path.startsWith(VIRTUAL.search)) text = ''
     else text = pane.path.startsWith(VIRTUAL.search) ? '' : pane.path
     editing = true
     queueMicrotask(() => {
@@ -84,7 +90,9 @@
     })
   }
 
-  dialogs.address = () => app.active === pane && startEdit()
+  // one opener per pane (each Breadcrumb used to overwrite the other's, so Ctrl+L only worked in the right pane)
+  dialogs[`address${pane.index}`] = startEdit
+  dialogs.address = () => dialogs[`address${app.activeIndex}`]?.()
 
   async function suggest() {
     const t = text.trim()
@@ -114,10 +122,16 @@
       editing = false
       if (!target) return
       if (/^(https?:)/i.test(target)) void window.hopper.shell.openExternal(target)
+      else if (/^(smb|cifs|s?ftps?):\/\//i.test(target)) {
+        // smb://server/share opens like \\server\share; FTP is refused plainly
+        const a = parseAddress(target)
+        if (a.ok) void net.open(pane, a.unc)
+        else app.toast('warning', "Hopper can't open that address", a.message)
+      }
       else if (!/^([a-zA-Z]:|\\\\|hopper:)/.test(target)) {
         // Not a path: treat as a search in the current folder.
         const params = new URLSearchParams({ q: target })
-        if (!isVirtual(pane.path)) params.set('root', pane.path)
+        if (pane.searchRoot) params.set('root', pane.searchRoot)
         void pane.navigate(`${VIRTUAL.search}?${params}`)
       } else void pane.navigate(target)
     } else if (e.key === 'ArrowDown' && suggestions.length) {
@@ -140,6 +154,20 @@
     try {
       if (c.path === VIRTUAL.home) {
         app.openMenu(r.left, r.bottom + 4, app.drives.map((d) => ({ label: `${d.label || 'Local Disk'} (${d.root.slice(0, 2)})`, icon: 'drive', run: () => pane.navigate(d.root) })))
+        return
+      }
+      if (c.path === VIRTUAL.network) {
+        net.scan()
+        const list = net.computers.slice(0, 300)
+        app.openMenu(r.left, r.bottom + 4, list.length ? list.map((k) => ({ label: k.name, icon: 'computer', run: () => pane.navigate(networkHostPath(k.name)) })) : [{ label: net.busy ? 'Looking for computers…' : 'No computers found', disabled: true }])
+        return
+      }
+      const nh = networkHostOf(c.path)
+      if (nh) {
+        await net.loadShares(nh)
+        const l = net.listing(nh)
+        const list = l?.status === 'ok' ? visibleShares(nh, l.shares, net.settings.showHidden) : []
+        app.openMenu(r.left, r.bottom + 4, list.length ? list.map((s) => ({ label: s.name, icon: 'folder', run: () => void net.open(pane, s.path) })) : [{ label: l?.error?.message ?? 'No shared folders', disabled: true }])
         return
       }
       if (isArchivePath(c.path)) {
@@ -184,7 +212,7 @@
       </div>
     {/if}
   {:else}
-    <span class="lead"><Icon name={pane.path === VIRTUAL.home ? 'home' : isArchivePath(pane.path) ? 'zip' : pane.path.startsWith('\\\\') ? 'network' : isVirtual(pane.path) ? 'activity' : 'folder'} /></span>
+    <span class="lead"><Icon name={pane.path === VIRTUAL.home ? 'home' : isArchivePath(pane.path) ? 'zip' : pane.path.startsWith('\\\\') || pane.path.startsWith(VIRTUAL.network) ? 'network' : isVirtual(pane.path) ? 'activity' : 'folder'} /></span>
     {#each crumbs as c, i (c.path)}
       {#if i > 0}
         <!-- the chevron before a crumb lists the folders inside the previous crumb -->

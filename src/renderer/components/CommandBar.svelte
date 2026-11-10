@@ -25,9 +25,7 @@
   }
 
   function newMenu(e: MouseEvent) {
-    at(e, [item('file.newFolder'), item('file.newFile'), { separator: true }, item('file.template'), { separator: true },
-      { label: 'Word document', icon: 'documents', run: () => app.newFile('New Document.docx'), disabled: !writable },
-      { label: 'Excel workbook', icon: 'sheet', run: () => app.newFile('New Workbook.xlsx'), disabled: !writable }])
+    at(e, [item('file.newFolder'), item('file.newFile'), ...(app.newTypes.length ? [{ separator: true }, ...app.newMenu().map((m) => ({ ...m, disabled: !writable }))] : []), { separator: true }, item('file.template')])
   }
 
   function zipMenu(e: MouseEvent) {

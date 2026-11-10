@@ -59,7 +59,7 @@
       const got = early.get(jobId)
       if (got) show(got)
       early.clear()
-      app.drawer = true
+      app.showProgress()
     } catch (e: any) {
       app.toast('error', "Couldn't start the duplicate search", String(e?.message ?? e).replace(/^Error:\s*/, ''))
     }
