@@ -12,7 +12,7 @@ file sharing to colleagues over the office LAN with an `@mention`, and download 
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-23) ·
+[What's new](#whats-new-in-24) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -28,7 +28,7 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 
 | | |
 | :-- | :-- |
-| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page. Expiry of 1–90 days, optional password and download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. |
+| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page that works on phones too. Expiry of 1–90 days, optional password and download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. Away from Hopper, upload a .zip, .rar or .7z on the browser page and get a link there. |
 | **Viewers** — PDF (continuous scroll, `Ctrl`+wheel zoom), Excel, Word, the preview saved in DWG files, MicroStation V7 drawings (`.dgn`, `.i01`…) with zoom, pan and levels, and SmartSketch `.sha` details. No design software needed. | **Project folders** — the *Dexterity project* template asks for job number, name, type, 3D platform, disciplines, sub-projects, areas and review gates, shows the exact tree first and never overwrites. A second template makes a dated issue pack. |
 | **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **Copies you can watch** — copy, move, delete, zip and extract show a progress window (percentage, current file, speed, time left, Pause / Cancel / Hide) that also asks about name conflicts, with *apply to all*. Everything runs in one background queue; the Transfers panel (`Ctrl+J`) keeps the history. Same-drive moves are instant; flaky shares are retried. |
 | **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Revisions (`RevA / RevB / Rev0`) group under the latest; unknown orders are flagged, never guessed. | **Hopper's own, top to bottom** — its own context menu, Properties, Open with and folder picker; nothing is handed to Windows Explorer. Path Copy (UNC, Internet, Samba forms), Recycle Bin restore, `Ctrl+Z` undo, the Windows clipboard both ways and drag-out to Outlook or Cliq. |
@@ -38,6 +38,14 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <tr>
 <td width="50%"><img src="docs/screenshots/f-share.png" alt="Share dialog with @ mentions"><br><sub><b>Share with <code>@</code>.</b> People and groups, a note, optional zip and a Cliq DM.</sub></td>
 <td width="50%"><img src="docs/screenshots/f-clientlink.png" alt="Client link ready"><br><sub><b>Client link.</b> The link, the password and the e-mail text with the expiry date.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/f-clientpage.png" alt="Client download page"><br><sub><b>What the client sees.</b> Who sent it, the note, the expiry, the files and one <i>Download all</i>.</sub></td>
+<td width="50%"><img src="docs/screenshots/f-webcreate.png" alt="Creating client links in a browser"><br><sub><b>Links from a browser.</b> Upload a .zip, .rar or .7z; Copy, Renew or Switch off.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/f-clientpage-dark.png" alt="Password-protected client page in dark theme"><br><sub><b>Password and dark theme.</b> The client page asks for the password first.</sub></td>
+<td><img src="docs/screenshots/f-webupload.png" alt="A paused upload on the browser page"><br><sub><b>Uploads in pieces.</b> Pause, Resume or Cancel; a dropped connection is retried.</sub></td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/f-clientlinks.png" alt="My client links"><br><sub><b>My client links.</b> Opened, downloaded, days left; extend or revoke.</sub></td>
@@ -66,6 +74,22 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.4
+
+- **Create client links from a browser.** Upload an existing .zip, .rar or .7z on the Dexterity
+  Share staff page, choose 1–90 days, an optional password and a note, and get the link and the
+  e-mail text, from any PC without Hopper. *Your links* shows each link's downloads and expiry,
+  with Copy, Renew and Switch off. Uploads can be paused and resumed and survive a dropped
+  connection; up to 5 GB by default.
+- **Signing in** needs no password: in Hopper, *My client links → Use in a browser → Make a
+  sign-in link*, open it once in the browser and bookmark the page. Switch a browser off there at
+  any time. The admin can turn the page off, set the size limit and see everyone's browsers in
+  Settings → Office → Dexterity Share ([staff guide](docs/DEXTERITY-SHARE.md),
+  [IT guide](docs/DEXTERITY-SHARE-IT.md)).
+- **New client download page**: a blue panel that says how many files are ready, who sent them,
+  their note and when the link expires, next to the files and one *Download all* button. Every
+  state, the dark theme and phones are restyled; it works and is secured as before.
 
 ## What's new in 2.3
 

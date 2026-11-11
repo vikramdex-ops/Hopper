@@ -316,26 +316,27 @@
   }
 
   // ---- views ----------------------------------------------------------------------------------
-  function stateView(kind, glyph, title, paras, actions) {
-    var v = h('div', { class: 'state ' + kind }, h('div', { class: 'glyph' }, icon(glyph)), h('h1', { text: title }))
-    paras.forEach(function (p) {
-      v.appendChild(typeof p === 'string' ? h('p', { text: p }) : p)
+  function kids(el, list) {
+    list.forEach(function (c) {
+      if (c != null && c !== false) el.appendChild(typeof c === 'string' ? h('p', { text: c }) : c)
     })
-    if (actions && actions.length) {
-      var row = h('div', { class: 'actions' })
-      actions.forEach(function (a) {
-        row.appendChild(a)
-      })
-      v.appendChild(row)
-    }
-    return v
+    return el
+  }
+  /** Every view has two columns: the blue panel says what this is, the work column holds what to do. */
+  function split(cls, side, main) {
+    return h('div', { class: 'split' + (cls ? ' ' + cls : '') }, kids(h('div', { class: 'side' }), side), kids(h('div', { class: 'main' }), main))
+  }
+  function stateView(kind, glyph, title, paras, actions) {
+    var main = [h('h2', { class: 'label', text: 'What to do' })].concat(paras)
+    if (actions && actions.length) main.push(kids(h('div', { class: 'actions' }), actions))
+    return split('state ' + kind, [h('div', { class: 'glyph' }, icon(glyph)), h('h1', { text: title })], main)
   }
 
   function showLoading(note) {
     clearTimers()
-    var v = h('div', { class: 'loading' }, h('div', { class: 'sk sk-eyebrow' }), h('div', { class: 'sk sk-title' }), h('div', { class: 'sk sk-line' }), h('div', { class: 'sk sk-row' }))
     var n = h('p', { class: 'loading-note', role: 'status', text: note || 'Opening your link…' })
-    v.appendChild(n)
+    var v = split('loading', [h('div', { class: 'sk sk-hero' }), h('div', { class: 'sk sk-hero short' }), h('div', { class: 'sk sk-line' })],
+      [h('div', { class: 'sk sk-label' }), h('div', { class: 'sk sk-row' }), h('div', { class: 'sk sk-row' }), h('div', { class: 'sk sk-btn' }), n])
     card.replaceChildren(v)
     card.setAttribute('aria-busy', 'true')
     S.timers.push(setTimeout(function () {
@@ -388,7 +389,7 @@
     ], [h('button', { class: 'btn primary', type: 'button', text: 'Try again now', on: { click: function () {
       start(true)
     } } })])
-    v.appendChild(h('p', { class: 'small', text: retryStep > 3 ? 'Still not working? Please reply to the e-mail that brought you here so we can check the server.' : 'You can leave this page open.' }))
+    v.querySelector('.main').appendChild(h('p', { class: 'small', text: retryStep > 3 ? 'Still not working? Please reply to the e-mail that brought you here so we can check the server.' : 'You can leave this page open.' }))
     show(v)
     S.timers.push(setInterval(function () {
       if (--left <= 0) start(true)
@@ -396,12 +397,16 @@
     }, 1000))
   }
 
-  function headView(meta) {
-    var head = h('div', { class: 'head' })
+  /** The blue panel of a link: "N files are ready for you.", the link title, who sent it, their note, size and expiry. */
+  function headView(meta, locked) {
+    var head = []
     var n = meta.fileCount
-    head.appendChild(h('div', { class: 'from' }, h('div', { class: 'avatar', 'aria-hidden': 'true', text: initials(meta.sender) }),
-      h('div', null, h('span', null, h('b', { text: meta.sender || 'Dexterity Design Services' }), ' sent you ' + (n === 1 ? 'a file' : n + ' files')), h('span', { class: 'org', text: S.cfg.company || 'Dexterity Design Services Private Limited' }))))
-    head.appendChild(h('h1', { text: meta.title }))
+    var one = n === 1
+    head.push(h('p', { class: 'hero' }, h('span', { class: 'n', text: one ? (locked ? 'A file' : 'Your file') : n + ' files' }), (one ? ' is ' : ' are ') + (locked ? 'waiting for you.' : 'ready for you.')))
+    head.push(h('h1', { class: 'title', text: meta.title }))
+    var sent = typeof meta.createdAt === 'number' ? ' on ' + dateFmt.format(new Date(meta.createdAt - S.skew)).replace(',', '') : ''
+    head.push(h('div', { class: 'from' }, h('div', { class: 'avatar', 'aria-hidden': 'true', text: initials(meta.sender) }),
+      h('span', null, h('b', { text: meta.sender || 'Dexterity Design Services' }), ' sent you ' + (one ? 'a file' : n + ' files') + sent)))
     var pills = h('div', { class: 'pills' })
     pills.appendChild(h('span', { class: 'pill' }, icon('box'), h('b', { text: fmtBytes(meta.totalSize) }), n === 1 ? '' : ' in ' + n + ' files'))
     var ex = h('span', { class: 'pill' })
@@ -414,9 +419,9 @@
     paint()
     pills.appendChild(ex)
     if (meta.needsPassword) pills.appendChild(h('span', { class: 'pill' }, icon('lock'), 'Password protected'))
-    head.appendChild(pills)
-    if (meta.message) head.appendChild(h('p', { class: 'message', text: meta.message }))
-    head._tick = paint
+    if (meta.message) head.push(h('blockquote', { class: 'message', text: meta.message }))
+    head.push(pills)
+    head.tick = paint
     return head
   }
 
@@ -468,14 +473,13 @@
       else if (r && r.status === 410) showExpired()
       else err.textContent = "We couldn't reach the server. Check your connection and try again."
     })
-    var body = h('div', { class: 'body' }, h('div', { class: 'state' }, h('div', { class: 'glyph' }, icon('lock')), h('h1', { text: 'Enter the password to see your files' }),
-      h('p', { text: 'The sender protected this link. They will have given you the password separately — by phone or in another message.' }), form))
-    var head = headView(meta)
-    // the page has one h1: the link title stays a heading for sighted users, the task is the focus target
-    var v = h('div', null, head, body)
+    var head = headView(meta, true)
+    // the page has one h1: the link title stays the heading, the password field is the focus target
+    var v = split('locked', head, [h('div', { class: 'lock-glyph' }, icon('lock')), h('h2', { class: 'ask', text: 'Enter the password to see your files' }),
+      h('p', { text: 'The sender protected this link. They will have given you the password separately — by phone or in another message.' }), form])
     show(v)
-    head.querySelector('h1').removeAttribute('tabindex')
-    S.timers.push(setInterval(head._tick, 30000))
+    v.querySelector('h1').removeAttribute('tabindex')
+    S.timers.push(setInterval(head.tick, 30000))
     input.focus({ preventScroll: true })
   }
 
@@ -715,8 +719,8 @@
     var files = S.files || meta.files || []
     var single = files.length === 1
     var head = headView(meta)
-    var body = h('div', { class: 'body' })
-    var status = h('div', { 'aria-live': 'polite' })
+    var body = []
+    var status = h('div', { class: 'status', 'aria-live': 'polite' })
     var say = function (cls, glyph, text, extra) {
       var n = h('div', { class: 'note ' + cls }, icon(glyph), h('span', null, text, extra || ''))
       status.replaceChildren(n)
@@ -726,7 +730,8 @@
     async function native(f, btn) {
       var keep = Array.prototype.slice.call(btn.childNodes)
       btn.disabled = true
-      btn.replaceChildren(h('span', { class: 'spin' }), 'Starting…')
+      // the round per-file button has room for the spinner only; the word is still there for screen readers
+      btn.replaceChildren(h('span', { class: 'spin' }), btn.classList.contains('round') ? h('span', { class: 'vh', text: 'Starting…' }) : 'Starting…')
       var p = await precheck(f)
       btn.disabled = false
       btn.replaceChildren.apply(btn, keep)
@@ -745,7 +750,7 @@
     function fileRow(f) {
       var t = fileType(f.name)
       var row = h('li', { class: 'file' })
-      var dl = h('button', { class: 'btn ' + (single ? 'ghost sm' : 'sm'), type: 'button', 'aria-label': 'Download ' + f.name }, icon('download'), single ? 'Download' : 'Download')
+      var dl = h('button', { class: 'btn round', type: 'button', 'aria-label': 'Download ' + f.name, title: 'Download' }, icon('download'))
       dl.addEventListener('click', function () {
         native(f, dl)
       })
@@ -774,7 +779,7 @@
       })
       row.appendChild(h('div', { class: 'badge ' + t[2], 'aria-hidden': 'true', text: t[0] }))
       row.appendChild(h('div', { class: 'name', text: f.name }))
-      row.appendChild(h('div', { class: 'act' }, single ? null : dl, detail))
+      row.appendChild(h('div', { class: 'act' }, detail, single ? null : dl))
       row.appendChild(h('div', { class: 'meta', text: t[1] + ' · ' + fmtBytes(f.size) }))
       rows.push(row)
       return row
@@ -787,14 +792,14 @@
 
     var cta = h('div', { class: 'cta' })
     if (single) {
-      var main = h('button', { class: 'btn primary lg', type: 'button' }, icon('download'), 'Download · ' + fmtBytes(files[0].size))
+      var main = h('button', { class: 'btn primary lg', type: 'button' }, icon('download'), h('span', { class: 'lbl', text: 'Download' }), h('span', { class: 'vh', text: ' · ' }), h('span', { class: 'size', text: fmtBytes(files[0].size) }))
       main.addEventListener('click', function () {
         native(files[0], main)
       })
       cta.appendChild(main)
       cta.appendChild(h('span', { class: 'sub', text: 'Saved by your browser to its usual downloads folder.' }))
     } else {
-      var all = h('button', { class: 'btn primary lg', type: 'button' }, icon('download'), 'Download all · ' + fmtBytes(meta.totalSize))
+      var all = h('button', { class: 'btn primary lg', type: 'button' }, icon('download'), h('span', { class: 'lbl', text: 'Download all' }), h('span', { class: 'vh', text: ' · ' }), h('span', { class: 'size', text: fmtBytes(meta.totalSize) }))
       all.addEventListener('click', async function () {
         if (canFolder) {
           var dir
@@ -837,16 +842,15 @@
       cta.appendChild(all)
       cta.appendChild(h('span', { class: 'sub', text: canFolder ? 'You choose a folder; each file is saved there and verified.' : 'Or pick single files below.' }))
     }
-    body.appendChild(cta)
-    body.appendChild(status)
-    if (!single) body.appendChild(h('h2', { class: 'files-title', text: files.length + ' files' }))
-    body.appendChild(list)
-    if (meta.totalSize > 300 * 1048576) body.appendChild(h('div', { class: 'note' }, icon('info'), h('span', { text: 'This is a large download, sent straight from our office. It may take a while on a slow connection; if it is interrupted, your browser can resume it from its downloads list.' })))
-    body.appendChild(h('p', { class: 'fine', text: 'Only download files you were expecting from ' + (meta.sender || 'us') + '. Questions? Reply to the e-mail that brought you here.' }))
+    // the main action comes first in reading and Tab order; the style sheet shows it under the list
+    body.push(cta, status, h('h2', { class: 'files-title', text: single ? 'Your file' : 'Your files' }), list)
+    if (meta.totalSize > 300 * 1048576) body.push(h('div', { class: 'note' }, icon('info'), h('span', { text: 'This is a large download, sent straight from our office. It may take a while on a slow connection; if it is interrupted, your browser can resume it from its downloads list.' })))
+    // "Trouble downloading? Reply to the e-mail…" is in the page footer, under this
+    body.push(h('p', { class: 'fine', text: 'Only download files you were expecting from ' + (meta.sender || 'us') + '.' }))
 
-    show(h('div', null, head, body))
+    show(split('ready', head, body))
     retryStep = 0
-    S.timers.push(setInterval(head._tick, 30000))
+    S.timers.push(setInterval(head.tick, 30000))
   }
 
   // ---- start ----------------------------------------------------------------------------------

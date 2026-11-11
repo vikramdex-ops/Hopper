@@ -126,9 +126,10 @@ test("Hopper's password verifier is the one the server checks", async () => {
 
 test('publicShareConfig: defaults beside office.json', () => {
   const c = E.publicShareConfig({ office: {}, settings: { officeConfigPath: '\\\\srv\\share\\_Hopper\\office.json' } })
-  assert.deepEqual(c, { enabled: false, store: '\\\\srv\\share\\_Hopper\\PublicShares', pageUrl: P.DEFAULT_PAGE_URL, defaultDays: 7, pointer: undefined, minFreeGB: 5, host: undefined })
+  assert.deepEqual(c, { enabled: false, store: '\\\\srv\\share\\_Hopper\\PublicShares', pageUrl: P.DEFAULT_PAGE_URL, defaultDays: 7, pointer: undefined, minFreeGB: 5, host: undefined, web: { enabled: true, maxGB: 5 } })
   const d = E.publicShareConfig({ office: { publicShare: { enabled: true, store: ' D:\\Shares ', pageUrl: 'https://s.example.com/', defaultDays: 30 } }, settings: null })
-  assert.deepEqual(d, { enabled: true, store: 'D:\\Shares', pageUrl: 'https://s.example.com/', defaultDays: 30, pointer: undefined, minFreeGB: 5, host: undefined })
+  assert.deepEqual(d, { enabled: true, store: 'D:\\Shares', pageUrl: 'https://s.example.com/', defaultDays: 30, pointer: undefined, minFreeGB: 5, host: undefined, web: { enabled: true, maxGB: 5 } })
+  assert.deepEqual(E.publicShareConfig({ office: { publicShare: { web: { enabled: false, maxGB: 2 } } }, settings: null }).web, { enabled: false, maxGB: 2 })
   // a damaged pointer entry is ignored rather than producing broken links
   assert.equal(E.publicShareConfig({ office: { publicShare: { pointer: { gist: 'zz', key: 'x' } } }, settings: null }).pointer, undefined)
   assert.deepEqual(E.publicShareConfig({ office: { publicShare: { pointer: { gist: 'a'.repeat(32), key: 'b'.repeat(20) }, minFreeGB: 0 } }, settings: null }).pointer, { gist: 'a'.repeat(32), key: 'b'.repeat(20) })

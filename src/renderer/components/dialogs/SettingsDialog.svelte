@@ -11,6 +11,7 @@
   import { fingerprintOf, lanx, toUnc, validKey } from '../../lib/lan2.svelte'
   import { basename, fmtAgo, fmtDateFull, plural } from '../../lib/format'
   import { DEFAULT_PRESETS } from '@shared/defaults'
+  import { normalizeStaffWeb, type StaffPassInfo } from '@shared/pubshare'
   import { dialogs } from '../../lib/commands'
   import { groupRevisions, splitExt } from '@shared/revisions'
   import { BUILTIN_TEMPLATES } from '@shared/project-template'
@@ -185,6 +186,8 @@
       const r = await host.office.get()
       officeInfo = r
       draft = structuredClone(r.config)
+      // browser links (publicShare.web) are on unless an admin switched them off
+      if (draft?.publicShare) draft.publicShare.web = normalizeStaffWeb(draft.publicShare.web)
       baseline = JSON.stringify(draft)
       if (r.path) officePath = r.path
     } catch (e) {
@@ -213,6 +216,33 @@
     if (files?.[0]) {
       officePath = files[0]
       await changeOfficePath()
+    }
+  }
+
+  // ---- Office: everyone's browser passes (admins) ----------------------------------------
+  let staffPasses = $state.raw<StaffPassInfo[] | null>(null)
+  let staffPassError = $state('')
+  let staffPassBusy = $state('')
+  let staffPassConfirm = $state('')
+  async function loadStaffPasses() {
+    try {
+      staffPasses = await engine.call<StaffPassInfo[]>('pubshare.passList', 'all')
+      staffPassError = ''
+    } catch (e) {
+      staffPasses = []
+      staffPassError = msg(e)
+    }
+  }
+  async function switchOffPass(p: StaffPassInfo) {
+    staffPassBusy = p.id
+    try {
+      await engine.call('pubshare.passRevoke', p.id)
+      staffPassConfirm = ''
+      await loadStaffPasses()
+    } catch (e) {
+      app.toast('error', "Couldn't switch it off", msg(e))
+    } finally {
+      staffPassBusy = ''
     }
   }
 
@@ -981,6 +1011,37 @@
                   {#each [1, 3, 7, 14, 30, 60, 90] as d (d)}<option value={d}>{d} day{d > 1 ? 's' : ''}</option>{/each}
                 </select></label>
             </div>
+            {#if draft.publicShare.web}
+              <div class="grid2">
+                <label class="check"><input type="checkbox" bind:checked={draft.publicShare.web.enabled} /> Let staff create links from a browser</label>
+                <label class="field"><span>Largest file from a browser (GB)</span>
+                  <input class="input" type="number" min="0.1" max="1024" step="0.5" bind:value={draft.publicShare.web.maxGB} disabled={!draft.publicShare.web.enabled} /></label>
+              </div>
+              <div class="caption">Each person signs a browser in from My client links → Use in a browser. The share server checks the setting at once after you save.</div>
+              <div class="row">
+                <button type="button" class="btn" onclick={loadStaffPasses}><Icon name="people" /> {staffPasses ? 'Refresh browser sign-ins' : 'Show browser sign-ins'}</button>
+              </div>
+              {#if staffPassError}<div class="caption warnText">{staffPassError}</div>{/if}
+              {#if staffPasses}
+                {#if !staffPasses.length}
+                  <div class="caption">Nobody has signed a browser in.</div>
+                {:else}
+                  <ul class="passes" aria-label="Browser sign-ins">
+                    {#each staffPasses as p (p.id)}
+                      <li>
+                        <span class="ellipsis"><b>{p.name || p.user}</b> <span class="caption">({p.user}) · made on {p.host || 'a PC'} · {fmtDateFull(p.createdAt)} · {p.lastUsedAt ? `last used ${fmtAgo(p.lastUsedAt)}` : 'not used yet'}</span></span>
+                        {#if staffPassConfirm === p.id}
+                          <button type="button" class="btn sm danger" disabled={staffPassBusy === p.id} onclick={() => switchOffPass(p)}>Yes, switch off</button>
+                          <button type="button" class="btn sm" onclick={() => (staffPassConfirm = '')}>Keep</button>
+                        {:else}
+                          <button type="button" class="btn sm danger" onclick={() => (staffPassConfirm = p.id)}>Switch off</button>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              {/if}
+            {/if}
           {/if}
 
           <h3 class="subtitle">Zoho Cliq bot</h3>
@@ -1620,5 +1681,23 @@
   }
   .row.wrap {
     flex-wrap: wrap;
+  }
+  .passes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .passes li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-top: 1px solid var(--stroke-2);
+  }
+  .passes li > span {
+    flex: 1;
+    min-width: 0;
   }
 </style>

@@ -7,7 +7,7 @@ import { createWriteStream, existsSync, promises as fsp, readFileSync } from 'no
 import { spawnSync } from 'node:child_process'
 import { hostname, userInfo } from 'node:os'
 import { join } from 'node:path'
-import type { PublicShareConfig, ShareServerSettings, ShareServerState } from '@shared/pubshare'
+import { DEFAULT_MIN_FREE_GB, normalizeDays, normalizeStaffWeb, type PublicShareConfig, type ShareServerSettings, type ShareServerState } from '@shared/pubshare'
 // @ts-ignore plain JavaScript shared with the standalone service
 import { Supervisor, buildPointer, checkGistToken, createPointerGist, keyHash, loadPointerKey, normalizeBase, publishGistPointer } from '../../server/dexterity-share/supervisor.mjs'
 // @ts-ignore
@@ -77,6 +77,13 @@ function pageOrigin(pageUrl: string) {
   }
 }
 
+/** office.json publicShare.web (and the free-space reserve) as the server's staff settings. */
+function staffConfig(share: PublicShareConfig) {
+  const web = normalizeStaffWeb(share.web)
+  const minFreeGB = Number.isFinite(share.minFreeGB) && share.minFreeGB! >= 0 ? share.minFreeGB! : DEFAULT_MIN_FREE_GB
+  return { staff: { enabled: web.enabled, maxGB: web.maxGB, defaultDays: normalizeDays(share.defaultDays) }, minFreeGB }
+}
+
 async function stop() {
   const s = sup
   sup = null
@@ -93,6 +100,9 @@ async function apply() {
   const key = JSON.stringify([want, share.store, share.pageUrl, share.pointer?.gist, settings.mode, settings.publicBase, settings.port, cloudflaredPath(), !!cfg.tunnelToken])
   if (sup && key === supKey) {
     sup.app?.setBandwidth(settings.bandwidth)
+    const sc = staffConfig(share)
+    sup.app?.setStaff?.(sc.staff, sc.minFreeGB)
+    if (sup.cfg?.server) Object.assign(sup.cfg.server, sc) // a server restarted later starts with them too
     sup.pointerDirty = true
     return
   }
@@ -105,7 +115,7 @@ async function apply() {
       inProcess: true,
       file: '',
       hostName: hostname(),
-      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [pageOrigin(share.pageUrl), ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3 },
+      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [pageOrigin(share.pageUrl), ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3, ...staffConfig(share) },
       tunnel: {
         mode: settings.mode,
         cloudflared: cloudflaredPath(),
@@ -123,6 +133,15 @@ async function apply() {
     { fetch: viaFetch, log, getToken: () => cfg?.token ?? '', onChange: () => process.parentPort.postMessage({ type: 'share-changed' }) }
   )
   await sup.start()
+}
+
+// Settings can arrive twice in quick succession (saving the office file, then reloading it). Two
+// apply() calls must never overlap: each would start its own server and tunnel, one of them on a
+// port already taken and neither stopped by the other. They run one after another instead.
+let applying: Promise<void> = Promise.resolve()
+function applyNext() {
+  applying = applying.then(() => apply()).catch((err) => log.error('apply', { message: String(err?.message ?? err) }))
+  return applying
 }
 
 const cloudflaredReady = () => cfg?.settings.mode === 'external' || cloudflaredInfo().found
@@ -198,7 +217,7 @@ async function downloadCloudflared(progress: (done: number, total: number) => vo
   await fsp.rename(part, bundled())
   const info = { version: String(rel.tag_name ?? ''), sha256, size: done, verified: !!want, at: Date.now() }
   await fsp.writeFile(join(DATA, 'cloudflared.json'), JSON.stringify(info))
-  await apply()
+  await applyNext()
   return info
 }
 
@@ -286,6 +305,7 @@ const methods: Record<string, (...a: any[]) => unknown> = {
   downloadCloudflared: () => downloadCloudflared((done, total) => process.parentPort.postMessage({ type: 'share-progress', done, total })),
   selfTest,
   republish: async () => {
+    await applying // a restart in progress finishes first, so the address published is the new one
     if (sup) {
       sup.pointerDirty = true
       await sup.syncPointer()
@@ -299,7 +319,7 @@ process.parentPort.on('message', async (e) => {
   const msg = e.data as any
   if (msg?.type === 'config') {
     cfg = msg.config
-    await apply().catch((err) => log.error('apply', { message: String(err?.message ?? err) }))
+    await applyNext()
     process.parentPort.postMessage({ type: 'share-changed' })
   } else if (msg?.type === 'call') {
     try {

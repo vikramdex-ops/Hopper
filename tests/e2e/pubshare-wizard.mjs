@@ -38,6 +38,8 @@ async function check(name, fn) {
     console.log(`  ok    ${name}${note ? `  [${note}]` : ''}  (${Date.now() - t0} ms)`)
   } catch (e) {
     results.push(false)
+    // what the wizard showed when it failed, so an intermittent failure can be read afterwards
+    try { console.log('        wizard: ' + JSON.stringify(await globalThis.__wizWin?.evaluate(() => [...document.querySelectorAll('.steps li')].map((li) => li.className + ' | ' + li.textContent.replace(/\s+/g, ' ').slice(0, 300))))) } catch {}
     console.log(`  FAIL  ${name}\n        ${String(e?.stack ?? e).split('\n').slice(0, 5).join('\n        ')}`)
   }
 }
@@ -113,6 +115,7 @@ const app = await electron.launch({
   }
 })
 const win = await app.firstWindow()
+globalThis.__wizWin = win
 await win.waitForFunction(() => window.__hopper?.ready === true && !!window.__hopperLan, null, { timeout: 90000 })
 await win.setViewportSize({ width: 1280, height: 860 }).catch(() => {})
 const dlg = win.locator('[role=dialog][aria-label="Set up Dexterity Share"]')

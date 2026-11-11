@@ -8,8 +8,9 @@ import { basename, dirname, join, relative, isAbsolute, resolve } from 'node:pat
 import type { ArchivePreset, OfficeConfig } from '@shared/types'
 import { DEFAULT_PRESETS } from '@shared/defaults'
 import {
-  DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_SHARE_FILES, encodeShareId, isShareId, normalizeDays, safeFileName, shareUrl,
-  type PasswordVerifier, type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus, type ShareManifest, type ShareStats
+  DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_SHARE_FILES, STAFF_DIR, encodeShareId, isShareId, normalizeDays, normalizeStaffWeb, safeFileName, shareUrl, staffPassUrl,
+  type PasswordVerifier, type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus, type ShareManifest, type ShareStats,
+  type StaffPass, type StaffPassCreated, type StaffPassInfo
 } from '@shared/pubshare'
 import type { EngineCtx } from './index'
 import type { JobCtl } from './jobs'
@@ -45,8 +46,15 @@ export function publicShareConfig(ctx: Pick<EngineCtx, 'office' | 'settings'>): 
     defaultDays: normalizeDays(c.defaultDays),
     pointer: c.pointer && GIST_ID_RE.test(c.pointer.gist ?? '') && KEY_HASH_RE.test(c.pointer.key ?? '') ? { gist: c.pointer.gist, key: c.pointer.key } : undefined,
     minFreeGB: Number.isFinite(c.minFreeGB) && c.minFreeGB! >= 0 ? c.minFreeGB : DEFAULT_MIN_FREE_GB,
-    host: c.host
+    host: c.host,
+    web: normalizeStaffWeb(c.web)
   }
+}
+
+/** Office admins, as main's officeops decides them (an empty list means the built-in default). */
+function isOfficeAdmin(ctx: Pick<EngineCtx, 'office'>, user: string) {
+  const list = [...new Set((ctx.office?.admins ?? []).map((u) => String(u).trim().toLowerCase()).filter(Boolean))]
+  return !!user && (list.length ? list : ['asha']).includes(user)
 }
 
 /** Same verifier the share server checks: scrypt over the NFKC-normalised password. Never stores the password. */
@@ -442,6 +450,73 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       m.expiresAt = Math.min(Math.max(m.expiresAt, now) + add * DAY_MS, now + 365 * DAY_MS)
       await writeAtomic(file, JSON.stringify(m, null, 2))
       return m.expiresAt
+    },
+
+    // ---- browser passes: staff create links from site/share/create/ ---------------------------
+    /** Make a personal pass for this Windows account and return its sign-in link (shown once). */
+    'pubshare.passCreate': async (): Promise<StaffPassCreated> => {
+      const cfg = ready()
+      if (!cfg.web?.enabled) throw new Error('Creating links from a browser is switched off for the office (Settings → Office → Dexterity Share).')
+      const who = deps.user()
+      const user = who.user.replace(/^.*\\/, '').trim().toLowerCase()
+      if (!user) throw new Error('Hopper cannot tell which Windows account this is')
+      const id = encodeShareId(randomBytes(16))
+      const secret = randomBytes(32)
+      const pass: StaffPass = {
+        v: 1,
+        id,
+        user,
+        host: who.host,
+        name: (ctx.settings?.profile?.displayName || who.user).trim().slice(0, 120),
+        createdAt: deps.now(),
+        verifier: createHash('sha256').update(secret).digest('hex')
+      }
+      const dir = join(cfg.store, STAFF_DIR)
+      await fsp.mkdir(dir, { recursive: true })
+      await writeAtomic(join(dir, `${id}.json`), JSON.stringify(pass, null, 2))
+      const link = staffPassUrl(cfg.pageUrl, id, secret.toString('base64url'), cfg.pointer)
+      secret.fill(0)
+      const { verifier: _v, v: _n, ...info } = pass
+      return { ...info, lastUsedAt: null, link }
+    },
+
+    /** Passes in the store: mine, or everyone's (office admins only). Newest first. */
+    'pubshare.passList': async (scope: 'mine' | 'all' = 'mine'): Promise<StaffPassInfo[]> => {
+      const cfg = ready()
+      const me = deps.user().user.replace(/^.*\\/, '').trim().toLowerCase()
+      if (scope === 'all' && !isOfficeAdmin(ctx, me)) throw new Error('Only an office admin can see everyone\'s browser passes')
+      const dir = join(cfg.store, STAFF_DIR)
+      let names: string[] = []
+      try {
+        names = (await fsp.readdir(dir)).filter((n) => /^[a-z2-7]{26}\.json$/.test(n))
+      } catch (e: any) {
+        if (e.code === 'ENOENT') return []
+        throw new Error(`The share store is not reachable (${e.code ?? e.message})`)
+      }
+      const beat = await readJson<{ staffUsed?: Record<string, number> }>(join(cfg.store, '_server.json'))
+      const usedAt = beat?.staffUsed && typeof beat.staffUsed === 'object' ? beat.staffUsed : {}
+      const out: StaffPassInfo[] = []
+      for (const n of names) {
+        const p = await readJson<StaffPass>(join(dir, n))
+        if (!p || p.v !== 1 || p.id !== n.slice(0, 26) || typeof p.user !== 'string' || !/^[0-9a-f]{64}$/.test(String(p.verifier)) || (p as any).revokedAt) continue
+        if (scope !== 'all' && p.user.toLowerCase() !== me) continue
+        const t = Number(usedAt[p.id])
+        out.push({ id: p.id, user: p.user.toLowerCase(), host: String(p.host ?? ''), name: String(p.name ?? p.user), createdAt: Number(p.createdAt) || 0, lastUsedAt: Number.isFinite(t) && t > 0 ? t : null })
+      }
+      return out.sort((a, b) => b.createdAt - a.createdAt)
+    },
+
+    /** Switch a pass off: its file goes, and the server refuses it within a few seconds. Mine, or any for an admin. */
+    'pubshare.passRevoke': async (id: string) => {
+      const cfg = ready()
+      if (!isShareId(id)) throw new Error('Not a valid pass')
+      const file = join(cfg.store, STAFF_DIR, `${id}.json`)
+      const p = await readJson<StaffPass>(file)
+      if (!p) return true
+      const me = deps.user().user.replace(/^.*\\/, '').trim().toLowerCase()
+      if (String(p.user).toLowerCase() !== me && !isOfficeAdmin(ctx, me)) throw new Error('This browser pass belongs to someone else')
+      await fsp.rm(file, { force: true })
+      return true
     },
 
     /** Look once for new client downloads of my links (also runs by itself every two minutes). */

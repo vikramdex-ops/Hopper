@@ -108,6 +108,9 @@ h2 { margin: 10px 0 14px; font: 720 clamp(26px, 3.6vw, 38px)/1.16 var(--display)
 .stage { border-radius: 22px; padding: clamp(14px, 3vw, 32px); background: linear-gradient(145deg, var(--tint-2), var(--tint) 55%, transparent), var(--surface-2); border: 1px solid var(--line); }
 .stage img { margin: 0 auto; width: auto; max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 12px; box-shadow: var(--shadow); }
 /* very wide captures (the transfer drawer): show the readable left part at a useful height */
+/* a desktop capture with the phone version of the same page in front of its corner */
+.stage.duo { position: relative; padding-right: clamp(64px, 14vw, 150px); }
+.stage.duo img.phone { position: absolute; right: clamp(10px, 2.4vw, 26px); bottom: clamp(10px, 2.4vw, 26px); width: clamp(84px, 19%, 150px); max-height: 82%; object-fit: cover; object-position: top; border-radius: 14px; border: 3px solid var(--surface); }
 .stage img.wide { height: clamp(200px, 30vw, 300px); object-fit: cover; object-position: left center; }
 
 /* gallery of small shots ---------------------------------------------- */
@@ -186,7 +189,7 @@ footer p { margin: 0; }
 
 <header class="hero" id="top">
   <div class="wrap">
-    <span class="tag"><b>2.3</b> Internal tool · Dexterity Design Services</span>
+    <span class="tag"><b>2.4</b> Internal tool · Dexterity Design Services</span>
     <h1>One file manager for <span>the whole office</span>.</h1>
     <p class="lede">Dual panes, a transfer queue you can trust and one-key zips. Send files to a colleague with an <b>@mention</b>, or to a client with a download link served from our own office server.</p>
     <div class="cta">
@@ -230,20 +233,39 @@ footer p { margin: 0; }
 <section class="feature flip" id="client">
   <div class="wrap row">
     <div class="text">
-      <div class="kicker">Dexterity Share · new</div>
+      <div class="kicker">Dexterity Share · new page in 2.4</div>
       <h2>Send a lot to a client with one link.</h2>
       <p>Too big for e-mail? Select the files, choose <b>Create client link</b> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd>). The files stay on the office server; the client gets a link to a Dexterity download page.</p>
       <ul class="ticks">
-        <li>Expires after 1, 3, 7, 14, 30, 60 or 90 days. Optional password and download limit.</li>
-        <li>Ready-made e-mail text that states the expiry date.</li>
+        <li>The client sees how many files are ready, who sent them, your note and when the link expires, with one <b>Download all</b> button. Light or dark, on a desk or a phone.</li>
+        <li>Expires after 1, 3, 7, 14, 30, 60 or 90 days. Optional password and download limit, and ready-made e-mail text that states the expiry date.</li>
         <li><b>My client links</b> shows how many times each link was downloaded; extend or revoke any time. Hopper tells you when a client downloads.</li>
       </ul>
     </div>
-    <div class="stage"><img src="assets/shots/f-clientlink.png" alt="Client link ready, with the link, password and e-mail text" loading="lazy"></div>
+    <div class="stage duo">
+      <img src="assets/shots/f-clientpage.png" alt="The client download page: a blue panel saying the files are ready, beside the file list and a Download all button" loading="lazy">
+      <img class="phone" src="assets/shots/f-clientpage-phone.png" alt="The same download page on a phone" loading="lazy">
+    </div>
   </div>
 </section>
 
-<section class="feature" id="viewers">
+<section class="feature" id="webcreate">
+  <div class="wrap row">
+    <div class="text">
+      <div class="kicker">Dexterity Share · new in 2.4</div>
+      <h2>No Hopper on that PC? Make the link in a browser.</h2>
+      <p>On a site laptop or at home, open the Dexterity Share staff page, drop a finished <code>.zip</code>, <code>.rar</code> or <code>.7z</code>, choose the days, a password and a note, and get the link and the e-mail text.</p>
+      <ul class="ticks">
+        <li>Sign in once per browser from Hopper: <b>My client links → Use in a browser → Make a sign-in link</b>. Open it, bookmark the page; no password to remember.</li>
+        <li>Uploads go in pieces, with Pause, Resume and Cancel, and carry on after a dropped connection. Up to 5 GB by default.</li>
+        <li><b>Your links</b> lists your links, from Hopper too, with downloads and expiry: Copy, Renew or Switch off. Switch a lost browser off from Hopper.</li>
+      </ul>
+    </div>
+    <div class="stage"><img src="assets/shots/f-webcreate.png" alt="The staff page: a new link form beside Your links with downloads, expiry, Copy, Renew and Switch off" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="feature flip" id="viewers">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Viewers · new</div>
@@ -259,7 +281,7 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="feature flip" id="projects">
+<section class="feature" id="projects">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Project folders · new</div>
@@ -275,7 +297,7 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="feature" id="zip">
+<section class="feature flip" id="zip">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Archives</div>
@@ -291,7 +313,7 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="feature flip" id="queue">
+<section class="feature" id="queue">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Copy, move, paste · new in 2.3</div>
@@ -307,7 +329,7 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="feature" id="office">
+<section class="feature flip" id="office">
   <div class="wrap row">
     <div class="text">
       <div class="kicker">Built for our lots</div>
@@ -398,7 +420,8 @@ footer p { margin: 0; }
     <div class="faq">
       <details><summary>Who can use Hopper?</summary><p>Hopper is internal software of Dexterity Design Services Private Limited, for Dexterity staff and authorised contractors on office PCs.</p></details>
       <details><summary>Do files leave the office network?</summary><p>Not when you share with colleagues: files go directly between office PCs over TLS with the office key, or through the office server inbox. A client link is the one case you choose: the files stay on the office server and are served from it only to people who have the link, until it expires. Only notification text goes to Zoho Cliq, and only when the bot is switched on.</p></details>
-      <details><summary>Can I send files to a client?</summary><p>Yes. Select the files, choose <b>Create client link</b>, pick how many days it lasts and, if you like, a password and download limit. Hopper gives you the link and the e-mail text. <b>My client links</b> shows when the client downloads, and lets you extend or revoke the link.</p></details>
+      <details><summary>Can I send files to a client?</summary><p>Yes. Select the files, choose <b>Create client link</b>, pick how many days it lasts and, if you like, a password and download limit. Hopper gives you the link and the e-mail text. <b>My client links</b> shows when the client downloads, and lets you extend or revoke the link. Away from Hopper, upload a .zip, .rar or .7z on the staff page in your browser and get the link there.</p></details>
+      <details><summary>How does the browser page know it is me?</summary><p>Hopper makes a personal sign-in link (<b>My client links → Use in a browser</b>). Open it once and bookmark the page; that browser then remembers you. The server keeps only a fingerprint of the sign-in, never the sign-in itself. You can switch any browser off in Hopper, and you only ever see your own links.</p></details>
       <details><summary>What if a colleague's PC is off?</summary><p>The share is copied to their folder in the server inbox. When their Hopper starts, it moves the files into their Inbox and notifies them.</p></details>
       <details><summary>Does it replace Windows Explorer?</summary><p>It doesn't need it. The context menu, Properties, Open with, the folder picker and the Recycle Bin view are Hopper's own, and folders always open inside Hopper. It can also be your default for folders (Settings → Advanced). Copy and paste through the Windows clipboard and drag out to other apps still work.</p></details>
       <details><summary>Why does Windows warn the first time I install it?</summary><p>The installer is not code-signed yet, so SmartScreen asks you to confirm. Each release lists SHA-256 checksums to verify the download.</p></details>

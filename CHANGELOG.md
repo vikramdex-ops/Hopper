@@ -4,6 +4,35 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-11-11
+
+### Added
+- **Create client links from a browser.** A new staff page next to the client download page:
+  upload an existing .zip, .rar or .7z, choose how many days the link works (1, 3, 7, 14, 30,
+  60 or 90), an optional password and a note, and get the link and the e-mail text. No Hopper
+  needed on that PC. **Your links** lists your links with their downloads and expiry, with Copy,
+  Renew and Switch off; links made in Hopper are listed too.
+- Uploads go in pieces, with Pause, Resume and Cancel, and carry on by themselves after a dropped
+  connection. Choosing the same file again continues an unfinished upload. The size limit is
+  5 GB by default; the office admin can change it.
+- **Signing a browser in.** In Hopper, *My client links → Use in a browser → Make a sign-in link*.
+  Open the link once in the browser you want to use and bookmark the page; the browser remembers
+  the sign-in, so there is no password. Each person can switch off their own browsers there.
+- Settings → Office → Dexterity Share: **Let staff create links from a browser** (on by default),
+  **Largest file from a browser (GB)**, and *Show browser sign-ins* to see and switch off
+  everyone's browsers.
+
+### Changed
+- **The client download page is redesigned.** A blue panel with a large headline ("5 files are
+  ready for you."), who sent them, their note and the expiry; the files and one **Download all**
+  button beside it. Every state (password, expired, not found, server unreachable) is restyled,
+  with a dark theme and a layout for phones. How the page works and its security are unchanged.
+
+### Fixed
+- Dexterity Share setup, step 3: saving the token could restart the share server twice at the same
+  moment, which left the step waiting for a minute or more and could leave a second tunnel
+  program running. Restarts now happen one after another.
+
 ## [2.3.0] — 2026-11-10
 
 ### Added

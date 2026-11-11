@@ -57,7 +57,8 @@ function shareConfig(): PublicShareConfig {
     defaultDays: normalizeDays(c.defaultDays),
     pointer: c.pointer,
     minFreeGB: c.minFreeGB,
-    host: c.host
+    host: c.host,
+    web: c.web
   }
 }
 

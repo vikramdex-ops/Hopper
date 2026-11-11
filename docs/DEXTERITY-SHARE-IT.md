@@ -6,7 +6,7 @@ uploading them to WeTransfer-style sites. The client opens a Dexterity-branded p
 
 > **[checked]** = read from the vendor's documentation or measured against the real service on
 > 10 November 2026. **[not tested]** = written from documentation, not yet run for real; see
-> section 9.
+> section 10.
 
 ## 1. Setup: three steps, about five minutes
 
@@ -107,6 +107,8 @@ new signing key, so links made before the move stop finding the server; re-send 
   server") but could not point clients at another server. The token itself can only create and
   edit gists of that account.
 - Revoking a link stops it within seconds, also mid-download. Expired links are deleted a day later.
+- The staff browser page (section 5) adds upload routes. They answer only a signed-in pass, and
+  only for that person's own links and uploads; the server keeps only a SHA-256 of each sign-in.
 - Accept knowingly: anyone holding a link (and its password) can download; every office PC that
   can write to `_Hopper` can read the store; traffic passes through Cloudflare.
 
@@ -150,7 +152,70 @@ new signing key, so links made before the move stop finding the server; re-send 
 | Client: "We can't reach our file server" | Is the PC on and Hopper running? Wizard bottom line green? If the tunnel is up but the pointer has an error, step 3 shows it. |
 | Client: "This file was changed after it was shared" | An instantly linked original was edited. Create a new link. |
 
-## 5. Advanced: a fixed address instead of the quick tunnel
+## 5. The browser page for staff
+
+Since Hopper 2.4, staff can also create client links from a web page
+(`…/share/create/`, next to the client page on GitHub Pages), for example on a laptop without
+Hopper. The page uploads **one existing .zip, .rar or .7z** to the share server, which turns it
+into an ordinary client link: same store, same manifest format, same download page, same expiry,
+clean-up, bandwidth limit and disk guard. Staff instructions:
+[DEXTERITY-SHARE.md](DEXTERITY-SHARE.md#send-from-a-browser-without-hopper).
+
+### The admin setting
+
+*Settings → Office → Dexterity Share*:
+
+| Setting | Default | What it does |
+|---|---|---|
+| **Let staff create links from a browser** | On | Off: the server refuses every request from the page at once ("switched off by an office admin"), and Hopper hides *Use in a browser*. Links already made keep working. |
+| **Largest file from a browser (GB)** | 5 | Largest single upload, 0.1 to 1024 GB. Links made in Hopper are not affected. |
+| **Show browser sign-ins** | — | Lists every signed-in browser: person, Windows account, the PC the sign-in link was made on, date, last use, with **Switch off**. |
+
+The share server picks up a change as soon as you save. Both settings live in `office.json`
+under `publicShare.web` (`enabled`, `maxGB`).
+
+### How signing in works
+
+- In Hopper, *My client links → Use in a browser → Make a sign-in link* creates a **pass** for the
+  Windows account: a file `PublicShares\_staff\<pass id>.json` in the store. It holds the person's
+  name and account, the PC name, the date and **only a SHA-256 of the sign-in secret**. The secret
+  itself (32 random bytes) is shown once in Hopper and is never written to the server.
+- The sign-in link is `…/share/create/#<pass id>.<secret>…`. Everything after `#` stays in the
+  browser and never reaches GitHub. On first open the page stores it in the browser's local
+  storage for that site and **removes it from the address bar**, so it is not in the bookmark or
+  the history entry that follows.
+- Each request carries the pass in an `Authorization` header; the server compares the SHA-256 in
+  constant time. Switching a pass off deletes its file; the server refuses it within a few
+  seconds. When each pass was last used is kept in `staff-used.json` in the server's state folder.
+- One pass per browser. A person sees and switches off only their own passes in Hopper; office
+  admins see everyone's in Settings.
+
+### Limits and checks
+
+- A person **can only see and change their own links** (made in Hopper or in the browser, matched
+  by Windows account). Someone else's link id answers exactly like a missing one.
+- Uploads go in 16 MB pieces, each checked for its exact size, so a dropped connection costs at
+  most one piece and Cloudflare's per-request limit is never reached. At most two unfinished
+  uploads per person.
+- When the last piece arrives the server reads the start of the file: it must **really be a zip,
+  rar or 7z, matching its extension**. Anything else is refused and deleted at once. Then it
+  computes the checksum and writes the manifest last, as Hopper does.
+- **Unfinished uploads untouched for 24 hours are removed** by the normal clean-up.
+- Disk guard: an upload that would leave the store below its reserve is refused before it starts.
+- Passwords set on the page are stored as salted scrypt hashes, like Hopper's. Browser links have
+  no download limit.
+- Failed sign-ins are **rate limited per client address** (10 per 10 minutes). Because a whole
+  office can share one public address, this never locks out a valid sign-in: only further wrong
+  attempts from that address are refused.
+- The log records pass and link ids shortened to six characters, never secrets.
+
+### Accept knowingly
+
+A sign-in link, or a browser that is signed in, can create links in that person's name until the
+pass is switched off. Tell staff not to forward the link and to switch off browsers on PCs they no
+longer use. Uploaded archives are not virus-scanned.
+
+## 6. Advanced: a fixed address instead of the quick tunnel
 
 Cloudflare describes quick tunnels as "for testing and development", with "no uptime guarantee"
 and at most 200 requests in flight **[checked]**. If that becomes a problem, *Advanced → Address*:
@@ -166,7 +231,7 @@ and at most 200 requests in flight **[checked]**. If that becomes a problem, *Ad
 With step 3 connected, links keep the same form and keep working when you switch modes: the
 signed pointer simply names the new address.
 
-## 6. For a server nobody logs into: the standalone service
+## 7. For a server nobody logs into: the standalone service
 
 Hopper-hosted sharing needs a signed-in Windows session. For a headless server use the same code
 as a service: `server/dexterity-share/` (two plain Node files; Node 20+).
@@ -184,7 +249,7 @@ as a service: `server/dexterity-share/` (two plain Node files; Node 20+).
 
 Do not run both on the same store at once.
 
-## 7. The page and old links
+## 8. The page and old links
 
 Links made before the pointer was connected have the short form `…/share/#<id>` and need
 `site/share/config.json` to name the server (`base`, or `pointers`). New links
@@ -193,7 +258,7 @@ Links made before the pointer was connected have the short form `…/share/#<id>
 Links show `vikramdex-ops.github.io` — a personal account name. A GitHub organisation or a custom
 domain for Pages changes that; set the new page address in *Settings → Office*.
 
-## 8. Limits to be honest about
+## 9. Limits to be honest about
 
 - Availability is that of one PC, its Windows session, the office power and internet, and
   Cloudflare's free quick-tunnel service, which promises nothing.
@@ -202,7 +267,7 @@ domain for Pages changes that; set the new page address in *Settings → Office*
 - The GitHub token (classic, scope `gist`) can edit *all* gists of that account. Use the office
   account, not a personal one with gists that matter.
 
-## 9. What was tested, and what was not
+## 10. What was tested, and what was not
 
 Automated, on the development PC (store on the office share):
 
@@ -214,6 +279,11 @@ Automated, on the development PC (store on the office share):
   (gist file, gist API, swapped key, wrong fingerprint, unsigned pointer).
 - **Setup wizard in the real app (private build):** every step, wrong tokens, bad checksum,
   self-test, quit.
+- **Staff browser routes (20 checks, 11 November 2026):** sign-in, uploads in pieces, resume,
+  wrong content, someone else's links, switched-off passes, rate limits, stalled uploads, and a
+  log with no secrets.
+- **Staff browser page in Microsoft Edge (15 checks, 11 November 2026):** signing in, uploads,
+  pause, resume and cancel, renew and switch off, a pass switched off in Hopper, no console errors.
 
 Checked against the real services: GitHub's gist endpoints (CORS and cache headers), the
 cloudflared release metadata (checksum field), hard links on the office share.
@@ -221,5 +291,6 @@ cloudflared release metadata (checksum field), hard links on the office share.
 **Not yet run for real:** an actual cloudflared tunnel (its real output, a download through
 Cloudflare, sustained large transfers and measured speed), a real GitHub token and gist, Windows
 `safeStorage` in a packaged install, start-with-Windows in a packaged install, the standalone
-service scripts, Linux, browsers other than Edge. Do the wizard's **Test from the internet**, then
+service scripts, Linux, browsers other than Edge, and a multi-GB upload from the staff browser
+page through a real tunnel. Do the wizard's **Test from the internet**, then
 download a real link on a phone using mobile data, before telling staff to use it.

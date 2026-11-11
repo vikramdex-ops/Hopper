@@ -20,6 +20,74 @@ export interface PublicShareConfig {
   minFreeGB?: number
   /** Windows account + PC that hosts the share server (information for colleagues) */
   host?: { user: string; pc: string }
+  /** staff create links from a browser (site/share/create/) with a personal pass made in Hopper */
+  web?: StaffWebConfig
+}
+
+/** OfficeConfig.publicShare.web: the browser page for staff. */
+export interface StaffWebConfig {
+  enabled: boolean
+  /** largest file a browser upload may be, in GB */
+  maxGB: number
+}
+
+export const DEFAULT_STAFF_WEB: StaffWebConfig = { enabled: true, maxGB: 5 }
+
+export function normalizeStaffWeb(w: Partial<StaffWebConfig> | undefined | null): StaffWebConfig {
+  const gb = Number(w?.maxGB)
+  return { enabled: w?.enabled !== false, maxGB: Number.isFinite(gb) && gb > 0 && gb <= 1024 ? gb : DEFAULT_STAFF_WEB.maxGB }
+}
+
+/** Folder in the store that holds browser passes. Its name can never be a share id. */
+export const STAFF_DIR = '_staff'
+
+/**
+ * <store>/_staff/<id>.json: a personal "browser pass" made in Hopper. Only a SHA-256 of the
+ * secret is kept; the secret itself lives only in the sign-in link and the browser it was opened in.
+ */
+export interface StaffPass {
+  v: 1
+  id: string
+  /** Windows account, lower-case */
+  user: string
+  /** PC the pass was made on */
+  host: string
+  /** display name, used as the sender of links made with it */
+  name: string
+  createdAt: number
+  /** lower-case hex SHA-256 of the 32 secret bytes */
+  verifier: string
+}
+
+/** What Hopper lists for a pass (never the verifier). */
+export interface StaffPassInfo {
+  id: string
+  user: string
+  host: string
+  name: string
+  createdAt: number
+  /** from the share server's heartbeat, when it has reported it */
+  lastUsedAt: number | null
+}
+
+export interface StaffPassCreated extends StaffPassInfo {
+  /** the sign-in link: shown once, never stored by Hopper */
+  link: string
+}
+
+/** "<page>create/#<pass id>.<secret>[.<gist>.<key fingerprint>]" — everything in the fragment. */
+export function staffPassUrl(pageUrl: string | undefined, passId: string, secret: string, pointer?: { gist: string; key: string } | null) {
+  let base = (pageUrl || DEFAULT_PAGE_URL).trim().replace(/[#?].*$/, '')
+  if (/\.html?$/i.test(base)) base = base.replace(/[^/]*$/, '')
+  if (!/\/$/.test(base)) base += '/'
+  const ref = pointer && GIST_ID_RE.test(pointer.gist) && KEY_HASH_RE.test(pointer.key) ? `.${pointer.gist}.${pointer.key}` : ''
+  return `${base}create/#${passId}.${secret}${ref}`
+}
+
+/** Split a sign-in fragment; null when it is not one. */
+export function parseStaffRef(fragment: string) {
+  const m = /^([a-z2-7]{26})\.([A-Za-z0-9_-]{43})(?:\.([0-9a-f]{20,40})\.([0-9a-f]{20}))?$/.exec(fragment.replace(/^#\/?/, ''))
+  return m ? { id: m[1], secret: m[2], gist: m[3] ?? null, key: m[4] ?? null } : null
 }
 
 /** Per-PC settings of the PC that hosts the share server (Settings.shareServer; never in office.json). */

@@ -123,6 +123,10 @@ All of these reach an offline colleague through the server inbox when they next 
 - **Dexterity Share** (client download links): on one office PC that stays on, **Set up
   Dexterity Share on this PC…** under *Dexterity Share*. Three steps, done in Hopper:
   [DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md). How staff use it: [DEXTERITY-SHARE.md](DEXTERITY-SHARE.md).
+  In the same place, **Let staff create links from a browser** (on by default) lets staff upload a
+  .zip, .rar or .7z on a web page and get a client link without Hopper; **Largest file from a
+  browser (GB)** sets the limit (5 GB by default), and **Show browser sign-ins** lists everyone's
+  signed-in browsers so you can switch one off.
 - **Groups**: e.g. *Piping team* → `arun, priya, ravi` (Windows account names). Type `@Piping`
   in the Share dialog to send to all of them.
 - **Folder templates**: one folder per line, with `{name}`, `{project}` and `{date}` tokens,

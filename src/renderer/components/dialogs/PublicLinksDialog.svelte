@@ -6,8 +6,8 @@
   import Icon from '../Icon.svelte'
   import { app } from '../../lib/app.svelte'
   import { engine, host } from '../../lib/api'
-  import { fmtAgo, fmtSize, plural } from '../../lib/format'
-  import { EXPIRY_DAYS, buildEmail, daysLeft, fmtExpiryDate, type PublicLink, type PublicShareStatus } from '@shared/pubshare'
+  import { fmtAgo, fmtDateFull, fmtSize, plural } from '../../lib/format'
+  import { EXPIRY_DAYS, buildEmail, daysLeft, fmtExpiryDate, normalizeStaffWeb, type PublicLink, type PublicShareStatus, type StaffPassCreated, type StaffPassInfo } from '@shared/pubshare'
 
   let { close }: { close: (v?: unknown) => void } = $props()
 
@@ -22,6 +22,66 @@
   let copied = $state('')
 
   const live = $derived(links.filter((l) => !l.expired).length)
+
+  // ---- "Use in a browser": a personal pass for the staff page (site/share/create/) ----------
+  const web = $derived(normalizeStaffWeb(app.office?.publicShare?.web))
+  let browserOpen = $state(false)
+  let passes = $state.raw<StaffPassInfo[]>([])
+  let made = $state<StaffPassCreated | null>(null)
+  let passBusy = $state('')
+  let passError = $state('')
+  let passConfirm = $state('')
+
+  async function loadPasses() {
+    try {
+      passes = await engine.call<StaffPassInfo[]>('pubshare.passList', 'mine')
+      passError = ''
+    } catch (e: any) {
+      passError = String(e?.message ?? e).replace(/^Error:\s*/, '')
+    }
+  }
+
+  function toggleBrowser() {
+    browserOpen = !browserOpen
+    if (browserOpen) void loadPasses()
+    else made = null
+  }
+
+  async function makePass() {
+    if (passBusy) return
+    passBusy = 'new'
+    try {
+      made = await engine.call<StaffPassCreated>('pubshare.passCreate')
+      passError = ''
+      await loadPasses()
+    } catch (e: any) {
+      passError = String(e?.message ?? e).replace(/^Error:\s*/, '')
+    } finally {
+      passBusy = ''
+    }
+  }
+
+  async function copyPass() {
+    if (!made) return
+    await host.clip.writeText(made.link)
+    flash('pass')
+  }
+
+  async function switchOff(p: StaffPassInfo) {
+    if (passBusy) return
+    passBusy = p.id
+    try {
+      await engine.call('pubshare.passRevoke', p.id)
+      if (made?.id === p.id) made = null
+      passConfirm = ''
+      app.toast('success', 'Browser sign-in switched off', `The browser signed in on ${fmtDateFull(p.createdAt)} can no longer create links.`)
+      await loadPasses()
+    } catch (e: any) {
+      app.toast('error', "Couldn't switch it off", String(e?.message ?? e).replace(/^Error:\s*/, ''))
+    } finally {
+      passBusy = ''
+    }
+  }
 
   async function load() {
     loading = true
@@ -107,12 +167,57 @@
       <span class="caption">last seen {fmtAgo(status.serverSeenAt)}{status.server?.host ? ` on ${status.server.host}` : ''}</span>
     {/if}
     <span class="spacer"></span>
+    {#if web.enabled}
+      <button type="button" class="btn" aria-expanded={browserOpen} onclick={toggleBrowser} title="Create client links from a web browser, e.g. on another PC"><Icon name="cloud" /> Use in a browser</button>
+    {/if}
     <select class="input" bind:value={scope} onchange={load} aria-label="Whose links">
       <option value="mine">My links</option>
       <option value="all">Everyone's links</option>
     </select>
     <button type="button" class="btn icon" title="Refresh" aria-label="Refresh" onclick={load}><Icon name="refresh" /></button>
   </div>
+
+  {#if browserOpen && web.enabled}
+    <section class="browser" aria-label="Use in a browser">
+      <div class="bh">
+        <b>Create links from a browser</b>
+        <span class="caption">Upload a .zip, .rar or .7z (up to {web.maxGB} GB) from any PC and get a client link, without Hopper. The browser signs in with a personal link made here.</span>
+      </div>
+      {#if made}
+        <div class="made" role="status">
+          <label class="field"><span>Your sign-in link (shown only now)</span>
+            <input class="input mono" readonly value={made.link} aria-label="Sign-in link" onfocus={(e) => e.currentTarget.select()} />
+          </label>
+          <div class="row">
+            <button type="button" class="btn primary" onclick={copyPass}><Icon name={copied === 'pass' ? 'check' : 'copy'} /> {copied === 'pass' ? 'Copied' : 'Copy link'}</button>
+            <button type="button" class="btn" onclick={() => host.shell.openExternal(made!.link)}><Icon name="open" /> Open in browser</button>
+          </div>
+          <div class="caption">Open it once in the browser you want to use, then bookmark the page: the link signs that browser in and is removed from the address bar. It works like a password, so do not send it to anyone; make a new one for each browser.</div>
+        </div>
+      {:else}
+        <div class="row"><button type="button" class="btn primary" disabled={passBusy === 'new'} onclick={makePass}><Icon name="plus" /> {passBusy === 'new' ? 'Making…' : 'Make a sign-in link'}</button></div>
+      {/if}
+      {#if passError}<div class="caption badText">{passError}</div>{/if}
+      {#if passes.length}
+        <ul class="passes" aria-label="Browsers signed in">
+          {#each passes as p (p.id)}
+            <li>
+              <span class="pt"><b>Made on {p.host || 'a PC'}</b> <span class="caption">{fmtDateFull(p.createdAt)} · {p.lastUsedAt ? `last used ${fmtAgo(p.lastUsedAt)}` : 'not used yet'}</span></span>
+              {#if passConfirm === p.id}
+                <span class="caption">That browser is signed out at once.</span>
+                <button type="button" class="btn sm danger" disabled={passBusy === p.id} onclick={() => switchOff(p)}>Yes, switch off</button>
+                <button type="button" class="btn sm" onclick={() => (passConfirm = '')}>Keep</button>
+              {:else}
+                <button type="button" class="btn sm danger" onclick={() => (passConfirm = p.id)}>Switch off</button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else if !passError}
+        <div class="caption">No browser is signed in yet.</div>
+      {/if}
+    </section>
+  {/if}
 
   {#if error}
     <div class="empty"><Icon name="warning" size={20} /> <span>{error}</span></div>
@@ -288,5 +393,62 @@
   .foot {
     flex: 1;
     align-self: center;
+  }
+  .browser {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--stroke-2);
+    background: var(--layer-solid);
+  }
+  .bh {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .made {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .made .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .mono {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-size: 12px;
+  }
+  .row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .passes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .passes li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+    border-top: 1px solid var(--stroke-2);
+  }
+  .pt {
+    flex: 1;
+    min-width: 0;
+  }
+  .badText {
+    color: var(--bad);
   }
 </style>

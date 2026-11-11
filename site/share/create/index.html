@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dexterity Share — create a client link</title>
+<meta name="description" content="Dexterity Design Services staff: create a client download link from a browser.">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#0b4fc4">
+<!-- No inline code, no third-party code, no fonts or trackers: everything this page runs is in the files below. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'">
+<link rel="icon" type="image/png" href="../../assets/icon-32.png">
+<link rel="apple-touch-icon" href="../../assets/icon-180.png">
+<link rel="stylesheet" href="create.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header class="nav">
+  <div class="nav-in">
+    <span class="brand"><img src="../../assets/icon-180.png" alt="" width="26" height="26"> Dexterity Share</span>
+    <span class="who" id="who" hidden></span>
+    <span class="grow"></span>
+    <button class="nav-btn" id="signout" type="button" hidden>Sign out on this browser</button>
+    <button class="nav-btn icon" id="theme" type="button" aria-label="Switch between light and dark">
+      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="cols" aria-busy="true">
+  <section class="card wide" id="boot">
+    <h1>Dexterity Share</h1>
+    <p class="muted" role="status">Opening…</p>
+    <noscript><p>This page needs JavaScript. Please allow it for this site, or use Hopper to create the link.</p></noscript>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<footer class="foot">Dexterity Share · Dexterity Design Services Private Limited · for staff</footer>
+<script src="create.js"></script>
+</body>
+</html>

@@ -68,7 +68,7 @@ const PORT = await app.listen()
 const BASE = `http://127.0.0.1:${PORT}`
 site.config = { base: BASE, pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'], company: 'Dexterity Design Services Private Limited' }
 
-async function makeShare({ files, title, message = '', sender = 'Asha Krishnan', days = 5, expiresAt, password, sparse }) {
+async function makeShare({ files, title, message = '', sender = 'Priya Sharma', days = 5, expiresAt, password, sparse }) {
   const id = newId()
   const dir = path.join(STORE, id)
   await fsp.mkdir(path.join(dir, 'data'), { recursive: true })
@@ -163,8 +163,8 @@ await check('single file: title, sender, message, size, expiry, download button'
   const { page, ctx } = await open(single.id)
   await settled(page)
   eq(await page.textContent('h1'), 'P10001 Lot 07 — as-built isometrics, Rev B')
-  ok((await page.textContent('.from')).includes('Asha Krishnan sent you a file'))
-  eq(await page.textContent('.avatar'), 'VK')
+  ok((await page.textContent('.from')).includes('Priya Sharma sent you a file'))
+  eq(await page.textContent('.avatar'), 'PS')
   ok((await page.textContent('.message')).includes('Kindly confirm receipt.'))
   ok(/Expires in 5 days · \w{3} \d{1,2} \w{3} 20\d\d$/.test((await page.textContent('.pills .pill:nth-child(2)')).trim()), await page.textContent('.pills'))
   ok((await page.textContent('.btn.primary.lg')).includes('Download · 734 MB'))

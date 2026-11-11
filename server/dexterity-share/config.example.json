@@ -5,7 +5,9 @@
     "allowedOrigins": ["https://vikramdex-ops.github.io"],
     "maxConcurrentDownloads": 24,
     "maxDownloadsPerIp": 6,
-    "graceHours": 24
+    "graceHours": 24,
+    "minFreeGB": 5,
+    "staff": { "enabled": true, "maxGB": 5, "chunkMB": 16, "defaultDays": 7 }
   },
   "tunnel": {
     "mode": "quick",

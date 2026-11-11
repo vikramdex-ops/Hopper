@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="referrer" content="no-referrer">
 <meta name="format-detection" content="telephone=no">
-<meta name="theme-color" content="#0b5cd6">
+<meta name="theme-color" content="#0b4fc4">
 <!-- No inline code, no third-party code, no fonts or trackers: everything this page runs is in the three files below. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'">
 <link rel="icon" type="image/png" href="../assets/icon-32.png">
@@ -17,46 +17,52 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to the files</a>
-<header class="nav">
-  <div class="wrap">
-    <div class="brand"><img src="../assets/icon-180.png" alt="" width="30" height="30"> Dexterity Share <small>Dexterity Design Services</small></div>
-    <span class="grow"></span>
+<div class="page">
+  <header class="nav">
+    <div class="brand">Dexterity Share <em>· Dexterity Design Services</em></div>
+  </header>
+  <div class="tools">
     <button class="icon-btn" id="theme" type="button" aria-label="Switch between light and dark">
       <svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
     </button>
   </div>
-</header>
 
-<main class="wrap" id="main">
-  <section class="card" id="card" aria-busy="true">
-    <div class="loading" id="loading">
-      <div class="sk sk-eyebrow"></div>
-      <div class="sk sk-title"></div>
-      <div class="sk sk-line"></div>
-      <div class="sk sk-row"></div>
-      <p class="loading-note" id="loading-note">Opening your link…</p>
-    </div>
-    <noscript>
-      <div class="state">
-        <h1>Please switch on JavaScript</h1>
-        <p>This page needs JavaScript to find your files. Switch it on for this site and reload, or ask the sender for help.</p>
+  <main id="main">
+    <section class="card" id="card" aria-busy="true">
+      <div class="split loading" id="loading">
+        <div class="side">
+          <div class="sk sk-hero"></div>
+          <div class="sk sk-hero short"></div>
+          <div class="sk sk-line"></div>
+        </div>
+        <div class="main">
+          <div class="sk sk-label"></div>
+          <div class="sk sk-row"></div>
+          <div class="sk sk-row"></div>
+          <div class="sk sk-btn"></div>
+          <p class="loading-note" id="loading-note">Opening your link…</p>
+        </div>
       </div>
-    </noscript>
-  </section>
+      <noscript>
+        <div class="split state warn">
+          <div class="side">
+            <h1>Please switch on JavaScript</h1>
+          </div>
+          <div class="main">
+            <h2 class="label">What to do</h2>
+            <p>This page needs JavaScript to find your files. Switch it on for this site and reload, or ask the sender for help.</p>
+          </div>
+        </div>
+      </noscript>
+    </section>
+  </main>
 
-  <ul class="trust" aria-label="About this service">
-    <li><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg><div><b>Encrypted in transit</b><span>Every download travels over HTTPS.</span></div></li>
-    <li><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15.5h14M5 15.5V8l5-3.5L15 8v7.5M8.5 15.5v-4h3v4"/></svg><div><b>Straight from our office</b><span>No third-party file-sharing site holds your files.</span></div></li>
-    <li><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.2l2.6 1.6"/></svg><div><b>Links expire by themselves</b><span>After the date shown, the files are removed.</span></div></li>
-  </ul>
-</main>
-
-<footer>
-  <div class="wrap">
-    <p>© 2026 Dexterity Design Services Private Limited</p>
+  <footer>
+    <p>Encrypted in transit. Sent straight from our office, not through a third-party file-sharing site. Links expire by themselves after the date shown.</p>
     <p>Trouble downloading? Reply to the e-mail that brought you here.</p>
-  </div>
-</footer>
+    <p class="legal">© 2026 Dexterity Design Services Private Limited</p>
+  </footer>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="sha256.js"></script>

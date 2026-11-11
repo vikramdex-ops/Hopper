@@ -8,6 +8,8 @@ import { createRequire } from 'node:module'
 import { deflateSync } from 'node:zlib'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+// HOPPER_APP_ROOT: launch a private build (a folder with package.json + out/) instead of this checkout's out/
+const appRoot = process.env.HOPPER_APP_ROOT || root
 export const WORK = process.env.HOPPER_WORK || '<work-folder>\\_Claude_Work\\temp\\hopper-e2e'
 export const DEMO = join(WORK, 'demo')
 
@@ -113,13 +115,13 @@ export async function launch({ userData = join(WORK, 'userdata'), fresh = true, 
   mkdirSync(userData, { recursive: true })
   const temp = join(WORK, 'tmp')
   mkdirSync(temp, { recursive: true })
-  if (!existsSync(join(root, 'out', 'main', 'index.js'))) throw new Error('Build first: npm run build')
+  if (!existsSync(join(appRoot, 'out', 'main', 'index.js'))) throw new Error('Build first: npm run build')
   const app = await electron.launch({
     executablePath: createRequire(join(root, 'package.json'))('electron'),
     // Chromium's sandbox can't start child processes from an exe on a network share (U:).
-    args: [root, ...(/^[a-zA-Z]:/.test(root) && process.env.HOPPER_SANDBOX !== '1' ? ['--no-sandbox'] : []), ...(env.HOPPER_SCALE ? [`--force-device-scale-factor=${env.HOPPER_SCALE}`] : [])],
-    cwd: root,
-    env: { ...process.env, HOPPER_USER_DATA: userData, TEMP: temp, TMP: temp, ...env }
+    args: [appRoot, ...(/^[a-zA-Z]:/.test(appRoot) && process.env.HOPPER_SANDBOX !== '1' ? ['--no-sandbox'] : []), ...(env.HOPPER_SCALE ? [`--force-device-scale-factor=${env.HOPPER_SCALE}`] : [])],
+    cwd: appRoot,
+    env: { ...process.env, ...(appRoot !== root ? { NODE_PATH: join(root, 'node_modules') } : {}), HOPPER_USER_DATA: userData, TEMP: temp, TMP: temp, ...env }
   })
   const win = await app.firstWindow()
   await win.waitForFunction(() => window.__hopper?.ready === true, null, { timeout: 60000 })

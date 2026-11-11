@@ -1,7 +1,7 @@
 {
   "name": "hopper",
   "productName": "Hopper",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
   "description": "Hopper: the internal file manager of Dexterity Design Services Private Limited. Dual panes, a transfer queue, one-key zips, PDF and lot tools, and @mention file sharing over the office LAN with Zoho Cliq notifications.",
   "main": "out/main/index.js",
@@ -29,7 +29,7 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --win --x64",
     "native": "node tools/build-native.mjs",
-    "e2e:all": "node tests/e2e/run.mjs && node tests/e2e/lan.mjs && node tests/e2e/pubshare.mjs && node tests/e2e/pubshare-app.mjs"
+    "e2e:all": "node tests/e2e/run.mjs && node tests/e2e/lan.mjs && node tests/e2e/pubshare.mjs && node tests/e2e/pubshare-app.mjs && node tests/e2e/pubshare-staff.mjs && node tests/e2e/pubshare-create-page.mjs"
   },
   "dependencies": {
     "electron-updater": "6.8.11",
