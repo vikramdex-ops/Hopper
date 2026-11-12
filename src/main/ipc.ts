@@ -9,7 +9,7 @@ import { applyTheme, ctx, pushOfficeToUtilities } from './ctx'
 import { clearThumbCache } from './protocol'
 import { checkForUpdates, installUpdate, updaterState } from './updater'
 import defmgr from './defmgr'
-import { officeMeta, officeUser, saveOffice } from './officeops'
+import { lockOffice, officeMeta, officeUser, revokeOffice, saveOffice } from './officeops'
 import { registerNetworkIpc } from './network'
 import type { OfficeConfig, Settings } from '@shared/types'
 
@@ -97,6 +97,20 @@ export function registerIpc() {
     const r = await saveOffice(officeUser(await whoAmI()), cfg, opts)
     pushOfficeToUtilities()
     return r
+  })
+  /** Mark the office as set up by this PC; other PCs lock their Office page on their next poll. */
+  h('office:lock', async () => {
+    const user = officeUser(await whoAmI())
+    await lockOffice(user)
+    pushOfficeToUtilities()
+    return { config: ctx.office.data, path: ctx.office.loadedFrom, error: ctx.office.error, meta: officeMeta(user) }
+  })
+  /** Undo the setup: every PC gets the full Office page back, to set the office up elsewhere. */
+  h('office:revoke', async () => {
+    const user = officeUser(await whoAmI())
+    await revokeOffice(user)
+    pushOfficeToUtilities()
+    return { config: ctx.office.data, path: ctx.office.loadedFrom, error: ctx.office.error, meta: officeMeta(user) }
   })
 
   // --- dialogs ------------------------------------------------------------

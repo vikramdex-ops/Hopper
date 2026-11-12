@@ -1,4 +1,4 @@
-// Office announcements. An announcer (admin, or listed in office.announcers) posts; the post is
+// Office announcements. Anyone in the office posts; the post is
 //   1. written to <office folder>\announcements.json (atomic, newest first, capped) so PCs that
 //      are off see it at their next start, and
 //   2. pushed to every online PC over the TLS-PSK channel (role 'small'), retried until each one
@@ -15,6 +15,7 @@ import { announcementLive, cleanAnnouncement, mergeAnnouncements, sanitizeName }
 import { Fatal, sendSmall } from './transfer-client'
 import type { LanCtx } from './types'
 import { readJson, saver, sleep, writeJsonAtomic } from './util'
+import { canConfigureOffice } from '@shared/office-access'
 
 const CAP = 200
 const SYNC_MS = 60_000
@@ -90,20 +91,24 @@ export class Announcements {
     this.ac.abort()
   }
 
+  /** Everyone in the office may post: announcements are how future changes reach every PC. */
   canPost() {
-    const o = this.ctx.office
-    const me = this.ctx.me.user
-    return !!me && [...(o?.admins ?? []), ...(o?.announcers ?? [])].some((u) => String(u).toLowerCase() === me)
+    return !!this.ctx.me.user
+  }
+
+  /** Office admins see every acknowledgement and may withdraw anyone's post; others only their own. */
+  private isAdmin() {
+    return canConfigureOffice(this.ctx.office, this.ctx.me.user, this.ctx.me.host)
   }
 
   list(): AnnouncementView[] {
-    const mine = this.canPost()
-    return this.local.cache.map((a) => this.view(a, mine))
+    const all = this.isAdmin()
+    return this.local.cache.map((a) => this.view(a, all))
   }
 
   /** Post a new announcement. Resolves once it is stored; delivery to online PCs continues behind. */
   async post(draft: AnnouncementDraft): Promise<AnnouncementView> {
-    if (!this.canPost()) throw new Error('Only office admins and announcers can post announcements')
+    if (!this.canPost()) throw new Error('Hopper does not know who you are yet. Try again in a moment.')
     const a = cleanAnnouncement({
       id: `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`,
       title: draft?.title,
@@ -126,7 +131,7 @@ export class Announcements {
   async withdraw(id: string) {
     const a = this.local.cache.find((x) => x.id === id)
     if (!a) throw new Error('unknown announcement')
-    if (!this.canPost()) throw new Error('Only office admins and announcers can withdraw announcements')
+    if (a.by !== this.ctx.me.user && !this.isAdmin()) throw new Error('Only the person who posted it, or an office admin, can withdraw an announcement')
     if (a.withdrawn) return this.view(a, true)
     return this.publish({ ...a, withdrawn: true })
   }
@@ -178,7 +183,7 @@ export class Announcements {
     return 'bad-frame'
   }
 
-  /** Pull the shared file (and, for announcers, everyone's acknowledgements); retry filing our own. */
+  /** Pull the shared file (and, for admins and authors, the acknowledgements); retry filing our own. */
   sync(): Promise<void> {
     this.syncing ??= this.doSync()
       .catch((e) => this.ctx.log('announcements', e?.message ?? e))
@@ -192,9 +197,9 @@ export class Announcements {
     return this.ctx.officePath ? dirname(this.ctx.officePath) : ''
   }
 
+  /** Any office member (it holds the office key, or the TLS frame would not have arrived) may announce. */
   private allowed(user: string) {
-    const o = this.ctx.office
-    return [...(o?.admins ?? []), ...(o?.announcers ?? [])].some((u) => String(u).toLowerCase() === user)
+    return !!user
   }
 
   private view(a: Announcement, withAcks: boolean): AnnouncementView {
@@ -293,7 +298,7 @@ export class Announcements {
     const shared = await this.readShared()
     if (shared) this.take(shared, false)
     await this.fileAcks()
-    if (this.canPost() || this.local.cache.some((a) => a.by === this.ctx.me.user)) await this.readAcks()
+    if (this.isAdmin() || this.local.cache.some((a) => a.by === this.ctx.me.user)) await this.readAcks()
   }
 
   /** Write <office folder>\announcement-acks\<me>.json when something in it is not filed yet. */

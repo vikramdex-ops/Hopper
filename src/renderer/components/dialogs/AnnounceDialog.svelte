@@ -1,6 +1,6 @@
 <script lang="ts">
   // Compose an office announcement: title, details, level, an optional folder it is about and
-  // an optional expiry. Admins and announcers only (the LAN process refuses anyone else).
+  // an optional expiry. Anyone in the office can post.
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
   import { app } from '../../lib/app.svelte'
@@ -68,7 +68,7 @@
 
 <Dialog title="New announcement" icon="bell" width={580} onclose={() => close()} onsubmit={post}>
   {#if !lanx.canAnnounce}
-    <div class="warn"><Icon name="warning" /> <span>Only office admins and announcers can post. Ask an admin to add you under Settings → Office.</span></div>
+    <div class="warn"><Icon name="warning" /> <span>Hopper is still finding out who you are. Try again in a moment.</span></div>
   {/if}
   <label class="field">
     <span>Title</span>

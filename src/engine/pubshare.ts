@@ -15,6 +15,7 @@ import {
 import type { EngineCtx } from './index'
 import type { JobCtl } from './jobs'
 import { createArchive } from './archive'
+import { canConfigureOffice } from '@shared/office-access'
 
 const CHUNK = 4 << 20
 const ARCHIVES = /\.(zip|7z|rar)$/i
@@ -51,10 +52,9 @@ export function publicShareConfig(ctx: Pick<EngineCtx, 'office' | 'settings'>): 
   }
 }
 
-/** Office admins, as main's officeops decides them (an empty list means the built-in default). */
-function isOfficeAdmin(ctx: Pick<EngineCtx, 'office'>, user: string) {
-  const list = [...new Set((ctx.office?.admins ?? []).map((u) => String(u).trim().toLowerCase()).filter(Boolean))]
-  return !!user && (list.length ? list : ['asha']).includes(user)
+/** Office admins, by the same rule main uses (shared/office-access.ts). */
+function isOfficeAdmin(ctx: Pick<EngineCtx, 'office'>, user: string, pc: string) {
+  return canConfigureOffice(ctx.office, user, pc)
 }
 
 /** Same verifier the share server checks: scrypt over the NFKC-normalised password. Never stores the password. */
@@ -484,7 +484,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
     'pubshare.passList': async (scope: 'mine' | 'all' = 'mine'): Promise<StaffPassInfo[]> => {
       const cfg = ready()
       const me = deps.user().user.replace(/^.*\\/, '').trim().toLowerCase()
-      if (scope === 'all' && !isOfficeAdmin(ctx, me)) throw new Error('Only an office admin can see everyone\'s browser passes')
+      if (scope === 'all' && !isOfficeAdmin(ctx, me, deps.user().host)) throw new Error('Only an office admin can see everyone\'s browser passes')
       const dir = join(cfg.store, STAFF_DIR)
       let names: string[] = []
       try {
@@ -514,7 +514,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       const p = await readJson<StaffPass>(file)
       if (!p) return true
       const me = deps.user().user.replace(/^.*\\/, '').trim().toLowerCase()
-      if (String(p.user).toLowerCase() !== me && !isOfficeAdmin(ctx, me)) throw new Error('This browser pass belongs to someone else')
+      if (String(p.user).toLowerCase() !== me && !isOfficeAdmin(ctx, me, deps.user().host)) throw new Error('This browser pass belongs to someone else')
       await fsp.rm(file, { force: true })
       return true
     },

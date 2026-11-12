@@ -9,6 +9,7 @@ import { release } from 'node:os'
 import { join } from 'node:path'
 import { handleProtocol, registerSchemes } from './protocol'
 import { registerIpc } from './ipc'
+import { startOfficeSync } from './officeops'
 import { OfficeStore, SettingsStore } from './store'
 import { HopperShell } from '@shared/hshell'
 import { initUpdater } from './updater'
@@ -238,6 +239,10 @@ app.whenReady().then(async () => {
   ctx.lan = startUtility('lan')
   pushOfficeToUtilities()
   initShareHost()
+  startOfficeSync(() => {
+    pushOfficeToUtilities()
+    sendToWindow('hopper:office', {})
+  })
   registerAppIdentity()
   createWindow()
   ctx.tray = createTray()

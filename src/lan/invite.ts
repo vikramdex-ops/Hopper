@@ -7,6 +7,7 @@ import type { OfficeInvite } from '@shared/types'
 import type { Discovery } from './discovery'
 import { INVITE_EVERY_MS, INVITE_MS, keyFingerprint, openInvite, sealInvite, type Invite } from './protocol'
 import type { LanCtx } from './types'
+import { canConfigureOffice } from '@shared/office-access'
 
 /** Invites from clocks this far off are dropped, like beacons. */
 const MAX_SKEW_MS = 10 * 60 * 1000
@@ -44,8 +45,7 @@ export class Invites {
   }
 
   isAdmin() {
-    const admins = this.ctx.office?.admins ?? []
-    return !!this.ctx.me.user && admins.some((a) => String(a).toLowerCase() === this.ctx.me.user)
+    return canConfigureOffice(this.ctx.office, this.ctx.me.user, this.ctx.me.host)
   }
 
   /** Start (or extend) the two-minute broadcast. Admins only. */

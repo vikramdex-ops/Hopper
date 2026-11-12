@@ -88,6 +88,13 @@
       if (!st?.pc) throw new Error('Hopper is still starting the share service. Try again in a moment.')
       await saveOffice({ enabled: true, host: { user: lanx.meta.user, pc: st.pc } })
       await host.share.configure({ enabled: true })
+      // this PC is now the always-on server: the office counts as set up here, and the other PCs'
+      // Office pages lock until someone revokes it (Settings → Office → Revoke setup)
+      if (!lanx.meta.setup || !lanx.meta.setupPc) {
+        const r = (await host.office.lock()) as { meta?: typeof lanx.meta }
+        if (r?.meta) lanx.meta = r.meta
+        await app.reloadOffice()
+      }
     })
 
   const stopHere = () =>
@@ -150,7 +157,7 @@
 
 <Dialog title="Set up Dexterity Share" icon="cloud" width={640} onclose={() => close()}>
   {#if !admin}
-    <div class="note warn"><Icon name="info" /> <span>Only the office admin sets this up. This PC shows the current state.</span></div>
+    <div class="note warn"><Icon name="info" /> <span>The office is set up on {lanx.meta.setup?.pc || 'another PC'}{lanx.meta.setup?.user ? ` by ${app.personName(lanx.meta.setup.user)}` : ''}. This PC shows the current state. To move the share server here, revoke the setup first (Settings → Office).</span></div>
   {/if}
   <p class="lead">Clients download straight from one office PC that stays on. Do these three steps <b>on that PC</b>, once. About five minutes.</p>
   {#if errors.load}<div class="note bad"><Icon name="error" /> <span>{errors.load}</span></div>{/if}

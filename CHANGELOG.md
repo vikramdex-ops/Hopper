@@ -4,6 +4,30 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — 2026-11-12
+
+### Changed
+- **Office setup is open until one PC sets it up.** Before the office is set up, every PC gets the
+  full *Settings → Office* page, so anyone can configure it and any PC can become the always-on
+  Dexterity Share server. Pressing **Use this PC** in *Set up Dexterity Share*, or **Finish setup
+  on this PC** on the Office page, locks the setup to that PC. Within about 20 seconds every other
+  PC's Office page turns read-only and names the PC that set it up. That PC, and the accounts
+  asha, admin2 and admin3 on any PC, can still change it; Hopper refuses a save from anyone else.
+- **Revoke setup** gives every PC the full Office page back, for example to move the always-on
+  server. The old share server keeps serving client links until another PC presses
+  **Use this PC**, then stops by itself so the two never fight over the link pointer.
+- A PC that cannot read `office.json` cannot tell whether the office is set up, so it shows the
+  read-only page with **Join office** (Asha, Admin2 and Admin3 still get the full page there).
+- **Everyone can post announcements.** The poster and admins see who acknowledged; a poster can
+  withdraw their own, admins any.
+- Office changes made on another PC (a setup, a revoke, a save) now reach every PC within about
+  20 seconds, without a restart. A save first re-reads `office.json`, so a PC that has not caught
+  up yet cannot undo a setup or a revoke made elsewhere.
+
+### Removed
+- The *Admins* and *Announcers* lists on the Office page. Older `office.json` files keep them, and
+  they are no longer used.
+
 ## [2.4.1] — 2026-11-12
 
 ### Fixed

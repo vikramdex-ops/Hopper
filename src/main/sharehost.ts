@@ -8,6 +8,8 @@ import { existsSync, promises as fsp, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { DEFAULT_PAGE_URL, DEFAULT_SHARE_SERVER, normalizeDays, type PublicShareConfig, type ShareServerSettings } from '@shared/pubshare'
 import { ctx, officeListeners, sendToWindow } from './ctx'
+import { hostname } from 'node:os'
+import { normPc } from '@shared/office-access'
 
 let child: UtilityProcess | null = null
 let seq = 0
@@ -153,7 +155,17 @@ export function initShareHost() {
     pushShareConfig(true)
     return next
   })
-  officeListeners.push(() => pushShareConfig())
+  officeListeners.push(() => {
+    // another PC has taken over as the share server (after a revoke): stop here, so the two do not
+    // fight over the gist pointer. A revoke alone (no host yet) keeps this one serving until then.
+    const claimed = (ctx.office.data as any)?.publicShare?.host?.pc
+    if (shareSettings().enabled && claimed && normPc(claimed) !== normPc(hostname())) {
+      ctx.settings.set({ shareServer: { ...shareSettings(), enabled: false } } as any)
+      ctx.settings.flushSync()
+      console.log(`[hopper] share server moved to ${claimed}; stopping it on this PC`)
+    }
+    pushShareConfig()
+  })
   if (shareSettings().enabled) pushShareConfig()
 }
 

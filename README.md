@@ -12,7 +12,7 @@ file sharing to colleagues over the office LAN with an `@mention`, and download 
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-241) ·
+[What's new](#whats-new-in-25) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -74,6 +74,16 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.5
+
+- **Anyone can set the office up, once.** Until a PC sets the office up, every PC gets the full
+  *Settings → Office* page, so the always-on Dexterity Share server can be any PC. **Use this PC**
+  (or **Finish setup on this PC**) locks it: the other PCs' Office pages turn read-only within
+  about 20 seconds. That PC and asha, admin2 and admin3 can still change it.
+- **Revoke setup** to move the always-on server: every PC gets the full page back until the next
+  setup. Client links keep working until the new PC takes over.
+- **Announcements for everyone**: any colleague can post one.
 
 ## What's new in 2.4.1
 
@@ -150,7 +160,7 @@ A fix release.
   folder picker — nothing is handed to Windows Explorer.
 - **Viewers** for PDF (Ctrl+wheel zoom), Excel, Word, DWG saved previews and MicroStation V7
   drawings, with no design software installed.
-- Only the office admin can create the office key; other PCs join.
+- The PC that sets the office up creates the office key; other PCs join.
 
 ## What's new in 2.0
 
@@ -188,8 +198,10 @@ Builds are not code-signed yet, so SmartScreen may ask you to confirm the first 
 A one-time setup, about five minutes:
 
 1. Install Hopper on each PC.
-2. **Office admin** (only the admin can do this): **Settings → Office**, point *Office config
-   file* at a shared folder every PC can reach, create the office key and **Save to server**.
+2. **Whoever sets the office up** (any PC, until one finishes): **Settings → Office**, point
+   *Office config file* at a shared folder every PC can reach, create the office key and
+   **Save to server**. **Use this PC** in Dexterity Share setup, or **Finish setup on this PC**,
+   locks the Office page to that PC (plus asha, admin2 and admin3); **Revoke setup** opens it again.
 3. **Everyone else joins**: automatically from the shared config, from an invite the admin sends
    over the network (**Invite PCs**), or by pasting the key. Then **Settings → Sharing → Allow
    through Windows Firewall** (asks for admin once; the row then reads **Allowed**) and fill in
@@ -197,7 +209,7 @@ A one-time setup, about five minutes:
 4. Optional: Cliq DMs (the endpoint already points at the office's Hopper Bot; the admin pastes
    its webhook token once — [docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)), groups, folder templates,
    naming conventions and revision rules.
-5. Optional, for client links: on one office PC that stays on, the admin runs **Set up Dexterity
+5. Optional, for client links: on one office PC that stays on, run **Set up Dexterity
    Share on this PC…** (Settings → Office → Dexterity Share). See
    [docs/DEXTERITY-SHARE-IT.md](docs/DEXTERITY-SHARE-IT.md); how staff use it is in
    [docs/DEXTERITY-SHARE.md](docs/DEXTERITY-SHARE.md).

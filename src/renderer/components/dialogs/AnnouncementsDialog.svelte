@@ -1,6 +1,6 @@
 <script lang="ts">
   // Announcements: everything posted to the office, newest first. Anyone can acknowledge; admins
-  // and announcers also see who has acknowledged, can post new ones and withdraw old ones.
+  // and authors also see who has acknowledged and can withdraw (admins: any post, authors: their own).
   import { onMount } from 'svelte'
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
@@ -101,7 +101,7 @@
   </div>
 
   {#snippet footer()}
-    <span class="caption tail">{lanx.canAnnounce ? 'You can post announcements for the whole office.' : 'Admins and announcers can post. Got it tells them you have seen one.'}</span>
+    <span class="caption tail">{lanx.canAnnounce ? 'You can post announcements for the whole office.' : 'Got it tells the poster you have seen one.'}</span>
     {#if lanx.canAnnounce}
       <button type="button" class="btn primary" onclick={() => lanx.compose()}><Icon name="plus" /> New announcement</button>
     {/if}

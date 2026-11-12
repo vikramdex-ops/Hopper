@@ -32,7 +32,7 @@ const api = {
     onState: listen('hopper:win')
   },
   settings: { get: invoke('settings:get'), set: invoke('settings:set') },
-  office: { get: invoke('office:get'), load: invoke('office:load'), save: invoke('office:save') },
+  office: { get: invoke('office:get'), load: invoke('office:load'), save: invoke('office:save'), lock: invoke('office:lock'), revoke: invoke('office:revoke'), onChanged: listen('hopper:office') },
   dialog: { folder: invoke('dialog:folder'), files: invoke('dialog:files'), save: invoke('dialog:save') },
   shell: {
     open: invoke('shell:open'),

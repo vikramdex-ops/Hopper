@@ -41,7 +41,9 @@ const serverInbox = join(officeDir, 'Inbox')
 const KEY = randomBytes(32).toString('hex')
 const FP = createHash('sha256').update(Buffer.from(KEY, 'hex')).digest('hex').slice(0, 8)
 mkdirSync(serverInbox, { recursive: true })
-const officeCfg = { officeName: 'Test office', officeKey: KEY, serverInbox, cliq: { enabled: false, endpoint: '', zapikey: '' }, groups: [], admins: ['asha'], announcers: [] }
+// set up on another PC: both test users run on this one, so bob is not the setup PC and asha is a standing admin
+const SETUP = { user: 'asha', pc: 'OTHER-PC', at: 1 }
+const officeCfg = { officeName: 'Test office', officeKey: KEY, serverInbox, cliq: { enabled: false, endpoint: '', zapikey: '' }, groups: [], admins: ['asha'], announcers: [], setup: SETUP }
 writeFileSync(office, JSON.stringify(officeCfg))
 
 // something to browse, select and link to
@@ -61,6 +63,8 @@ async function start(user, name, configPath) {
   const temp = join(WORK, 'tmp')
   mkdirSync(temp, { recursive: true })
   const app = await electron.launch({
+    // launching Electron off the U: share can take minutes when the share is slow
+    timeout: 180000,
     executablePath: require('electron'),
     // Chromium's sandbox can't start child processes from an exe on a network share (U:).
     args: [APP, '--no-sandbox'],
@@ -148,13 +152,13 @@ await check('non-admin cannot save the office config (IPC refuses, file untouche
       return String(e.message)
     }
   })
-  if (!/admin/i.test(err)) throw new Error(`save was not refused: "${err}"`)
+  if (!/set up on|admin/i.test(err)) throw new Error(`save was not refused: "${err}"`)
   if (readFileSync(office, 'utf8') !== before) throw new Error('office.json changed')
   const moved = await ev('bob', async () => {
     const r = await window.hopper.office.get()
     return window.hopper.office.save(r.config, { moveTo: '<work-folder>\\_Claude_Work\\temp\\lan2-agent\\e2e\\elsewhere' }).then(() => 'moved', (e) => String(e.message))
   })
-  if (!/admin/i.test(moved)) throw new Error(`move was not refused: "${moved}"`)
+  if (!/set up on|admin/i.test(moved)) throw new Error(`move was not refused: "${moved}"`)
 })
 
 await check('admin can save the office config', async () => {
@@ -182,8 +186,28 @@ await check('Office page: admin has Generate/Invite/Move; non-admin is read-only
   for (const text of ['Generate', 'Invite PCs', 'Move…', 'Save to server']) if (await b.getByRole('button', { name: text }).count()) throw new Error(`non-admin page shows "${text}"`)
   if ((await b.locator('[data-join-state]').getAttribute('data-join-state')) !== 'joined') throw new Error('bob not shown as joined')
   if (!(await b.locator('[data-join-key]').count())) throw new Error('no paste-key box')
+  if (!(await b.locator('[data-office-locked]').count())) throw new Error('no "set up by its admin" note')
   await shot('bob', 'office-non-admin')
   await esc('bob')
+})
+
+await check('revoke opens the Office page for everyone; a setup on a PC locks it again', async () => {
+  const meta = (u) => ev(u, async () => (await window.hopper.office.load(window.__hopper.settings.officeConfigPath)).meta)
+  if ((await meta('bob')).admin) throw new Error('bob is admin before the revoke')
+  const err = await ev('bob', () => window.hopper.office.revoke().then(() => '', (e) => String(e.message)))
+  if (!err) throw new Error('bob could revoke')
+  await ev('asha', () => window.hopper.office.revoke())
+  if (JSON.parse(readFileSync(office, 'utf8')).setup) throw new Error('setup still in office.json')
+  const open = await meta('bob')
+  if (!open.admin || open.setup) throw new Error(`bob not admin after revoke: ${JSON.stringify(open)}`)
+  await ev('bob', () => window.hopper.office.lock())
+  const locked = JSON.parse(readFileSync(office, 'utf8')).setup
+  if (!locked || locked.user !== 'bob') throw new Error(`lock not recorded: ${JSON.stringify(locked)}`)
+  if (!(await meta('asha')).admin) throw new Error('standing admin lost access')
+  // back to the starting state for the tests below
+  writeFileSync(office, JSON.stringify({ ...JSON.parse(readFileSync(office, 'utf8')), setup: SETUP }))
+  for (const u of ['asha', 'bob']) await meta(u)
+  if ((await meta('bob')).admin) throw new Error('bob still admin after restoring the setup')
 })
 
 // ---- C. Person panel ---------------------------------------------------------------------
@@ -261,9 +285,9 @@ await check('request bob -> asha, answered with files that carry replyTo', async
 // ---- B. announcements ----------------------------------------------------------------------
 
 let first
-await check('non-announcer cannot post an announcement', async () => {
-  const err = await ev('bob', () => window.__hopperLan.call('announce.post', { title: 'Free lunch', level: 'urgent' }).then(() => '', (e) => String(e.message)))
-  if (!/admins and announcers/i.test(err)) throw new Error(`not refused: "${err}"`)
+await check('everyone may post announcements (not only admins)', async () => {
+  const can = await ev('bob', () => !!window.__hopper.lanStatus?.canAnnounce)
+  if (!can) throw new Error('bob may not announce')
 })
 
 await check('announcement reaches an online PC at once: banner, then Got it is visible to the admin', async () => {

@@ -2,7 +2,7 @@
   // Settings: section list on the left, the section on the right. Personal settings apply at once
   // (no Save button). The Office section edits the shared office config as a draft and saves it
   // to the server, because every Hopper in the office reads that one file.
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { PATH_MODES } from '../../lib/pathcopy'
   import Dialog from '../Dialog.svelte'
   import Icon from '../Icon.svelte'
@@ -326,16 +326,65 @@
 
   // ---- Office: admins, joining, inviting -------------------------------------------------
 
-  // Only an office admin creates the key and edits the shared config (main enforces it too).
-  // Everyone else gets a read-only page with a way to join: the config file, or a pasted key.
+  // Until a PC sets the office up, everyone gets the full page (any PC can become the always-on
+  // server). Once set up, only that PC and the standing admins do; everyone else gets a read-only
+  // page with a way to join. Main enforces the same rule (shared/office-access.ts).
   const isAdmin = $derived(lanx.meta.admin)
+  const setup = $derived(lanx.meta.setup)
+  let setupBusy = $state(false)
+
+  // another PC set the office up, revoked it or saved: take the new config in (unless mid-edit)
+  $effect(() => {
+    if (!lanx.officeTick) return
+    if (!untrack(() => dirty)) void loadOffice()
+  })
+
+  async function lockSetup() {
+    if (!(await app.confirm(
+      'Finish the office setup on this PC?',
+      `Every other PC's Office page becomes read-only. Only this PC (${lanx.meta.pc}) and Asha, Admin2 and Admin3 can change the office afterwards. You can revoke it later.`,
+      'Finish setup'
+    ))) return
+    setupBusy = true
+    try {
+      if (dirty) await saveOffice()
+      if (dirty) return // the save failed and said why
+      const r = (await host.office.lock()) as { meta?: typeof lanx.meta }
+      if (r?.meta) lanx.meta = r.meta
+      await app.reloadOffice()
+      await loadOffice()
+      app.toast('success', 'Office setup finished', 'The other PCs lock their Office page within a minute.')
+    } catch (e) {
+      app.toast('error', "Couldn't finish the setup", msg(e))
+    } finally {
+      setupBusy = false
+    }
+  }
+
+  async function revokeSetup() {
+    if (!(await app.confirm(
+      'Revoke the office setup?',
+      `Every PC gets the full Office page back, so anyone can set the office up again, for example to move the always-on share server to another PC. The share server on ${draft?.publicShare?.host?.pc || setup?.pc || 'the current PC'} keeps serving client links until another PC takes over with Use this PC; the setup locks again as soon as one does.`,
+      'Revoke'
+    ))) return
+    setupBusy = true
+    try {
+      const r = (await host.office.revoke()) as { meta?: typeof lanx.meta }
+      if (r?.meta) lanx.meta = r.meta
+      await app.reloadOffice()
+      await loadOffice()
+      app.toast('success', 'Office setup revoked', 'Every PC can configure the office again until one sets it up.')
+    } catch (e) {
+      app.toast('error', "Couldn't revoke the setup", msg(e))
+    } finally {
+      setupBusy = false
+    }
+  }
   const joined = $derived(lanx.meta.keySource !== 'none')
   let draftFp = $state('')
   let joinKey = $state('')
   let joinFp = $state('')
   let joinBusy = $state(false)
-  let adminInput = $state('')
-  let announcerInput = $state('')
   let clock = $state(Date.now())
   const inviteLeft = $derived(lanx.inviteStatus.active ? Math.max(0, Math.ceil((lanx.inviteStatus.until - clock) / 1000)) : 0)
 
@@ -353,20 +402,6 @@
     return () => clearInterval(t)
   })
 
-  function addUser(list: 'admins' | 'announcers') {
-    if (!draft) return
-    const v = (list === 'admins' ? adminInput : announcerInput).trim().toLowerCase()
-    if (list === 'admins') adminInput = ''
-    else announcerInput = ''
-    draft[list] ??= []
-    if (v && !draft[list].includes(v)) draft[list].push(v)
-  }
-
-  async function removeAdmin(u: string) {
-    if (!draft) return
-    if (u === lanx.meta.user && !(await app.confirm('Remove yourself as an admin?', 'After you save, you can no longer change the office config from this account.', 'Remove'))) return
-    draft.admins = draft.admins.filter((x) => x !== u)
-  }
 
   async function joinByKey() {
     if (joinBusy || !validKey(joinKey)) return
@@ -876,7 +911,11 @@
           {/if}
         </div>
       {:else if current === 'office' && !isAdmin}
-        <div class="note"><Icon name="info" /> <span>The office is set up by its admin{app.office?.admins?.length ? ` (${app.office.admins.map((a) => app.personName(a)).join(', ')})` : ''}. This page shows what this PC uses; there is nothing to configure here.</span></div>
+        {#if !setup}
+          <div class="note" data-office-unread><Icon name="info" /> <span>This PC can't read the office config, so it can't tell how the office is set up. Load the right file under <b>Join office</b> below; once it loads, this page shows the office.</span></div>
+        {:else}
+        <div class="note" data-office-locked><Icon name="lock" /> <span>The office is set up by its admin on <b>{setup?.pc || 'another PC'}</b>{setup?.user ? ` (${app.personName(setup.user)})` : ''}{setup?.at ? `, ${fmtDateFull(setup.at)}` : ''}. Only that PC, and Asha, Admin2 and Admin3, can change it. This page shows what this PC uses.</span></div>
+        {/if}
         <div class="item">
           <span class="txt">
             <span>{app.office?.officeName || 'Office'}</span>
@@ -884,7 +923,10 @@
               {#if !officeInfo}Loading…{:else if officeInfo.error}This PC can't read the office config at {officeInfo.path || officePath}{officeInfo.error === 'not-found' ? '' : ` (${officeInfo.error})`}{:else}Config loaded from {officeInfo.path}{/if}
             </span>
           </span>
-          <button type="button" class="btn" onclick={() => lanx.openList()}><Icon name="bell" /> Announcements</button>
+          <span class="acts">
+            <button type="button" class="btn" onclick={() => lanx.compose()}><Icon name="bell" /> New announcement…</button>
+            <button type="button" class="btn subtle" onclick={() => lanx.openList()}>Announcements</button>
+          </span>
         </div>
         <div class="item" data-join-state={joined ? 'joined' : 'none'}>
           <span class="dot" class:on={joined}></span>
@@ -934,7 +976,24 @@
           {:else}Not an office key: it must be hex characters only, 32 or more.{/if}
         </div>
       {:else if current === 'office'}
-        <div class="note"><Icon name="info" /> Saved to the server: every Hopper in the office uses it. You are an office admin.</div>
+        {#if setup}
+          <div class="item setup" data-office-setup="locked">
+            <span class="txt">
+              <span><b>Set up on {setup.pc}{lanx.meta.setupPc ? ' (this PC)' : ''}</b>{setup.user ? ` by ${app.personName(setup.user)}` : ''}{setup.at ? ` · ${fmtDateFull(setup.at)}` : ''}</span>
+              <span class="caption">Other PCs see a read-only page. {lanx.meta.setupPc ? 'This PC' : 'That PC'} and Asha, Admin2 and Admin3 can change the office. To move the always-on server, revoke first: every PC then gets this page back until the next setup.</span>
+            </span>
+            <button type="button" class="btn danger" disabled={setupBusy || officeBusy} onclick={revokeSetup} data-office-revoke><Icon name="refresh" /> Revoke setup</button>
+          </div>
+        {:else}
+          <div class="item setup" data-office-setup="open">
+            <span class="txt">
+              <span><b>Not set up yet: anyone can configure the office</b></span>
+              <span class="caption">On the always-on PC, use Dexterity Share → Set up… → Use this PC, and the setup locks to that PC. Or finish it here. After that, only that PC and Asha, Admin2 and Admin3 can change the office.</span>
+            </span>
+            <button type="button" class="btn primary" disabled={setupBusy || officeBusy || !officeInfo || (!!officeInfo.error && officeInfo.error !== 'not-found')} onclick={lockSetup} data-office-lock><Icon name="lock" /> Finish setup on this PC</button>
+          </div>
+        {/if}
+        <div class="note"><Icon name="info" /> Saved to the server: every Hopper in the office uses it.</div>
         <label class="field">
           <span>Office config file</span>
           <div class="row">
@@ -1002,25 +1061,8 @@
             <button type="button" class="btn" disabled={officeBusy} onclick={moveOffice}><Icon name="folderOpen" /> Move…</button>
           </div>
 
-          <h3 class="subtitle">Admins and announcers</h3>
-          <label class="field">
-            <span>Admins <span class="caption">(Windows user names; may create the key and change everything on this page)</span></span>
-            <div class="chips">
-              {#each draft.admins ?? [] as u (u)}
-                <span class="chip">{app.personName(u)}{app.personName(u) !== u ? ` (${u})` : ''}<button type="button" aria-label={`Remove ${u}`} disabled={(draft.admins ?? []).length < 2} onclick={() => removeAdmin(u)}><Icon name="close" size={10} /></button></span>
-              {/each}
-              <input class="bare" list="hopper-people" bind:value={adminInput} placeholder="Add a user name and press Enter" spellcheck="false" onkeydown={enterTo(() => addUser('admins'))} />
-            </div>
-          </label>
-          <label class="field">
-            <span>Announcers <span class="caption">(besides admins, may post office announcements)</span></span>
-            <div class="chips">
-              {#each draft.announcers ?? [] as u (u)}
-                <span class="chip">{app.personName(u)}{app.personName(u) !== u ? ` (${u})` : ''}<button type="button" aria-label={`Remove ${u}`} onclick={() => (draft!.announcers = draft!.announcers.filter((x) => x !== u))}><Icon name="close" size={10} /></button></span>
-              {/each}
-              <input class="bare" list="hopper-people" bind:value={announcerInput} placeholder="Add a user name and press Enter" spellcheck="false" onkeydown={enterTo(() => addUser('announcers'))} />
-            </div>
-          </label>
+          <h3 class="subtitle">Announcements</h3>
+          <div class="caption">Everyone in the office can post one, from any PC.</div>
           <div class="row">
             <button type="button" class="btn" onclick={() => lanx.compose()}><Icon name="bell" /> New announcement…</button>
             <button type="button" class="btn subtle" onclick={() => lanx.openList()}>All announcements</button>
@@ -1305,7 +1347,7 @@
   </datalist>
 
   {#snippet footer()}
-    <span class="caption foot">{current === 'office' ? (isAdmin ? 'Office settings are shared and need Save to server.' : 'Office settings are managed by the office admin.') : 'Changes apply immediately.'}</span>
+    <span class="caption foot">{current === 'office' ? (isAdmin ? (setup ? 'Office settings are shared and need Save to server.' : 'Office not set up yet: anyone can configure it. Changes need Save to server.') : `Office settings are managed on ${setup?.pc || 'the admin PC'}.`) : 'Changes apply immediately.'}</span>
     <button type="button" class="btn primary" onclick={tryClose}>Close</button>
   {/snippet}
 </Dialog>

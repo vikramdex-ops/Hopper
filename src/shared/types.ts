@@ -322,10 +322,28 @@ export interface OfficeJoined {
 }
 
 /** What office:get adds for the Office page. */
+export interface OfficeSetup {
+  /** Windows account that set the office up, lower-case */
+  user: string
+  /** computer name of the PC that set it up */
+  pc: string
+  /** epoch ms */
+  at: number
+}
+
 export interface OfficeMeta {
   /** Windows account of this user, lower-case */
   user: string
+  /** this PC's computer name */
+  pc: string
+  /** may configure the office (see shared/office-access.ts) */
   admin: boolean
+  /** the office has been set up by some PC (null: open to everyone) */
+  setup: OfficeSetup | null
+  /** this is the PC that set the office up */
+  setupPc: boolean
+  /** this user is a standing admin (configures whether set up or not) */
+  standing: boolean
   keySource: 'config' | 'override' | 'none'
   fingerprint: string
 }
@@ -392,10 +410,14 @@ export interface OfficeConfig {
   templates: FolderTemplate[]
   revisions: RevisionRules
   conventions: NamingConvention[]
-  /** Windows account names (lower-case) who may create the key and edit this config */
+  /** Legacy (before 2.5): who could edit this config. Access now follows office-access.ts. */
   admins: string[]
-  /** besides the admins, who may post announcements */
+  /** Legacy (before 2.5): who could post announcements. Everyone can post now. */
   announcers: string[]
+  /** Which PC set the office up. While it is missing, everyone may configure the office. */
+  setup?: OfficeSetup
+  /** Runtime only, never saved: this PC could not read office.json (see office-access.ts). */
+  unreadable?: boolean
   /** set in the old file when an admin moved the config: other PCs follow it */
   movedTo?: string
 }

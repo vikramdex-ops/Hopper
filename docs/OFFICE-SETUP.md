@@ -1,19 +1,31 @@
 # Setting up Hopper for an office
 
-Hopper works on its own straight after install. Sharing between PCs, announcements, groups,
-templates and the office rules need a one-time setup, done once by the **office admin**.
+Hopper works on its own straight after install. Sharing between PCs, groups, templates and the
+office rules need a one-time setup, done once, on whichever PC you choose.
 
 ## Who does what
 
-- **Office admin** (Windows account `asha` by default; the list is *Settings → Office → Admins*):
-  creates the office key, edits and saves the office config, moves it, invites PCs, posts
-  announcements. Only an admin sees those controls, and Hopper refuses a save from anyone else.
-- **Everyone else**: the Office page is read-only. It shows the office name, where the config was
-  loaded from, whether this PC has **Joined**, the key fingerprint, and a **Join office** box.
-  There is nothing on it that can create a key.
+- **Before the office is set up**, every PC gets the full *Settings → Office* page, so anyone you
+  ask can configure it, and any PC can become the always-on Dexterity Share server.
+- **The setup locks to one PC** when that PC presses **Use this PC** in *Set up Dexterity Share*,
+  or **Finish setup on this PC** on the Office page. Within about 20 seconds every other PC's
+  Office page turns read-only: *"The office is set up by its admin on PC-NAME"*, with the office
+  name, where the config was loaded from, whether this PC has **Joined**, the key fingerprint and
+  a **Join office** box.
+- **Who can still change it** once set up: that PC, and the Windows accounts **asha**, **admin2**
+  and **admin3** on any PC. Hopper refuses a save from anyone else.
+- **Revoke setup** (Office page, for those same people) undoes the lock, for example to move the
+  always-on server to another PC. Every PC gets the full page back until the next setup locks it
+  again. The old share server keeps serving client links until the new PC presses
+  **Use this PC**; then the old one stops by itself.
+- **A PC that can't read `office.json`** can't tell whether the office is set up, so it gets the
+  read-only page with **Join office**, where the right file can be loaded. Creating the very first
+  `office.json` is therefore done by Asha, Admin2 or Admin3, or from a PC that can already read an
+  existing one.
+- **Announcements**: everyone can post one, from any PC.
 
-The admin check stops accidents, not a determined person: anyone who can write the office folder
-can edit `office.json` by hand. Keep that folder writable by the admin only if that matters.
+The lock stops accidents, not a determined person: anyone who can write the office folder can
+edit `office.json` by hand. Keep that folder's permissions tight if that matters.
 
 ## 1. Install on every PC
 
@@ -91,8 +103,7 @@ PCs that read the config follow at their next start.
 
 ## 5. Announcements
 
-Admins, and people listed under *Settings → Office → Announcers*, can post an office-wide
-announcement: **Inbox → Announce**, or *Settings → Office → New announcement*. For example: a
+Anyone in the office can post an office-wide announcement: **Inbox → Announce**, or *Settings → Office → New announcement*. For example: a
 project folder is nearly full, so everyone should make a local backup and clean up.
 
 - **Title, details, level**, an optional **folder** (people get an *Open folder* button) and an
@@ -165,5 +176,5 @@ All of these reach an offline colleague through the server inbox when they next 
 | "port-in-use" | Another Hopper (or app) uses TCP 47821; Hopper tries up to 47830 automatically. |
 | Shares always go via the server | The firewall is blocking TCP 47821 on the receiving PC. |
 | An announcement did not reach a PC that was off | That PC can't read the office folder. It still gets announcements while it is on. |
-| "Only an office admin can change the office config" | Your Windows account is not in the Admins list. Ask an admin to add it. |
+| "The office is set up on PC-NAME; only that PC, or Asha, Admin2 or Admin3, can change it" | Make the change on that PC, ask Asha, Admin2 or Admin3, or have one of them **Revoke setup** first. |
 | No Cliq DM | Bot enabled, endpoint and zapikey saved; the recipient's Zoho email is filled in and they have subscribed to the bot. Use *Send test DM*. |

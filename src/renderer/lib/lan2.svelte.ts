@@ -75,7 +75,9 @@ class LanExtras {
   announcements = $state.raw<AnnouncementView[]>([])
   invites = $state.raw<OfficeInvite[]>([])
   inviteStatus = $state.raw<InviteStatus>({ active: false, until: 0, fingerprint: '' })
-  meta = $state.raw<OfficeMeta>({ user: '', admin: false, keySource: 'none', fingerprint: '' })
+  meta = $state.raw<OfficeMeta>({ user: '', pc: '', admin: false, setup: null, setupPc: false, standing: false, keySource: 'none', fingerprint: '' })
+  /** bumps when office.json changed on the server (a setup, a revoke, an admin's save) */
+  officeTick = $state(0)
   /** where the office config was really loaded from */
   officePath = $state('')
   /** delivery state of notes sent from this PC, by `${shareId}|${to}` */
@@ -115,6 +117,12 @@ class LanExtras {
     lan.on('received', () => this.historyTick++)
     // the LAN process restarts on its own after a crash: ask again whenever its status arrives
     lan.on('lan-status', () => void this.refreshMeta())
+    // another PC set the office up, revoked it or saved: follow it here (the Office page re-locks or opens)
+    host.office.onChanged(async () => {
+      await Promise.all([this.refreshMeta(), app.reloadOffice().catch(() => {})])
+      this.officeTick++
+      void this.reload()
+    })
     void this.reload()
     void this.refreshMeta()
   }
