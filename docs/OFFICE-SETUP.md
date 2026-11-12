@@ -76,7 +76,13 @@ PCs that read the config follow at their next start.
 
 - **Settings → Sharing → Allow through Windows Firewall**. Hopper listens on UDP 47820
   (discovery, invites) and TCP 47821 (transfers, announcements) on private and domain networks.
-  Windows asks for admin rights once.
+  Windows asks for admin rights once. The row then reads **Allowed** in green; **Not allowed**
+  means the rule is missing (or the administrator prompt was declined) and *Allow* is still
+  needed. The status is read from Windows each time the Sharing page opens; the refresh button
+  next to *Allowed* checks again.
+
+  <img src="screenshots/f-settings-sharing.png" width="620" alt="Settings, Sharing page: LAN sharing ready, and Allow Hopper through Windows Firewall showing Allowed in green">
+
 - **Settings → Sharing → Profile**: display name as colleagues should see it, and the Zoho
   email (used for Cliq notices).
 - **Settings → General → Inbox folder**: where received files land (default `D:\Hopper Inbox`
@@ -154,7 +160,7 @@ All of these reach an offline colleague through the server inbox when they next 
 | Symptom | Check |
 | :-- | :-- |
 | Office page says *Not joined* | The PC can't read the office config and has no pasted key. Fix the config path, paste the key, or ask the admin to invite. |
-| People list is empty | Both PCs *Joined* with the **same fingerprint**; firewall rule allowed; both PCs on the same subnet. |
+| People list is empty | Both PCs *Joined* with the **same fingerprint**; Settings → Sharing shows the firewall as **Allowed** on both; both PCs on the same subnet. The rule covers private and domain networks only, so a PC whose network is set to *Public* in Windows is still blocked. |
 | No Join bar after the admin invites | The PC already has a key (it gets a notice instead), the firewall blocks UDP 47820, or the PC clocks differ by more than 10 minutes. |
 | "port-in-use" | Another Hopper (or app) uses TCP 47821; Hopper tries up to 47830 automatically. |
 | Shares always go via the server | The firewall is blocking TCP 47821 on the receiving PC. |

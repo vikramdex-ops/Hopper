@@ -12,7 +12,7 @@ file sharing to colleagues over the office LAN with an `@mention`, and download 
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-24) ·
+[What's new](#whats-new-in-241) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -74,6 +74,22 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.4.1
+
+A fix release.
+
+- **Typing in dialogs works every time.** Clicking into a text box in Settings, *New
+  announcement* or a person's panel (*Message*, *Ask for files*) sometimes left the cursor
+  outside the box, so typing went nowhere. Fixed in every dialog.
+- **Hopper's own icon and name** on the taskbar, the pinned button, the tray and Windows
+  notifications. Before, these could show a blank icon and "Electron".
+- **Settings shows what is already done.** *Allow Hopper through Windows Firewall* reads
+  **Allowed** in green once the rule is in place, or **Not allowed** with the *Allow* button.
+  Allowing again replaces Hopper's rule instead of adding a copy. *Default file manager* shows
+  **In use** when Hopper is the default.
+- **Folder templates** in Settings → Office are laid out compactly instead of spread over a
+  tall, empty area.
 
 ## What's new in 2.4
 
@@ -176,7 +192,8 @@ A one-time setup, about five minutes:
    file* at a shared folder every PC can reach, create the office key and **Save to server**.
 3. **Everyone else joins**: automatically from the shared config, from an invite the admin sends
    over the network (**Invite PCs**), or by pasting the key. Then **Settings → Sharing → Allow
-   through Windows Firewall** (asks for admin once) and fill in your name and Zoho email.
+   through Windows Firewall** (asks for admin once; the row then reads **Allowed**) and fill in
+   your name and Zoho email.
 4. Optional: Cliq DMs (the endpoint already points at the office's Hopper Bot; the admin pastes
    its webhook token once — [docs/CLIQ-SETUP.md](docs/CLIQ-SETUP.md)), groups, folder templates,
    naming conventions and revision rules.

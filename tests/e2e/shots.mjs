@@ -87,7 +87,7 @@ if (process.argv.includes('--publish')) {
   const site = join(root, 'site', 'assets', 'shots')
   const docs = join(root, 'docs', 'screenshots')
   const siteSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-zip', 'f-progress', 'f-network', 'f-packager', 'f-person', 'f-pathcopy', 'f-home', 'f-rail']
-  const docsSet = ['01-workspace-light', '02-workspace-dark', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-progress', 'f-conflict', 'f-network', 'f-transfers', 'f-packager', 'f-zip', 'f-person', 'f-pathcopy', 'f-home', 'f-palette']
+  const docsSet = ['01-workspace-light', '02-workspace-dark', 'f-settings-sharing', 'f-share', 'f-clientlink', 'f-clientlinks', 'f-viewer', 'f-template', 'f-progress', 'f-conflict', 'f-network', 'f-transfers', 'f-packager', 'f-zip', 'f-person', 'f-pathcopy', 'f-home', 'f-palette']
   for (const n of siteSet) copyFileSync(join(out, `${n}.png`), join(site, `${n}.png`))
   for (const n of docsSet) copyFileSync(join(out, `${n}.png`), join(docs, `${n}.png`))
   console.log('published to', site, 'and', docs)
@@ -333,6 +333,20 @@ async function studio() {
   await ev(() => { void window.__hopper.__dialogs.person('arun') })
   await until(() => document.querySelectorAll('.dlg .bubble').length >= 4, null, 15000)
   await crop('f-person', '.dlg')
+  await closeAll()
+
+  // Settings → Sharing as it looks on a PC that has allowed Hopper through the firewall. A dev run
+  // is electron.exe, which never matches Hopper's rule, so the status is stubbed in the main process.
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('shell:firewallStatus')
+    ipcMain.handle('shell:firewallStatus', () => ({ allowed: true, disabled: false, checked: true }))
+  })
+  await ev(() => { void window.__hopper.__dialogs.settings('sharing') })
+  await until(() => /Allowed/.test(document.querySelector('.dlg')?.innerText ?? ''), null, 15000)
+  await ev(() => document.activeElement instanceof HTMLElement && document.activeElement.blur())
+  // never publish this PC's real name and address
+  await ev(() => { window.__hopper.lanStatus = { ...window.__hopper.lanStatus, ready: true, enabled: true, port: 47821, self: { ...(window.__hopper.lanStatus?.self ?? {}), host: 'WS-014', address: '10.0.0.114' } } })
+  await crop('f-settings-sharing', '.dlg', { pad: 20 })
   await closeAll()
 
   await ev(({ now }) => {
