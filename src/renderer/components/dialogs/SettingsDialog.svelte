@@ -152,12 +152,27 @@
     set({ lan: { ...s.lan, blocked: [...s.lan.blocked, u] } })
   }
 
+  /** null while checking; checked=false when Windows wouldn't say */
+  let fw = $state<{ allowed: boolean; disabled: boolean; checked: boolean } | null>(null)
+  async function checkFirewall() {
+    fw = null
+    try {
+      fw = await host.shell.firewallStatus()
+    } catch {
+      fw = { allowed: false, disabled: false, checked: false }
+    }
+  }
+  $effect(() => {
+    if (current === 'sharing') void checkFirewall()
+  })
+
   async function firewall() {
     firewallBusy = true
     try {
       const ok = await host.shell.firewall()
       if (ok) app.toast('success', 'Windows Firewall now allows Hopper on private and domain networks')
       else app.toast('warning', "Windows Firewall wasn't changed", 'The administrator prompt was declined or failed.')
+      await checkFirewall()
     } catch (e) {
       app.toast('error', "Couldn't change Windows Firewall", msg(e))
     } finally {
@@ -656,7 +671,7 @@
 {/snippet}
 
 <Dialog title="Settings" icon="settings" width={860} onclose={tryClose}>
-  <div class="wrap">
+  <div class="shell">
     <nav>
       {#each SECTIONS as x (x.id)}
         <button type="button" class:on={current === x.id} onclick={() => (current = x.id)}>
@@ -841,9 +856,24 @@
             <input class="bare" list="hopper-people" bind:value={blockInput} placeholder="Add a user name and press Enter" spellcheck="false" onkeydown={enterTo(block)} />
           </div>
         </label>
-        <div class="item">
-          <span class="txt"><span>Allow Hopper through Windows Firewall</span><span class="caption">Needed once per PC so others can reach it. Asks for administrator rights.</span></span>
-          <button type="button" class="btn" disabled={firewallBusy} onclick={firewall}><Icon name="shield" /> Allow</button>
+        <div class="item" class:done={fw?.allowed}>
+          <span class="txt">
+            <span>Allow Hopper through Windows Firewall</span>
+            <span class="caption">
+              {#if !fw}Checking Windows Firewall…
+              {:else if fw.allowed}Done on this PC: colleagues can reach Hopper on private and office networks.
+              {:else if fw.disabled}Hopper's rule exists but is turned off. Allow it again to switch it on (asks for administrator rights).
+              {:else if !fw.checked}Couldn't read the firewall rules. Needed once per PC so others can reach it; asks for administrator rights.
+              {:else}Not done yet. Needed once per PC so others can reach it; asks for administrator rights.{/if}
+            </span>
+          </span>
+          {#if fw?.allowed}
+            <span class="state ok"><Icon name="success" /> Allowed</span>
+            <button type="button" class="btn subtle icon sm" aria-label="Check again" title="Check again" onclick={checkFirewall}><Icon name="refresh" /></button>
+          {:else}
+            {#if fw?.checked}<span class="state todo"><Icon name="warning" /> Not allowed</span>{/if}
+            <button type="button" class="btn" class:primary={!!fw?.checked} disabled={firewallBusy || !fw} onclick={firewall}><Icon name="shield" /> {firewallBusy ? 'Waiting for Windows…' : 'Allow'}</button>
+          {/if}
         </div>
       {:else if current === 'office' && !isAdmin}
         <div class="note"><Icon name="info" /> <span>The office is set up by its admin{app.office?.admins?.length ? ` (${app.office.admins.map((a) => app.personName(a)).join(', ')})` : ''}. This page shows what this PC uses; there is nothing to configure here.</span></div>
@@ -1088,6 +1118,9 @@
               <button type="button" class="btn sm" title={b.description ?? ''} onclick={() => copyBuiltin(b)}><Icon name="duplicate" /> Copy “{b.name}” to edit</button>
             {/each}
           </div>
+          {#if !draft.templates.length}
+            <div class="empty caption">No office templates yet. The built-in ones are always available; copy one to change it, or add your own below.</div>
+          {/if}
           {#each draft.templates as t, ti (t.id)}
             <div class="box">
               <div class="row">
@@ -1201,13 +1234,17 @@
         {/if}
       {:else if current === 'advanced'}
         <h3 class="subtitle">Default file manager</h3>
-        <div class="item">
+        <div class="item" class:done={dm?.state === 'set'}>
           <span class="txt">
             <span>{dm?.label ?? 'Checking…'}</span>
             <span class="caption">Open folders and drives in Hopper from the desktop, Start, Win+E links and other apps. Revert restores what was there before.</span>
           </span>
           <span class="acts">
-            <button type="button" class="btn" disabled={dmBusy || dm?.state === 'set'} onclick={() => defmgr('apply')}>Use Hopper</button>
+            {#if dm?.state === 'set'}
+              <span class="state ok"><Icon name="success" /> In use</span>
+            {:else}
+              <button type="button" class="btn" class:primary={!!dm && dm.packaged !== false} disabled={dmBusy || !dm} onclick={() => defmgr('apply')}>Use Hopper</button>
+            {/if}
             <button type="button" class="btn" disabled={dmBusy || (dm && dm.state !== 'set' && !dm.backup)} onclick={() => defmgr('revert')}>Revert</button>
           </span>
         </div>
@@ -1274,7 +1311,7 @@
 </Dialog>
 
 <style>
-  .wrap {
+  .shell {
     display: grid;
     grid-template-columns: 196px 1fr;
     gap: 20px;
@@ -1681,6 +1718,28 @@
   }
   .row.wrap {
     flex-wrap: wrap;
+  }
+  .item.done {
+    border-color: color-mix(in srgb, var(--ok) 45%, var(--stroke-2));
+  }
+  .state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .state.ok {
+    color: var(--ok);
+  }
+  .state.todo {
+    color: var(--warn);
+  }
+  .empty {
+    padding: 10px 12px;
+    border: 1px dashed var(--stroke-2);
+    border-radius: var(--r-md);
   }
   .passes {
     list-style: none;

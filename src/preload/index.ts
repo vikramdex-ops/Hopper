@@ -51,7 +51,8 @@ const api = {
     restore: invoke('shell:restore'),
     recycleList: invoke('shell:recycleList'),
     drives: invoke('shell:drives'),
-    firewall: invoke('shell:firewall')
+    firewall: invoke('shell:firewall'),
+    firewallStatus: invoke('shell:firewallStatus')
   },
   /** Network node: discovery, share lists, sign-in (passwords go straight to the native helper) */
   net: { computers: invoke('net:computers'), shares: invoke('net:shares'), connect: invoke('net:connect'), disconnect: invoke('net:disconnect') },

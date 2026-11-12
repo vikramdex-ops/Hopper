@@ -28,6 +28,9 @@
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\Hopper"
   DeleteRegKey HKCU "Software\Classes\Drive\shell\Hopper"
 
+  ; Notification name/icon registration written by Hopper at startup.
+  DeleteRegKey HKCU "Software\Classes\AppUserModelId\com.dexterity.hopper"
+
   ; ShellExecute("Hopper.exe") App Paths entry created alongside.
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Hopper.exe"
 !macroend

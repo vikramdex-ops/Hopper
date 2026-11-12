@@ -24,6 +24,25 @@
     if (!el.contains(document.activeElement)) el.focus()
   })
 
+  /**
+   * Keep focus inside the dialog when the focused control disappears (focus falls to <body>),
+   * so Esc and Enter still reach it. Never interfere with a focus move the user is making:
+   * relatedTarget is set whenever focus is going to another element, and the check waits until
+   * the browser has finished moving focus. Reacting in a microtask instead ran mid-move, while
+   * activeElement was briefly <body>, and stole focus from the field the user clicked.
+   */
+  function focusOut(e: FocusEvent) {
+    if (e.relatedTarget) return
+    setTimeout(() => {
+      if (!el?.isConnected || !document.hasFocus()) return
+      const a = document.activeElement
+      if (a && a !== document.body) return
+      // only the top-most dialog takes focus back
+      const all = document.querySelectorAll('form.dlg')
+      if (all[all.length - 1] === el) el.focus()
+    }, 0)
+  }
+
   function key(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -43,7 +62,7 @@
     aria-modal="true"
     aria-label={title}
     onkeydown={key}
-    onfocusout={() => queueMicrotask(() => el && !el.contains(document.activeElement) && document.activeElement === document.body && el.focus())}
+    onfocusout={focusOut}
     onsubmit={(e) => {
       e.preventDefault()
       onsubmit?.()

@@ -169,17 +169,39 @@ export function registerIpc() {
   h('shell:restore', (paths: string[]) => ctx.shell.call('recycleRestore', { paths }, 60000))
   h('shell:recycleList', () => ctx.shell.call('recycleList', {}, 60000))
   h('shell:drives', () => ctx.shell.call('drives', {}, 8000))
-  h('shell:firewall', () => {
-    const exe = app.getPath('exe').replace(/'/g, "''")
-    const rule = `advfirewall firewall add rule name="Hopper LAN sharing" dir=in action=allow program="${exe}" enable=yes profile=private,domain`
-    return new Promise<boolean>((resolve) => {
+  // Windows Firewall: is there an enabled inbound allow rule for this exe? Reading rules needs no
+  // administrator rights; adding one does (one UAC prompt). Re-allowing replaces our rule instead of
+  // stacking duplicates.
+  const FW_RULE = 'Hopper LAN sharing'
+  const firewallStatus = () =>
+    new Promise<{ allowed: boolean; disabled: boolean; checked: boolean }>((resolve) => {
+      execFile('netsh.exe', ['advfirewall', 'firewall', 'show', 'rule', `name=${FW_RULE}`, 'verbose'], { windowsHide: true, timeout: 15000 }, (err, stdout) => {
+        const out = String(stdout || '')
+        // "No rules match" exits non-zero; anything else unreadable counts as not checked
+        if (err && !out.trim()) return resolve({ allowed: false, disabled: false, checked: false })
+        const exe = app.getPath('exe').toLowerCase()
+        const blocks = out.split(/\r?\n\s*\r?\n/).filter((b) => b.toLowerCase().includes(exe))
+        // labels are localised; "Enabled: No" is only recognised on English Windows, otherwise trust the rule
+        const enabled = blocks.filter((b) => !/^\s*Enabled:\s*No\s*$/im.test(b))
+        resolve({ allowed: enabled.length > 0, disabled: blocks.length > 0 && !enabled.length, checked: true })
+      })
+    })
+  h('shell:firewallStatus', firewallStatus)
+  h('shell:firewall', async () => {
+    const exe = app.getPath('exe')
+    const del = `advfirewall firewall delete rule name="${FW_RULE}" program="${exe}"`
+    const add = `advfirewall firewall add rule name="${FW_RULE}" dir=in action=allow program="${exe}" enable=yes profile=private,domain`
+    const cmd = `netsh ${del} >nul 2>&1 & netsh ${add}`
+    await new Promise<void>((resolve) => {
       execFile(
         'powershell.exe',
-        ['-NoProfile', '-Command', `Start-Process netsh -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '${rule.replace(/'/g, "''")}'`],
+        ['-NoProfile', '-Command', `Start-Process cmd.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '/c ${cmd.replace(/'/g, "''")}'`],
         { windowsHide: true },
-        (err) => resolve(!err)
+        () => resolve()
       )
     })
+    // the elevated process's exit code doesn't come back through Start-Process; read the result instead
+    return (await firewallStatus()).allowed
   })
 
   // --- clipboard (Explorer-compatible) -------------------------------------

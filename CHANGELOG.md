@@ -4,6 +4,26 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] — 2026-11-12
+
+### Fixed
+- **Typing in dialogs.** Clicking into a text box in Settings, New announcement, a person's panel
+  (Message, Ask for files) or any other dialog sometimes left the cursor out of the box, so typing
+  went nowhere. The dialog's "keep focus inside" guard ran while Windows was still moving focus
+  and pulled it back to the dialog frame. It now only steps in when focus is really lost.
+- **Taskbar icon.** The installer did not ship the window icon, so the taskbar showed a blank
+  application icon. The icon is now installed and the taskbar button, pinned button and tray use it.
+- **"Electron" instead of Hopper.** Windows notifications and the taskbar now always say Hopper
+  with the Hopper icon, including on a PC whose Start-menu shortcut is missing.
+- **Folder templates in Settings → Office** were spread over a tall, mostly empty area; the
+  built-in template buttons now sit in one row and the list follows straight after.
+
+### Changed
+- **Allow through Windows Firewall** shows whether it is already done: *Allowed* in green with
+  a re-check button, or *Not allowed* with the Allow button. Allowing again replaces Hopper's rule
+  instead of adding a duplicate.
+- **Default file manager** shows *In use* when Hopper is already the default.
+
 ## [2.4.0] — 2026-11-11
 
 ### Added

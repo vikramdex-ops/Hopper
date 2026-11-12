@@ -1,6 +1,8 @@
 // Hopper main process: window, tray, protocols, IPC and the background processes.
 // Nothing here reads file contents or blocks; heavy work lives in engine/lan utility processes.
-import { app, BrowserWindow, Menu, nativeTheme, screen, shell, Tray, utilityProcess } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, screen, shell, Tray, utilityProcess } from 'electron'
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { sendToWindow } from './ctx'
 import { applyTheme, connectPorts, ctx, overlayColors, paths, pushOfficeToUtilities, res } from './ctx'
 import { release } from 'node:os'
@@ -15,7 +17,12 @@ import { trace } from '@shared/trace'
 trace('main module loaded')
 
 registerSchemes()
-app.setAppUserModelId('com.dexterity.hopper')
+const APP_ID = 'com.dexterity.hopper'
+// Windows shows this name and icon on the taskbar, in toasts and in the volume/notification
+// settings. Without it a dev run (electron.exe) or a PC whose Start-menu shortcut is missing
+// shows "Electron" and Electron's icon.
+app.setName('Hopper')
+app.setAppUserModelId(APP_ID)
 // Keep Chromium's own caches off the system drive when a portable/data dir is requested.
 if (process.env.HOPPER_USER_DATA) app.setPath('userData', process.env.HOPPER_USER_DATA)
 
@@ -73,6 +80,27 @@ function onUtilityMessage(name: string, msg: any) {
 
 
 
+/** The app icon on disk; the installer ships it under resources\build. */
+function iconPath() {
+  const p = res('build', 'icon.ico')
+  return existsSync(p) ? p : undefined
+}
+
+/**
+ * Register the AppUserModelID's display name and icon for this user, so Windows notifications
+ * say "Hopper" with the Hopper icon even when no Start-menu shortcut carries the ID.
+ * Best effort and off the startup path.
+ */
+function registerAppIdentity() {
+  if (process.platform !== 'win32') return
+  const icon = iconPath()
+  const key = 'HKCU\\Software\\Classes\\AppUserModelId\\' + APP_ID
+  const add = (name: string, value: string) =>
+    execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true, timeout: 10000 }, () => {})
+  add('DisplayName', 'Hopper')
+  if (icon) add('IconUri', icon)
+}
+
 function createWindow() {
   const b = ctx.settings.data.windowBounds
   const visible = b && screen.getAllDisplays().some((d) => {
@@ -88,7 +116,7 @@ function createWindow() {
     minHeight: 540,
     show: false,
     title: 'Hopper',
-    icon: res('build', 'icon.ico'),
+    icon: iconPath(),
     backgroundColor: isWin11() ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
     backgroundMaterial: isWin11() ? 'mica' : undefined,
     titleBarStyle: 'hidden',
@@ -103,6 +131,15 @@ function createWindow() {
     }
   })
   ctx.win = win
+  // Taskbar button: name, icon and what a pinned button relaunches.
+  const icon = iconPath()
+  win.setAppDetails({
+    appId: APP_ID,
+    appIconPath: icon ?? app.getPath('exe'),
+    appIconIndex: 0,
+    relaunchCommand: app.isPackaged ? `"${app.getPath('exe')}"` : `"${process.execPath}" "${app.getAppPath()}"`,
+    relaunchDisplayName: 'Hopper'
+  })
   if (visible && b!.maximized) win.maximize()
 
   win.once('ready-to-show', () => {
@@ -152,7 +189,9 @@ function createWindow() {
 }
 
 function createTray() {
-  const tray = new Tray(res('build', 'icon.ico'))
+  const icon = iconPath()
+  const tray = new Tray(icon ? nativeImage.createFromPath(icon) : nativeImage.createEmpty())
+  if (!icon) void app.getFileIcon(app.getPath('exe'), { size: 'small' }).then((i) => tray.setImage(i)).catch(() => {})
   tray.setToolTip('Hopper')
   const show = () => {
     ctx.win?.show()
@@ -199,6 +238,7 @@ app.whenReady().then(async () => {
   ctx.lan = startUtility('lan')
   pushOfficeToUtilities()
   initShareHost()
+  registerAppIdentity()
   createWindow()
   ctx.tray = createTray()
   if (ctx.settings.data.autoUpdate && app.isPackaged) void initUpdater()
