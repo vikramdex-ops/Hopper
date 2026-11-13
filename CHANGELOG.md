@@ -4,6 +4,43 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] — 2026-11-13
+
+### Added
+- **Dexterity Share in the company brand.** The client download page and the staff page for
+  browsers use the Dexterity International mark, the company colours (teal, ink, amber) and the
+  website's typefaces (Archivo, Instrument Sans, JetBrains Mono, Cormorant Garamond for the
+  sender's note), all served from the page itself. New design language, "Line of flow": one line
+  from our office to the client shows every state: connecting, ready, downloading, done, locked or
+  expired (a closed valve), busy, our server not answering (the line breaks between flanges), the
+  client offline. Uploads on the staff page flow the other way. Reduced motion is respected.
+- **Clearer words for clients.** The page names the delivery ("Transmittal · 3 files"), shows size
+  and expiry as a title block, and says plainly that the files come straight from our own server,
+  never through a file-sharing service. The SHA-256 checksum is no longer shown by default: an
+  "Integrity assured" line explains that every file is fingerprinted and checked before it leaves
+  the server; the fingerprint is under **Details** for anyone who asks.
+- **Link notices for senders on Cliq.** The PC that runs Dexterity Share tells the sender, as a
+  Cliq card with an *Open the link* button: the first time a client downloads a link, and before
+  a link closes (two days before, or a third of its life for short links), saying whether it was
+  downloaded so it can be renewed in time. Each notice goes once per link, also when the sender's
+  PC is off. Switch it off under *Settings → Office → Zoho Cliq bot*.
+- **My client links is easy to find**: a **Share ▾** menu beside Share in the toolbar (Share with
+  people, Create client link, My client links, Create client links in a browser, Announcements), a
+  button on Home, buttons in *Settings → Sharing* and *Settings → Office*, and
+  <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd>. *Use in a browser…* opens straight at the sign-in step.
+- **Client page address** in *Settings → Office → Dexterity Share*, for serving the client page from
+  its own address (for example `https://dexterity-share.pages.dev/`). Links already sent from the
+  GitHub address keep working: the share server accepts both.
+
+### Fixed
+- **Sharing files with a message failed** with "Failed to execute 'postMessage' on 'MessagePort':
+  [object Object] could not be cloned", and nothing reached the recipient. Every call to the LAN
+  and engine processes now sends plain data.
+
+### Changed
+- **No Cliq DM for plain messages.** Messages stay in Hopper; Cliq is for files, folder links and
+  requests for files.
+
 ## [2.5.0] — 2026-11-12
 
 ### Changed

@@ -34,7 +34,8 @@ link and create a new one.
 
 ## Follow up
 
-**My client links** lists what you sent:
+Open **My client links** from **Share ▾** in the toolbar, from Home, from *Settings → Sharing*, or
+with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd>. It lists what you sent:
 
 - whether the client has opened the page and downloaded (and when),
 - days left; **Extend** adds days — also to a link that expired less than a day ago,
@@ -110,14 +111,22 @@ sign-in again, also switch it off in Hopper.
 
 ## What the client sees
 
-A Dexterity Share page. A blue panel says how many files are ready ("5 files are ready for
-you."), with your name, the title, your message and when the link expires. Beside it are the
-files with their sizes and one button: **Download**, or **Download all** for several files. On a
-phone the panel sits above the files. If the link has a password, the page asks for it first. If the office server is briefly unreachable (power or
+A Dexterity Share page in the company brand. A dark panel names the delivery ("Transmittal · 5
+files"), with the title, your name, your note (in a handwritten-style serif), the size and when
+the link closes, and a line from "Our office" to "You" with the words *Direct from our office:
+your files stay on our own server and are never uploaded to a file-sharing service*. Beside it are
+the files and one amber button: **Download**, or **Download all** for several files. An
+*Integrity assured* line tells the client each file is fingerprinted and checked before it leaves
+our server; the fingerprint itself is under **Details**. On a phone the panel sits above the
+files. If the link has a password, the page asks for it first. If the office server is briefly unreachable (power or
 internet), the page says so and retries by itself; the link is not lost.
 
 **You are told when the client downloads.** Hopper shows "Your client downloaded Lot 07
 (17 Nov, 14:02)" within a couple of minutes of each completed download, and lists it under Activity.
+With the Cliq bot set up you also get a **Cliq card** the first time a client downloads, and
+another before the link closes (two days before; a third of its life for short links) saying
+whether it was downloaded, so you can **Renew** it in time. These come from the Dexterity Share
+PC, so they arrive even when your PC is off.
 
 ## Good to know
 

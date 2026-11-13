@@ -218,7 +218,8 @@ export class Shares {
       via,
       replyTo: s.spec.replyTo
     })
-    if (s.spec.notifyCliq !== false) void this.notify(s, r.user, via)
+    // plain messages stay in Hopper; Cliq is for files, folder links and requests for files
+    if (s.spec.notifyCliq !== false && s.kind !== 'message') void this.notify(s, r.user, via)
   }
 
   private async notify(s: Live, user: string, via: 'direct' | 'server') {

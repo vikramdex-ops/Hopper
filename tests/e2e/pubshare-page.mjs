@@ -44,7 +44,7 @@ await fsp.mkdir(STORE, { recursive: true })
 await fsp.mkdir(SHOTS, { recursive: true })
 
 // ---- static server for site/ with a switchable config.json ----------------------------------------
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png' }
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }
 const site = { config: {}, extra: new Map() }
 const siteServer = http.createServer(async (req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0])
@@ -108,7 +108,7 @@ async function open(hash, { mobile = false, dark = false, init } = {}) {
 const settled = (page) => page.waitForSelector('#card[aria-busy="false"]', { timeout: 30000 })
 async function shot(page, name) {
   await page.evaluate(() => document.fonts?.ready)
-  await sleep(350) // let the entrance animation finish
+  await sleep(1500) // let the entrance animation finish
   await page.screenshot({ path: path.join(SHOTS, name + '.png'), fullPage: true })
 }
 /** No sideways scrolling, at this width or squeezed to 360 px. */
@@ -169,10 +169,10 @@ await check('single file: title, sender, message, size, expiry, download button'
   ok(/Expires in 5 days · \w{3} \d{1,2} \w{3} 20\d\d$/.test((await page.textContent('.pills .pill:nth-child(2)')).trim()), await page.textContent('.pills'))
   ok((await page.textContent('.btn.primary.lg')).includes('Download · 734 MB'))
   ok((await page.textContent('.file .meta')).includes('ZIP archive · 734 MB'))
-  ok(await page.isVisible('text=This is a large download'), 'large-file hint')
+  ok(await page.isVisible('text=A large download'), 'large-file hint')
   eq(await page.locator('h1').count(), 1, 'one h1')
   eq(await page.evaluate(() => document.activeElement?.tagName), 'H1', 'focus moved to the heading')
-  eq(await page.title(), 'Dexterity Share — files from Dexterity Design Services')
+  eq(await page.title(), 'Dexterity Share · Dexterity Design Services')
   ok((await page.getAttribute('meta[name=robots]', 'content')).includes('noindex'))
   // the link id is only ever in the fragment and in calls to the share server
   await ctx.close()
@@ -216,17 +216,17 @@ await check('checksum panel: full hash shown, copy button, how-to', async () => 
   const { page, ctx } = await open(small.id)
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: SITE_ORIGIN })
   await settled(page)
-  await page.click('text=Checksum')
+  await page.click('text=Details')
   eq(await page.textContent('.hash code'), small.manifest.files[0].sha256)
   eq(await page.getAttribute('.file .btn[aria-expanded]', 'aria-expanded'), 'true')
-  await page.click('text=Copy checksum')
+  await page.click('text=Copy fingerprint')
   await page.waitForSelector('.toast.on')
   eq(await page.evaluate(() => navigator.clipboard.readText()), small.manifest.files[0].sha256, 'clipboard')
   await shot(page, '05-checksum-desktop')
   await ctx.close()
   const m = await open(small.id, { mobile: true })
   await settled(m.page)
-  await m.page.click('text=Checksum')
+  await m.page.click('text=Details')
   await noOverflow(m.page, 'checksum mobile')
   await shot(m.page, '05-checksum-mobile')
   await m.ctx.close()
@@ -271,8 +271,8 @@ await check('verified download: streamed to disk with progress, survives the ser
     const cdp = await ctx.newCDPSession(page)
     await cdp.send('Network.enable')
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 20, downloadThroughput: 3 * 1048576, uploadThroughput: 1048576 })
-    await page.click('text=Checksum')
-    await page.click('text=Download and verify automatically')
+    await page.click('text=Details')
+    await page.click('text=Download and confirm on this page')
     await page.waitForFunction(() => /\d+%/.test(document.querySelector('.prog .line')?.textContent ?? '') && parseFloat(document.querySelector('.bar i').style.width) > 12, null, { timeout: 30000 })
     ok(/of 24 MB · \d+%/.test(await page.textContent('.prog .line')), await page.textContent('.prog .line'))
     ok(/MB\/s|KB\/s/.test(await page.textContent('.prog .line')), 'speed shown')
@@ -303,8 +303,8 @@ await check('verified download: a corrupted transfer is caught; cancel removes t
   await fsp.writeFile(path.join(lie.dir, 'manifest.json'), JSON.stringify(m))
   const a = await open(lie.id, { init: fakePickers })
   await settled(a.page)
-  await a.page.click('text=Checksum')
-  await a.page.click('text=Download and verify automatically')
+  await a.page.click('text=Details')
+  await a.page.click('text=Download and confirm on this page')
   await a.page.waitForSelector('.prog.bad')
   ok((await a.page.textContent('.prog.bad')).includes('did not arrive intact'))
   await shot(a.page, '08-verified-corrupt-desktop')
@@ -316,8 +316,8 @@ await check('verified download: a corrupted transfer is caught; cancel removes t
   const cdp = await c.ctx.newCDPSession(c.page)
   await cdp.send('Network.enable')
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 20, downloadThroughput: 1048576, uploadThroughput: 1048576 })
-  await c.page.click('text=Checksum')
-  await c.page.click('text=Download and verify automatically')
+  await c.page.click('text=Details')
+  await c.page.click('text=Download and confirm on this page')
   await c.page.waitForSelector('.prog .link')
   await c.page.click('.prog .link')
   await c.page.waitForSelector('.prog', { state: 'detached' })
@@ -685,7 +685,7 @@ await check('page hygiene: strict CSP holds (no violations), no third-party requ
   await page.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI)) })
   await page.goto(PAGE + '#' + multi.id)
   await settled(page)
-  await page.click('text=Checksum')
+  await page.click('text=Details')
   eq((await page.evaluate(() => window.__csp)).join(), '', 'CSP violations')
   const csp = await page.getAttribute('meta[http-equiv="Content-Security-Policy"]', 'content')
   ok(csp.includes("default-src 'none'") && csp.includes("script-src 'self'") && csp.includes("style-src 'self'") && !csp.includes('unsafe'), csp)

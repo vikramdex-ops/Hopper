@@ -35,6 +35,7 @@
     <div class="quick">
       <button class="btn" onclick={() => run('nav.go')}><Icon name="search" /> Go to folder</button>
       {#if dialogs.publicLink}<button class="btn" onclick={() => dialogs.publicLink?.()}><Icon name="link" /> Client link</button>{/if}
+      {#if dialogs.publicLinks}<button class="btn" onclick={() => dialogs.publicLinks?.()}><Icon name="link" /> My client links</button>{/if}
       <button class="btn" onclick={() => run('tools.package')}><Icon name="package" /> Package a lot</button>
     </div>
   </header>

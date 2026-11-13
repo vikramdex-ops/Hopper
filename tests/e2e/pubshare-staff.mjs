@@ -87,14 +87,15 @@ function engine({ user = 'staff1', displayName = 'Staff One', share = {}, admins
   const dataDir = path.join(WORK, 'userdata-' + user)
   fs.mkdirSync(dataDir, { recursive: true })
   const ctx = {
-    office: { admins, publicShare: { enabled: true, store: STORE, pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7, minFreeGB: 0, ...share } },
+    // set up on staff1's PC, so the office is locked (2.5 rule: open to all until one PC sets it up)
+    office: { admins, setup: { user: 'staff1', pc: 'PC-TEST-07', at: 1 }, publicShare: { enabled: true, store: STORE, pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7, minFreeGB: 0, ...share } },
     dataDir,
     settings: { officeConfigPath: path.join(WORK, 'office.json'), profile: { displayName }, archivePresets: [] },
     jobs,
     undo: { record() {} },
     emit() {}
   }
-  const h = E.pubshareHandlers(ctx, { user: () => ({ user: user === 'staff1' ? 'Staff1' : user, host: 'PC-TEST-07' }), watch: false })
+  const h = E.pubshareHandlers(ctx, { user: () => ({ user: user === 'staff1' ? 'Staff1' : user, host: user === 'staff1' ? 'PC-TEST-07' : 'PC-TEST-08' }), watch: false })
   return {
     h,
     async create(spec) {

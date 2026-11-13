@@ -3,25 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dexterity Share — create a client link</title>
+<title>Dexterity Share · Create a client link</title>
 <meta name="description" content="Dexterity Design Services staff: create a client download link from a browser.">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="referrer" content="no-referrer">
 <meta name="format-detection" content="telephone=no">
-<meta name="theme-color" content="#0b4fc4">
-<!-- No inline code, no third-party code, no fonts or trackers: everything this page runs is in the files below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'">
-<link rel="icon" type="image/png" href="../../assets/icon-32.png">
-<link rel="apple-touch-icon" href="../../assets/icon-180.png">
+<meta name="theme-color" content="#132b2e">
+<!-- No inline code, no third-party code, no trackers: everything this page runs, its fonts and its logo are files next to it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'">
+<link rel="icon" type="image/png" href="../brand/mark-32.png">
+<link rel="apple-touch-icon" href="../brand/mark-180.png">
+<link rel="preload" href="../brand/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../brand/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../brand/dx.css">
 <link rel="stylesheet" href="create.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to the page</a>
 <header class="nav">
   <div class="nav-in">
-    <span class="brand"><img src="../../assets/icon-180.png" alt="" width="26" height="26"> Dexterity Share</span>
-    <span class="who" id="who" hidden></span>
+    <span class="lockup"><img src="../brand/mark-64.png" alt="" width="30" height="30"><span class="wm"><b>Dexterity Share</b><small>For staff</small></span></span>
     <span class="grow"></span>
+    <span class="who" id="who" hidden></span>
     <button class="nav-btn" id="signout" type="button" hidden>Sign out on this browser</button>
     <button class="nav-btn icon" id="theme" type="button" aria-label="Switch between light and dark">
       <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
@@ -29,16 +32,28 @@
   </div>
 </header>
 
-<main id="main" class="cols" aria-busy="true">
-  <section class="card wide" id="boot">
-    <h1>Dexterity Share</h1>
-    <p class="muted" role="status">Opening…</p>
-    <noscript><p>This page needs JavaScript. Please allow it for this site, or use Hopper to create the link.</p></noscript>
+<main id="main" class="cols single" aria-busy="true">
+  <section class="card wide state" id="boot">
+    <div class="plate">
+      <p class="eyebrow kicker">Connecting</p>
+      <h1>Dexterity Share</h1>
+      <div class="flow">
+        <svg class="route connecting" viewBox="0 0 400 24" aria-hidden="true" focusable="false"><path class="seg a" d="M12 12H200" pathLength="1"/><path class="seg b" d="M200 12H388" pathLength="1"/><circle class="node a" cx="6" cy="12" r="5"/><circle class="node b" cx="394" cy="12" r="5.5"/></svg>
+        <div class="route-labels eyebrow"><span>Our office</span><span>This browser</span></div>
+      </div>
+    </div>
+    <div class="body">
+      <p class="muted" role="status">Opening…</p>
+      <noscript><p>This page needs JavaScript. Please allow it for this site, or use Hopper to create the link.</p></noscript>
+    </div>
   </section>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<footer class="foot">Dexterity Share · Dexterity Design Services Private Limited · for staff</footer>
+<footer class="foot">
+  <p>Dexterity Share for staff. Internal use only.</p>
+  <p class="legal">© 2026 Dexterity Design Services Private Limited</p>
+</footer>
 <script src="create.js"></script>
 </body>
 </html>

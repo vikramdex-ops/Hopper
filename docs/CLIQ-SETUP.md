@@ -36,6 +36,16 @@ Content-Type: application/json
 - Hopper waits at most 10 seconds and never retries, so a Cliq outage can't flood the API. It
   sends notices one at a time and never writes the zapikey to a log.
 - A failed notice never fails the share; the files are delivered either way.
+- **What gets a DM (2.6):** files, folder links and requests for files. Plain messages stay in
+  Hopper and send no DM.
+- **Client-link notices (2.6)** come from the PC that runs Dexterity Share, to the person who made
+  the link: the first download, and a reminder before the link closes. They are sent as a Cliq
+  message card (`"card": {"title", "theme": "modern-inline", "thumbnail"}`) with an *Open the link*
+  button (`"buttons": [{"type": "+", "action": {"type": "open.url"}}]`). If the bot answers a card
+  with a 4xx error, the same words go again as plain text. A notice that cannot be sent is retried
+  every five minutes, six times at most. The share PC needs the sender's Zoho email, which it
+  learns when the sender's Hopper has been online on the LAN with *Your profile → Zoho email*
+  filled in. Switch the notices off under *Settings → Office → Zoho Cliq bot*.
 
 ## 1. Cliq admin: create a bot (only if you are not using Hopper Bot)
 

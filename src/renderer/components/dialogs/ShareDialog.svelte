@@ -91,7 +91,7 @@
 
   function send() {
     if (!chosen.length || !files.length) return
-    void app.share({ to: chosen, paths: $state.snapshot(files), message: message.trim() || undefined, zipFirst, notifyCliq })
+    void app.share({ to: $state.snapshot(chosen), paths: $state.snapshot(files), message: message.trim() || undefined, zipFirst, notifyCliq })
     close(true)
   }
 

@@ -954,6 +954,14 @@
           </div>
         {/each}
 
+        <h3 class="subtitle">Client links (Dexterity Share)</h3>
+        <div class="caption">Download links for clients. Every link you made is listed in My client links: copy it again, see downloads, extend or switch it off.</div>
+        <div class="row">
+          <button type="button" class="btn primary" onclick={() => dialogs.publicLinks?.()}><Icon name="link" /> My client links</button>
+          {#if app.office?.publicShare?.web?.enabled}<button type="button" class="btn" onclick={() => dialogs.publicLinks?.(true)}><Icon name="cloud" /> Use in a browser…</button>{/if}
+          <span class="caption">Also under Share ▾ in the toolbar · Ctrl+Alt+K</span>
+        </div>
+
         <h3 class="subtitle">Join office</h3>
         <label class="field">
           <span>Office config file <span class="caption">(the admin's office.json on the server)</span></span>
@@ -1073,6 +1081,7 @@
           <div class="row">
             <button type="button" class="btn primary" onclick={async () => { await dialogs.shareServer?.(); await loadOffice(); void checkShare() }}><Icon name="cloud" /> Set up…</button>
             <button type="button" class="btn" onclick={checkShare}>Check</button>
+            <button type="button" class="btn" onclick={() => dialogs.publicLinks?.()}><Icon name="link" /> My client links</button>
             <span class="caption ellipsis" title={shareStatus}>{shareStatus || (draft.publicShare?.enabled ? (draft.publicShare.host?.pc ? `On · share server: ${draft.publicShare.host.pc}` : 'On') : 'Not set up yet')}</span>
           </div>
           {#if draft.publicShare}
@@ -1083,14 +1092,18 @@
                   {#each [1, 3, 7, 14, 30, 60, 90] as d (d)}<option value={d}>{d} day{d > 1 ? 's' : ''}</option>{/each}
                 </select></label>
             </div>
+            <label class="field"><span>Client page address</span>
+              <input class="input" bind:value={draft.publicShare.pageUrl} spellcheck="false" placeholder="https://dexterity-share.pages.dev/" /></label>
+            <div class="caption">Where client links point. New links use it at once. Links already sent from the GitHub address keep working.{draft.publicShare.pageUrl && !/^https:\/\/[^\s/]+\/?\S*$/.test(draft.publicShare.pageUrl.trim()) ? ' This must be a full https:// address.' : ''}</div>
             {#if draft.publicShare.web}
               <div class="grid2">
                 <label class="check"><input type="checkbox" bind:checked={draft.publicShare.web.enabled} /> Let staff create links from a browser</label>
                 <label class="field"><span>Largest file from a browser (GB)</span>
                   <input class="input" type="number" min="0.1" max="1024" step="0.5" bind:value={draft.publicShare.web.maxGB} disabled={!draft.publicShare.web.enabled} /></label>
               </div>
-              <div class="caption">Each person signs a browser in from My client links → Use in a browser. The share server checks the setting at once after you save.</div>
+              <div class="caption">Each person signs a browser in once from My client links → Use in a browser. The share server checks the setting at once after you save.</div>
               <div class="row">
+                <button type="button" class="btn" onclick={() => dialogs.publicLinks?.(true)}><Icon name="cloud" /> Use in a browser…</button>
                 <button type="button" class="btn" onclick={loadStaffPasses}><Icon name="people" /> {staffPasses ? 'Refresh browser sign-ins' : 'Show browser sign-ins'}</button>
               </div>
               {#if staffPassError}<div class="caption warnText">{staffPassError}</div>{/if}
@@ -1117,7 +1130,9 @@
           {/if}
 
           <h3 class="subtitle">Zoho Cliq bot</h3>
-          <label class="check"><input type="checkbox" bind:checked={draft.cliq.enabled} /> Send a Cliq DM to each recipient when files are shared</label>
+          <label class="check"><input type="checkbox" bind:checked={draft.cliq.enabled} /> Send a Cliq DM when files, folder links or requests for files are shared (plain messages stay in Hopper)</label>
+          <label class="check"><input type="checkbox" checked={draft.cliq.linkNotices !== false} disabled={!draft.cliq.enabled} onchange={(e) => (draft!.cliq.linkNotices = e.currentTarget.checked)} /> Tell senders when a client first downloads a link, and before a link closes</label>
+          <div class="caption">Link notices come from the Dexterity Share PC, so they arrive even when the sender's PC is off.</div>
           <div class="grid2">
             <label class="field"><span>Bot endpoint</span><input class="input" bind:value={draft.cliq.endpoint} spellcheck="false" placeholder="https://cliq.zoho.in/api/v2/bots/hopper/message" /></label>
             <label class="field">

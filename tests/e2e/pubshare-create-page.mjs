@@ -91,7 +91,7 @@ const BIG = path.join(FILES, 'Huge model.zip')
 }
 
 // ---- static server for site/ -------------------------------------------------------------------------
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png' }
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }
 const site = { config: {} }
 const siteServer = http.createServer(async (req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0])
@@ -147,7 +147,7 @@ async function open({ mobile = false, dark = false, hash = '', storage } = {}) {
 }
 const settled = (page) => page.waitForSelector('main[aria-busy="false"]', { timeout: 30000 })
 async function shot(page, name) {
-  await sleep(300)
+  await sleep(1500) // let the entrance animations and the line of flow settle
   await page.screenshot({ path: path.join(SHOTS, name + '.png'), fullPage: true })
 }
 async function noOverflow(page, label) {
@@ -244,7 +244,8 @@ await check('your links: the new link is listed with its download, status and th
   eq(await row.locator('.pill').innerText(), 'Active')
   ok((await row.innerText()).includes('Lot 07 isometrics rev B.zip'))
   ok((await row.innerText()).includes('made today'))
-  ok((await page.locator('#counts').innerText()).startsWith('1 active'), await page.locator('#counts').innerText())
+  // title-block cells: the figure, then its label (drawn as an upper-case eyebrow)
+  ok(/^1\s+active\b/i.test(await page.locator('#counts').innerText()), await page.locator('#counts').innerText())
   await page.locator('#another').click()
   await page.locator('#create').waitFor()
   await shot(page, '05-links-listed')

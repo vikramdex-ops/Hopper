@@ -96,7 +96,8 @@ export const commands: Command[] = [
   // share
   { id: 'share.send', label: 'Share with people…', group: 'Share', icon: 'share', keys: ['Ctrl+Shift+Enter', 'Ctrl+Alt+S'], when: () => hasTargets() && real(), run: open('share') },
   { id: 'share.clientLink', label: 'Create client link… (Dexterity Share)', group: 'Share', icon: 'link', keys: ['Ctrl+Alt+L'], when: () => hasTargets() && real(), run: () => dialogs.publicLink?.() },
-  { id: 'share.clientLinks', label: 'My client links', group: 'Share', icon: 'link', run: open('publicLinks') },
+  { id: 'share.clientLinks', label: 'My client links', group: 'Share', icon: 'link', keys: ['Ctrl+Alt+K'], run: open('publicLinks') },
+  { id: 'share.browser', label: 'Create client links in a browser…', group: 'Share', icon: 'cloud', run: open('publicLinks', true) },
   { id: 'share.setup', label: 'Set up Dexterity Share on this PC…', group: 'Share', icon: 'cloud', run: open('shareServer') },
   { id: 'share.announcements', label: 'Announcements', group: 'Share', icon: 'bell', run: open('announcements') },
   { id: 'share.announce', label: 'New announcement…', group: 'Share', icon: 'bell', when: () => !!app.lanStatus?.canAnnounce, run: () => dialogs.announce?.() },

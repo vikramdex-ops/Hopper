@@ -25,12 +25,23 @@ export const host: HopperApi = {
   }
 }
 
+/** Post a call, unwrapping Svelte state proxies (which structured clone refuses with a
+ * DataCloneError) by sending a plain JSON copy instead. Call arguments are plain data. */
+function post(port: MessagePort, msg: unknown) {
+  try {
+    port.postMessage(msg)
+  } catch (e: any) {
+    if (e?.name !== 'DataCloneError') throw e
+    port.postMessage(JSON.parse(JSON.stringify(msg)))
+  }
+}
+
 function portClient(name: 'engine' | 'lan') {
   let port: MessagePort | null = null
   const queue: unknown[] = []
   const c = client({
     postMessage(msg) {
-      if (port) port.postMessage(msg)
+      if (port) post(port, msg)
       else queue.push(msg)
     }
   })
@@ -39,7 +50,7 @@ function portClient(name: 'engine' | 'lan') {
     port?.close()
     port = e.ports[0]
     port.onmessage = (m) => c.onMessage(m.data)
-    for (const msg of queue.splice(0)) port.postMessage(msg)
+    for (const msg of queue.splice(0)) post(port, msg)
   })
   return c
 }

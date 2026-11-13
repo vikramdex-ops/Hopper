@@ -405,6 +405,8 @@ export interface OfficeConfig {
     /** e.g. https://cliq.zoho.in/api/v2/bots/hopper/message */
     endpoint: string
     zapikey: string
+    /** tell senders when a client first downloads a link and before it closes (sent by the share PC); default on */
+    linkNotices?: boolean
   }
   groups: PeerGroup[]
   templates: FolderTemplate[]

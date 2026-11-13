@@ -255,8 +255,30 @@ Links made before the pointer was connected have the short form `…/share/#<id>
 `site/share/config.json` to name the server (`base`, or `pointers`). New links
 (`#<id>.<gist>.<fingerprint>`) need nothing: `config.json` may be absent. Both forms keep working.
 
-Links show `vikramdex-ops.github.io` — a personal account name. A GitHub organisation or a custom
-domain for Pages changes that; set the new page address in *Settings → Office*.
+### A clean address: Cloudflare Pages (free)
+
+Links on GitHub Pages show `vikramdex-ops.github.io/Hopper/share/`. The office chose
+**`https://dexterity-share.pages.dev/`** instead, on Cloudflare's free Pages plan. The client page
+(`site/share/`) is self-contained (its logo, fonts and scripts sit beside it), so it can be served
+from any address. Once, by an admin:
+
+1. Create a free Cloudflare account at dash.cloudflare.com (no card needed).
+2. **Workers & Pages → Create → Pages → Connect to Git**, allow the GitHub repository
+   `vikramdex-ops/Hopper`, and choose it.
+3. Project name **`dexterity-share`** (if Cloudflare says it is taken, it suggests another name:
+   the address becomes `https://<that name>.pages.dev/`). Production branch `main`. Framework
+   preset **None**, build command **empty**, build output directory **`site/share`**. Save and
+   deploy. Every push to `main` then updates the page by itself.
+4. Open `https://dexterity-share.pages.dev/`: it should say *This page needs your download link*.
+5. In Hopper on the Dexterity Share PC: *Settings → Office → Dexterity Share → Client page
+   address* = `https://dexterity-share.pages.dev/`, **Save to server**. The share server picks up
+   the new address within a minute. New links use it; links already sent from the GitHub address
+   keep working (the server accepts both, and GitHub Pages keeps serving the old page). The staff
+   browser page is at `https://dexterity-share.pages.dev/create/`.
+
+`site/share/_headers` gives the Cloudflare copy no-index, no-referrer, no-framing and HSTS
+headers; GitHub Pages ignores it. A custom domain (for example `share.dexteritydesign.co.in`)
+can be added later in the Pages project under *Custom domains* with one DNS record.
 
 ## 9. Limits to be honest about
 

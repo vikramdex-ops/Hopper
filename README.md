@@ -75,6 +75,20 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 </tr>
 </table>
 
+## What's new in 2.6
+
+- **Dexterity Share, in our brand.** The client download page and the staff browser page now use
+  the Dexterity International logo, colours and typefaces, with one animated line from our office
+  to the client that shows every state (connecting, downloading, done, locked, expired, server not
+  answering, offline). Plainer words for clients, and no checksum on show unless they ask.
+- **Cliq tells you about your client links**: when a client first downloads, and before a link
+  closes, with whether it was downloaded. Sent by the Dexterity Share PC, so it arrives even when
+  your PC is off.
+- **My client links is one click away**: **Share ▾** in the toolbar, Home, Settings, or
+  <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd>.
+- **Fixed**: sharing files with a message no longer fails with "could not be cloned".
+- Plain messages no longer send a Cliq DM; files, folder links and requests for files still do.
+
 ## What's new in 2.5
 
 - **Anyone can set the office up, once.** Until a PC sets the office up, every PC gets the full

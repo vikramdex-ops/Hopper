@@ -40,6 +40,48 @@
     }
     return el
   }
+  /**
+   * The line of flow (brand/dx.css), as on the client page: our office on the left, this browser on
+   * the right. On this page files travel the other way, so an upload is drawn "flowing reverse" and a
+   * finished one ticks the office end. kind: flowing | done | valved busy | valved shut | broken | capped …
+   */
+  function route(kind, id) {
+    var ns = 'http://www.w3.org/2000/svg'
+    var mk = function (tag, attrs) {
+      var el = document.createElementNS(ns, tag)
+      for (var k in attrs) el.setAttribute(k, attrs[k])
+      return el
+    }
+    var svg = mk('svg', { viewBox: '0 0 400 24', 'aria-hidden': 'true', focusable: 'false', class: 'route ' + (kind || 'idle') })
+    if (id) svg.setAttribute('id', id)
+    svg.appendChild(mk('path', { class: 'seg a', d: 'M12 12H200', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'seg b', d: 'M200 12H388', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'pulse', d: 'M12 12H388', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'gap', d: 'M194 12H206' }))
+    var fl = mk('g', { class: 'flange' })
+    fl.appendChild(mk('path', { d: 'M192 5V19M208 5V19' }))
+    svg.appendChild(fl)
+    svg.appendChild(mk('path', { class: 'cap', d: 'M200 5V19' }))
+    var valve = mk('g', { class: 'valve' })
+    valve.appendChild(mk('path', { d: 'M189 5 200 12 189 19ZM211 5 200 12 211 19Z' }))
+    svg.appendChild(valve)
+    svg.appendChild(mk('circle', { class: 'node a', cx: '6', cy: '12', r: '5.5' }))
+    svg.appendChild(mk('circle', { class: 'node b', cx: '394', cy: '12', r: '5' }))
+    svg.appendChild(mk('path', { class: 'tick', d: 'M3.4 12.2l1.9 1.9 3.4-3.8', pathLength: '1' }))
+    return svg
+  }
+  /** The line with its two ends named. */
+  function flow(kind, id) {
+    return h('div', { class: 'flow' }, route(kind, id), h('div', { class: 'route-labels eyebrow' }, h('span', { text: 'Our office' }), h('span', { text: 'This browser' })))
+  }
+  function extOf(name) {
+    return (/\.([a-z0-9]+)$/i.exec(name) || ['', 'file'])[1].toUpperCase()
+  }
+  /** Eyebrow over a large heading, as each section of the page opens. */
+  function heading(eyebrow, id, text) {
+    return h('div', { class: 'sec-head' }, h('p', { class: 'eyebrow kicker', text: eyebrow }), h('h2', { id: id, text: text }))
+  }
+
   function fmtBytes(n) {
     if (n < 1024) return n + ' B'
     var u = ['KB', 'MB', 'GB', 'TB']
@@ -382,13 +424,16 @@
     main.classList.toggle('single', !!wide)
     main.setAttribute('aria-busy', 'false')
   }
-  function stateCard(title, paras, actions, kind) {
-    var c = h('section', { class: 'card wide state' + (kind ? ' ' + kind : '') }, h('h1', { text: title, tabindex: '-1' }))
+  /** A full-width message: an ink plate with the eyebrow, the heading and the line in its state, then the words. */
+  function stateCard(title, paras, actions, kind, eyebrow, line) {
+    var body = h('div', { class: 'body' })
     paras.forEach(function (p) {
-      c.appendChild(typeof p === 'string' ? h('p', { text: p }) : p)
+      body.appendChild(typeof p === 'string' ? h('p', { text: p }) : p)
     })
-    if (actions && actions.length) c.appendChild(h.apply(null, ['div', { class: 'row' }].concat(actions)))
-    return c
+    if (actions && actions.length) body.appendChild(h.apply(null, ['div', { class: 'row' }].concat(actions)))
+    return h('section', { class: 'card wide state' + (kind ? ' ' + kind : '') },
+      h('div', { class: 'plate' }, h('p', { class: 'eyebrow kicker', text: eyebrow || 'Dexterity Share' }), h('h1', { text: title, tabindex: '-1' }), flow(line || 'capped')),
+      body)
   }
   function focusHeading() {
     var head = main.querySelector('h1')
@@ -396,12 +441,12 @@
   }
 
   function showSignedOut(why) {
-    var first = why === 'revoked' ? 'This browser was signed out: its sign-in was switched off in Hopper, or it no longer exists.' : why === 'manual' ? 'You signed out on this browser.' : 'This page creates client links from a browser, for Dexterity Design Services staff. This browser is not signed in.'
+    var first = why === 'revoked' ? 'This browser has been signed out. Its sign-in was switched off in Hopper, or it no longer exists.' : why === 'manual' ? 'You signed out on this browser.' : 'This page lets Dexterity Design Services staff create client links from a browser. This browser is not signed in.'
     var steps = h('ol', { class: 'steps' },
       h('li', null, 'In Hopper, open ', h('b', { text: 'My client links' }), ' and choose ', h('b', { text: 'Use in a browser' }), '.'),
-      h('li', null, 'Choose ', h('b', { text: 'Make a sign-in link' }), ', then ', h('b', { text: 'Open in browser' }), ' — or copy the link into this browser.'),
-      h('li', null, 'Bookmark this page. The bookmark does not contain the sign-in; this browser remembers it.'))
-    setMain([stateCard('Sign in from Hopper', [first, steps, h('p', { class: 'muted', text: 'Each sign-in link is personal. Do not send it to anyone; anyone who has it can create links in your name until you switch it off in Hopper.' })], null, 'signedout')], true)
+      h('li', null, 'Choose ', h('b', { text: 'Make a sign-in link' }), ', then ', h('b', { text: 'Open in browser' }), '. You can also copy the link into this browser.'),
+      h('li', null, 'Bookmark this page. The bookmark does not hold your sign-in; this browser remembers it.'))
+    setMain([stateCard('Sign in from Hopper', [h('p', { class: 'lead', text: first }), steps, h('p', { class: 'muted small', text: 'Each sign-in link is personal, so do not send it to anyone. Whoever has it can create links in your name until you switch it off in Hopper.' })], null, 'signedout', why === 'revoked' ? 'Signed out' : 'Staff sign-in', 'capped')], true)
     focusHeading()
   }
   function showUnreachable(configured) {
@@ -411,7 +456,7 @@
       clearInterval(timer)
       start(true)
     } } })
-    setMain([stateCard(configured ? 'The office server is not reachable' : 'This page is not connected to the office server', configured ? ['The office share server did not answer. It may be restarting, or the office internet may be down. Nothing you made is lost.', h('p', null, 'Trying again in ', count, ' s.')] : ['Make a new sign-in link in Hopper (My client links → Use in a browser) and open it here.'], configured ? [btn] : null, 'warn')], true)
+    setMain([stateCard(configured ? 'The office server is not reachable' : 'This page is not connected to the office server', configured ? [h('p', { class: 'lead', text: 'The office share server did not answer. It may be restarting, or the office internet may be down. Nothing you made is lost.' }), h('p', { class: 'muted' }, 'Trying again in ', count, ' s.')] : [h('p', { class: 'lead', text: 'Make a new sign-in link in Hopper (My client links → Use in a browser) and open it here.' })], configured ? [btn] : null, 'warn', configured ? 'No answer' : 'Not connected', configured ? 'broken' : 'capped')], true)
     if (!configured) return
     var timer = setInterval(function () {
       if (--wait <= 0) {
@@ -421,7 +466,7 @@
     }, 1000)
   }
   function showDisabled() {
-    setMain([stateCard('Creating links from a browser is switched off', ['An office admin has switched this off (Hopper → Settings → Office → Dexterity Share). Links can still be made in Hopper.'], null, 'warn')], true)
+    setMain([stateCard('Creating links from a browser is switched off', [h('p', { class: 'lead', text: 'An office admin has switched this off (Hopper → Settings → Office → Dexterity Share). You can still make links in Hopper.' })], null, 'warn', 'Switched off', 'capped')], true)
   }
 
   // ---- the workbench ------------------------------------------------------------------------------
@@ -446,9 +491,12 @@
     var input = h('input', { type: 'file', id: 'file', class: 'sr', accept: '.zip,.rar,.7z', on: { change: function () {
       if (input.files && input.files[0]) chooseFile(input.files[0])
     } } })
+    // a drawing sheet: hairline frame, corner registration marks, and a small title block
     var drop = h('label', { class: 'drop' + (F.file ? ' has' : ''), for: 'file' },
-      F.file ? h('span', { class: 'fname' }, h('span', { class: 'ext', text: (/\.([a-z0-9]+)$/i.exec(F.file.name) || ['', 'file'])[1].toUpperCase() }), h('span', { class: 'fn' }, h('b', { text: F.file.name }), h('small', { class: 'tn', text: fmtBytes(F.file.size) + ' · choose another file' })))
-        : h('span', null, h('b', { text: 'Drop a .zip, .rar or .7z' }), 'or choose a file · up to ' + fmtLimit(lim.maxBytes)))
+      h('span', { class: 'marks', 'aria-hidden': 'true' }),
+      F.file ? h('span', { class: 'fname' }, h('span', { class: 'ext', text: extOf(F.file.name) }), h('span', { class: 'fn' }, h('b', { text: F.file.name }), h('small', { class: 'tn', text: fmtBytes(F.file.size) + ' · choose another file' })))
+        : h('span', { class: 'drop-ask' }, h('span', { class: 'drop-ico', 'aria-hidden': 'true' }), h('b', { text: 'Drop a .zip, .rar or .7z' }), h('span', null, 'or choose a file · up to ' + fmtLimit(lim.maxBytes))),
+      h('span', { class: 'tblock', 'aria-hidden': 'true' }, h('span', null, h('i', { class: 'eyebrow', text: 'Accepts' }), ' .zip .rar .7z'), h('span', { class: 'tn' }, h('i', { class: 'eyebrow', text: 'Limit' }), ' ' + fmtLimit(lim.maxBytes))))
     ;['dragenter', 'dragover'].forEach(function (ev) {
       drop.addEventListener(ev, function (e) {
         e.preventDefault()
@@ -505,14 +553,14 @@
     var go = h('button', { class: 'go', type: 'button', id: 'create', text: F.resume ? 'Continue upload' : 'Create link', on: { click: create } })
 
     var kids = [
-      h('h2', { id: 'new-h', text: 'New link' }),
+      heading('Send to a client', 'new-h', 'New link'),
       input,
       drop,
       F.resume ? h('p', { class: 'note-box' }, 'An unfinished upload of this file was found (' + Math.floor((F.resume.received / F.resume.size) * 100) + '% sent). ', h('b', { text: 'Continue upload' }), ' carries on with the settings chosen then.') : null,
-      h('div', { class: 'field' }, h('span', { class: 'lbl', id: 'days-l', text: 'Link works for (days)' }), chips, daysNote),
-      h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'pw', text: 'Password (optional)' }), h('div', { class: 'pwrow' }, pw, gen), h('small', { class: 'muted', text: 'At least 6 characters. You will see it once at the end; send it separately from the link.' })),
-      h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'note', text: 'Note to the client' }), note),
-      h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'title', text: 'Title' }), title),
+      h('div', { class: 'field' }, h('span', { class: 'lbl eyebrow', id: 'days-l', text: 'Link open for (days)' }), chips, daysNote),
+      h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'pw', text: 'Password (optional)' }), h('div', { class: 'pwrow' }, pw, gen), h('small', { class: 'muted', text: 'At least 6 characters. It is shown once, when the link is ready. Send it separately from the link.' })),
+      h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'note', text: 'Note to the client' }), note),
+      h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'title', text: 'Title' }), title),
       err,
       go
     ]
@@ -521,7 +569,7 @@
       S.uploads.forEach(function (u) {
         ul.appendChild(h('li', null, h('span', null, h('b', { text: u.name }), h('small', { class: 'tn', text: fmtBytes(u.received) + ' of ' + fmtBytes(u.size) + ' sent · choose the same file to continue' })), discardButton(u)))
       })
-      kids.push(h('div', { class: 'field' }, h('span', { class: 'lbl', text: 'Unfinished uploads' }), ul))
+      kids.push(h('div', { class: 'field' }, h('span', { class: 'lbl eyebrow', text: 'Unfinished uploads' }), ul))
     }
     c.replaceChildren.apply(c, kids.filter(Boolean))
   }
@@ -838,7 +886,8 @@
     var c = refs.left
     var u = U
     if (!c || !u) return
-    var kids = [h('h2', { id: 'new-h', text: u.state === 'done' ? 'Link ready' : 'New link' })]
+    var kids = [heading(u.state === 'done' ? 'Sent to our office' : u.state === 'failed' ? 'Upload stopped' : 'Uploading', 'new-h', u.state === 'done' ? 'Link ready' : 'New link')]
+    var fileLine = h('div', { class: 'fname' }, h('span', { class: 'ext', text: extOf(u.file.name) }), h('span', { class: 'fn' }, h('b', { text: u.file.name }), h('small', { class: 'tn', text: fmtBytes(u.file.size) })))
     if (u.state === 'done') {
       var link = h('input', { class: 'in mono', id: 'result-link', readonly: true, value: u.url, 'aria-label': 'Client link', on: { focus: function () {
         link.select()
@@ -849,9 +898,10 @@
         return 'Subject: ' + m.subject + '\r\n\r\n' + m.body
       }
       kids.push(
-        h('p', { class: 'ok-line' }, h('b', { text: safeFileName(u.file.name) }), ' is ready for your client · expires ' + fmtExpiryDate(u.result.expiresAt - S.skew) + '.'),
-        h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'result-link', text: 'Client link' }), link),
-        h('div', { class: 'row' },
+        h('div', { class: 'plate done' }, fileLine, flow('done reverse')),
+        h('p', { class: 'ok-line reveal' }, h('b', { text: safeFileName(u.file.name) }), ' is ready for your client. The link expires on ' + fmtExpiryDate(u.result.expiresAt - S.skew) + '.'),
+        h('div', { class: 'field reveal' }, h('label', { class: 'lbl eyebrow', for: 'result-link', text: 'Client link' }), link),
+        h('div', { class: 'row reveal' },
           h('button', { class: 'btn primary', type: 'button', id: 'copy-link', text: 'Copy link', on: { click: function () {
             copy(u.url, 'Link copied')
           } } }),
@@ -860,16 +910,16 @@
           } } }))
       )
       if (u.password) {
-        kids.push(h('div', { class: 'pwbox', role: 'note' },
-          h('span', { class: 'lbl', text: 'Password (shown only now)' }),
+        kids.push(h('div', { class: 'pwbox reveal', role: 'note' },
+          h('span', { class: 'lbl eyebrow', text: 'Password (shown only now)' }),
           h('div', { class: 'pwrow' }, h('code', { id: 'result-pw', class: 'pw', text: u.password }), h('button', { class: 'btn sm', type: 'button', id: 'copy-pw', text: 'Copy password', on: { click: function () {
             copy(u.password, 'Password copied')
           } } })),
-          h('small', null, 'Send the password separately from the link — for example by phone or text message, not in the same e-mail.')))
+          h('small', null, 'Send the password separately from the link, for example by phone or text message. Never in the same e-mail.')))
       } else if (u.resumed && hasPasswordOnServer(u.id)) {
-        kids.push(h('p', { class: 'muted', text: 'This link is password protected with the password you chose when you started the upload.' }))
+        kids.push(h('p', { class: 'muted reveal', text: 'This link is password protected with the password you chose when you started the upload.' }))
       }
-      kids.push(h('button', { class: 'btn', type: 'button', id: 'another', text: 'Make another link', on: { click: function () {
+      kids.push(h('button', { class: 'btn ghost reveal', type: 'button', id: 'another', text: 'Make another link', on: { click: function () {
         U = null
         F.file = null
         F.password = ''
@@ -885,8 +935,8 @@
       var pct = Math.floor((u.sent / u.file.size) * 100)
       var bar = h('div', { class: 'bar', role: 'progressbar', 'aria-label': 'Upload progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) }, h('i', { id: 'bar-fill' }))
       kids.push(
-        h('div', { class: 'fname' }, h('span', { class: 'ext', text: (/\.([a-z0-9]+)$/i.exec(u.file.name) || ['', 'file'])[1].toUpperCase() }), h('span', { class: 'fn' }, h('b', { text: u.file.name }), h('small', { class: 'tn', text: fmtBytes(u.file.size) }))),
-        h('div', { class: 'prog' }, h('div', { class: 'pct tn', id: 'pct' }), bar, h('div', { class: 'meta tn', id: 'meta' })),
+        h('div', { class: 'plate' }, fileLine, flow('flowing reverse', 'up-route'),
+          h('div', { class: 'prog' }, h('div', { class: 'pct tn', id: 'pct' }), bar, h('div', { class: 'meta tn', id: 'meta' }))),
         h('p', { class: 'msg', id: 'up-msg', role: 'status' })
       )
       var row = h('div', { class: 'row' })
@@ -977,6 +1027,21 @@
     var msg = document.getElementById('up-msg')
     msg.textContent = u.message || (u.state === 'failed' ? 'The upload stopped.' : '')
     msg.className = 'msg' + (u.state === 'failed' ? ' err' : u.paused ? ' warn' : '')
+    // the line and the pipe show the same state as the words (presentation only)
+    var look = upLook(u)
+    var r = document.getElementById('up-route')
+    if (r && r.getAttribute('class') !== 'route reverse ' + look[0]) r.setAttribute('class', 'route reverse ' + look[0])
+    var barCls = 'bar' + (look[1] ? ' ' + look[1] : '')
+    if (fill.parentNode.className !== barCls) fill.parentNode.className = barCls
+  }
+  /** [route state, bar state] for an upload in progress. */
+  function upLook(u) {
+    var m = u.message || ''
+    if (u.state === 'failed') return ['valved shut', 'bad']
+    if (/^(Connection lost|Waiting for the office server)|keeps dropping/.test(m)) return ['broken', 'wait']
+    if (u.paused || /busy|did not take a piece/.test(m)) return ['valved busy', 'wait']
+    if (u.state === 'finishing') return ['flowing', 'slow']
+    return ['flowing', '']
   }
 
   // ---- right card: your links --------------------------------------------------------------------
@@ -1042,14 +1107,18 @@
     var week = active.filter(function (l) {
       return l.expiresAt - t < 7 * DAY
     }).length
+    // title-block cells: the figure first for screen readers ("3 active"), the label drawn above it
+    var cell = function (n, label) {
+      return h('div', { class: 'stat' }, h('b', { class: 'tn', text: String(n) }), h('span', { class: 'eyebrow', text: ' ' + label }))
+    }
     var kids = [
-      h('div', { class: 'head' }, h('h2', { id: 'links-h', text: 'Your links' }), h('button', { class: 'act', type: 'button', text: 'Refresh', on: { click: function () {
+      h('div', { class: 'head' }, heading('Register', 'links-h', 'Your links'), h('button', { class: 'btn sm', type: 'button', text: 'Refresh', on: { click: function () {
         void loadLinks()
       } } })),
       h('div', { class: 'stats', id: 'counts' },
-        h('span', null, h('b', { class: 'tn', text: String(active.length) }), ' active'),
-        h('span', null, h('b', { class: 'tn', text: String(downloads) }), ' ' + (downloads === 1 ? 'download' : 'downloads')),
-        h('span', null, h('b', { class: 'tn', text: String(week) }), ' ' + (week === 1 ? 'expires' : 'expire') + ' this week'))
+        cell(active.length, 'active'),
+        cell(downloads, downloads === 1 ? 'download' : 'downloads'),
+        cell(week, (week === 1 ? 'expires' : 'expire') + ' this week'))
     ]
     if (S.linksError) kids.push(h('p', { class: 'err', role: 'alert', text: S.linksError }))
     if (!rows.length) {

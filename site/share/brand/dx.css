@@ -1,0 +1,147 @@
+/* Dexterity Share design language: "Line of flow".
+   Brand tokens from dexteritydesign.co.in (kit: <work-folder>\Dexterity-Brand). A file travels along one
+   pipe run from our office to the reader. Every state is a state of that line: drawing (connecting),
+   flowing (moving data), a closed valve (expired, locked, busy), a break between flanges (our server
+   is not answering), a dashed far end (your connection is down), a cap (nothing at the end).
+   Shared by the client page (share/) and the staff page (share/create/).
+   (c) Dexterity Design Services Private Limited. */
+
+@font-face { font-family: 'Archivo Variable'; src: url('fonts/archivo-latin-wdth-normal.woff2') format('woff2'); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+@font-face { font-family: 'Instrument Sans Variable'; src: url('fonts/instrument-sans-latin-wght-normal.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-latin-500.woff2') format('woff2'); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/cormorant-garamond-latin-italic-400-500.woff2') format('woff2'); font-style: italic; font-weight: 400 500; font-display: swap; }
+
+:root {
+  /* brand */
+  --teal: #2a8c98; --teal-ink: #1c7680; --teal-deep: #1e6066; --amber: #f7af44; --amber-ink: #9a5b00;
+  /* the dark panel (both themes) */
+  --panel: #132b2e; --panel-2: #183639; --on-panel: #f3f8f8; --on-panel-2: #b9cfd1; --on-panel-3: #87a5a8; --panel-line: rgba(185, 207, 209, .16);
+  /* the work column */
+  --bg: #ffffff; --surface: #ffffff; --row: #f6fafa; --row-2: #e8f2f3; --line: #1e606624; --line-2: #1e606647;
+  --ink: #132b2e; --ink-2: #4c6366; --accent: #1c7680; --focus: #1c7680;
+  --cta: #f7af44; --cta-hover: #f4a12a; --on-cta: #132b2e;
+  --ok: #17734a; --ok-tint: #e7f4ee; --warn: #8a5300; --warn-tint: #fdf3e1; --bad: #b3261e; --bad-tint: #fbeceb;
+  /* type */
+  --display: 'Archivo Variable', 'Archivo', 'Segoe UI Variable Display', 'Segoe UI', Arial, sans-serif;
+  --font: 'Instrument Sans Variable', 'Instrument Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  /* motion */
+  --ease: cubic-bezier(.2, .7, .2, 1); --flow: cubic-bezier(.65, 0, .35, 1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --panel: #0b1a1c; --panel-2: #10272a;
+    --bg: #0f2023; --surface: #0f2023; --row: #152b2e; --row-2: #1b3539; --line: rgba(185, 207, 209, .13); --line-2: rgba(185, 207, 209, .26);
+    --ink: #e9f2f2; --ink-2: #a3bbbd; --accent: #6cc7cf; --focus: #6cc7cf;
+    --cta: #f7af44; --cta-hover: #ffbe5c; --on-cta: #132b2e;
+    --ok: #6fd3a0; --ok-tint: #133026; --warn: #f2c14e; --warn-tint: #2d2614; --bad: #ff9b93; --bad-tint: #321c1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --panel: #0b1a1c; --panel-2: #10272a;
+  --bg: #0f2023; --surface: #0f2023; --row: #152b2e; --row-2: #1b3539; --line: rgba(185, 207, 209, .13); --line-2: rgba(185, 207, 209, .26);
+  --ink: #e9f2f2; --ink-2: #a3bbbd; --accent: #6cc7cf; --focus: #6cc7cf;
+  --cta: #f7af44; --cta-hover: #ffbe5c; --on-cta: #132b2e;
+  --ok: #6fd3a0; --ok-tint: #133026; --warn: #f2c14e; --warn-tint: #2d2614; --bad: #ff9b93; --bad-tint: #321c1c;
+  color-scheme: dark;
+}
+
+/* ---- type helpers ------------------------------------------------------------------------- */
+.eyebrow { font: 500 11px/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- the brand lock-up -------------------------------------------------------------------- */
+.lockup { display: inline-flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
+.lockup img { width: 30px; height: 30px; flex: none; }
+.lockup .wm { display: flex; flex-direction: column; line-height: 1.05; }
+.lockup .wm b { font: 600 15.5px/1.1 var(--display); font-stretch: 108%; letter-spacing: .005em; }
+.lockup .wm small { font: 500 9.5px/1.4 var(--mono); letter-spacing: .18em; text-transform: uppercase; opacity: .72; }
+
+/* ---- the line of flow -------------------------------------------------------------------------
+   <svg class="route [state]"> with: .seg.a (office half), .seg.b (reader half), .node.a, .node.b,
+   .pulse (a travelling slug), .valve, .flange, .cap, .tick. Paths use pathLength="1". */
+.route { display: block; width: 100%; height: auto; overflow: visible; color: var(--on-panel); }
+.route .seg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; opacity: .55; }
+.route .seg { stroke-dasharray: 1; stroke-dashoffset: 1; animation: dx-draw .9s var(--flow) .15s forwards; }
+.route .seg.b { animation-delay: .55s; }
+.route .node { fill: var(--panel); stroke: currentColor; stroke-width: 1.5; }
+.route .node.a { fill: var(--amber); stroke: var(--amber); }
+.route .pulse { fill: none; stroke: var(--amber); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: .06 2; stroke-dashoffset: .06; opacity: 0; }
+.route .valve, .route .flange, .route .cap, .route .tick, .route .gap { display: none; }
+.route .valve path { fill: var(--panel); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.route .flange { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.route .cap { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.route .tick { fill: none; stroke: var(--panel); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+
+/* idle (files ready): a slow slug every few seconds says the line is live */
+.route.idle .pulse { opacity: 1; animation: dx-slug 5.5s var(--flow) 1.6s infinite; }
+/* connecting: the line keeps drawing towards you */
+.route.connecting .seg { animation: dx-draw 1.6s var(--flow) infinite; }
+.route.connecting .seg.b { animation-delay: .8s; }
+.route.connecting .node.b { animation: dx-breathe 1.6s ease-in-out infinite; }
+/* flowing: data on the move */
+.route.flowing .seg { opacity: .85; stroke-dashoffset: 0; animation: none; }
+.route.flowing .pulse { opacity: 1; stroke-dasharray: .035 .045; animation: dx-run .9s linear infinite; }
+.route.reverse .pulse { animation-direction: reverse; }
+.route.reverse .node.a { fill: var(--panel); stroke: currentColor; }
+.route.reverse .node.b { fill: var(--amber); stroke: var(--amber); }
+/* done: the far end fills and is ticked */
+.route.done .seg { opacity: .85; }
+.route.done .node.b { fill: var(--amber); stroke: var(--amber); animation: dx-pop .5s var(--ease) .9s both; }
+.route.done .tick { display: block; animation: dx-draw .45s var(--ease) 1.2s forwards; }
+/* closed valve: expired, locked, busy */
+.route.valved .valve { display: block; }
+.route.valved .valve path { transform-box: fill-box; transform-origin: center; animation: dx-pop .5s var(--ease) 1s both; }
+.route.valved .seg.b { opacity: .25; }
+.route.valved.shut .valve path { fill: var(--amber); stroke: var(--amber); }
+.route.valved.busy .valve path { animation: dx-breathe 2.2s ease-in-out infinite; }
+.route.valved.busy .pulse { opacity: 1; stroke-dasharray: .05 2; animation: dx-queue 2.2s var(--flow) infinite; }
+/* broken: our server is not answering — the run stops at a pair of flanges */
+.route.broken .gap { display: block; stroke: var(--panel); stroke-width: 6; }
+.route.broken .flange { display: block; }
+.route.broken .seg.b { opacity: .22; stroke-dasharray: .02 .02; stroke-dashoffset: 0; animation: none; }
+.route.broken .node.a { animation: dx-beat 2s ease-in-out infinite; }
+/* offline: the reader's half is dashed */
+.route.offline .seg.b { stroke-dasharray: .025 .025; stroke-dashoffset: 0; animation: dx-fade 2s ease-in-out infinite alternate; }
+.route.offline .node.b { fill: var(--panel); animation: dx-breathe 2s ease-in-out infinite; }
+/* capped: nothing at the end of this link */
+.route.capped .cap { display: block; }
+.route.capped .seg.b, .route.capped .node.b { opacity: .18; }
+
+.route-labels { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: var(--on-panel-3); }
+
+@keyframes dx-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes dx-slug { 0% { stroke-dashoffset: .06; } 55%, 100% { stroke-dashoffset: -1; } }
+@keyframes dx-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -.08; } }
+@keyframes dx-queue { 0% { stroke-dashoffset: .05; } 60%, 100% { stroke-dashoffset: -.42; } }
+@keyframes dx-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes dx-beat { 0%, 70%, 100% { transform: none; } 80% { transform: scale(1.18); } }
+@keyframes dx-fade { from { opacity: .2; } to { opacity: .6; } }
+@keyframes dx-pop { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: none; } }
+@keyframes dx-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes dx-wipe { from { clip-path: inset(0 0 100% 0); transform: translateY(.18em); } to { clip-path: inset(0 0 -10% 0); transform: none; } }
+.route .node, .route .valve path { transform-box: fill-box; transform-origin: center; }
+
+/* ---- the pipe progress bar --------------------------------------------------------------------
+   <div class="bar"><i></i></div>: a hairline pipe; the fill is liquid with a moving texture. */
+.bar { position: relative; height: 10px; border-radius: 999px; background: var(--row-2); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--teal) repeating-linear-gradient(115deg, rgba(255, 255, 255, .0) 0 10px, rgba(255, 255, 255, .22) 10px 16px) 0 0 / 34px 100%; transition: width .3s linear; animation: dx-stream 1s linear infinite; }
+.bar.slow i { animation-duration: 2.4s; }
+.bar.wait i { background-color: var(--amber); animation-duration: 3s; }
+.done .bar i, .bar.done i { background: var(--ok); animation: none; }
+.bad .bar i, .bar.bad i { background: var(--bad); animation: none; }
+@keyframes dx-stream { to { background-position: 34px 0; } }
+
+/* ---- the small "working" mark: three dots travelling along a short line ---------------------- */
+.spin { display: inline-block; width: 22px; height: 6px; flex: none; position: relative; background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; opacity: .9; }
+.spin::before { content: ''; position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: dx-dot .9s var(--flow) infinite alternate; }
+@keyframes dx-dot { to { transform: translateX(16px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .route .seg, .route .tick { animation: none !important; stroke-dashoffset: 0; }
+  .route .pulse { display: none; }
+  .route *, .bar i, .spin::before { animation: none !important; }
+}

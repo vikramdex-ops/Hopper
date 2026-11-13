@@ -58,6 +58,23 @@ await check('direct share alice -> bob (folder, TLS-PSK)', async () => {
   console.log(`     received ${item.files} files in ${item.folder}`)
 })
 
+await check('a file share with a message, from reactive dialog state (proxied lists), is sent', async () => {
+  // the Share dialog's recipient list is Svelte state; a proxy cannot be structured-cloned to the LAN port
+  const before = await ev('bob', () => window.__hopper.inbox.length)
+  const err = await ev('alice', async (p) => {
+    try {
+      await window.__hopper.share({ to: new Proxy(['bob'], {}), paths: new Proxy([p], {}), message: 'Rev B attached, with a note' })
+      return ''
+    } catch (e) {
+      return String(e?.message ?? e)
+    }
+  }, join(demo, 'Transmittals'))
+  if (err) throw new Error(err)
+  await until('bob', (n) => window.__hopper.inbox.length > n, before, 120000)
+  const msg = await ev('bob', () => window.__hopper.inbox[0].message)
+  if (msg !== 'Rev B attached, with a note') throw new Error('message ' + msg)
+})
+
 await check('offline recipient goes via server inbox', async () => {
   await people.bob.app.close()
   // wait until alice sees bob offline (20 s beacon timeout)

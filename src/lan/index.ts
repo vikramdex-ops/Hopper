@@ -10,6 +10,7 @@ import { HopperShell } from '@shared/hshell'
 import type { InboxItem, ShareSpec } from '@shared/types'
 import { Announcements, type AnnouncementDraft } from './announce'
 import { postCliq } from './cliq'
+import { LinkNotices } from './linknotices'
 import { Discovery } from './discovery'
 import { Sent } from './history'
 import { Inbox } from './inbox'
@@ -75,6 +76,8 @@ const sent = new Sent(ctx)
 const transfer = new TransferServer(ctx, admit, onReceived, (identity, frame, fromName) => announcements.onFrame(identity, frame, fromName))
 const pickup = new ServerPickup(ctx, admit, onReceived, (id) => inbox.has(id))
 const shares = new Shares(ctx, discovery, sent)
+const linkNotices = new LinkNotices(ctx, discovery)
+linkNotices.start()
 
 let status: Status = { enabled: false, ready: false, reason: 'starting' }
 let helper: { user: string; displayName: string; host: string; domain: string } | null = null

@@ -69,6 +69,9 @@ async function storeCheck(store: string) {
   }
 }
 
+/** Links made before the office moved its client page to its own address keep working. */
+const LEGACY_PAGE_ORIGIN = 'https://vikramdex-ops.github.io'
+
 function pageOrigin(pageUrl: string) {
   try {
     return new URL(pageUrl).origin
@@ -115,7 +118,7 @@ async function apply() {
       inProcess: true,
       file: '',
       hostName: hostname(),
-      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [pageOrigin(share.pageUrl), ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3, ...staffConfig(share) },
+      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [...new Set([pageOrigin(share.pageUrl), LEGACY_PAGE_ORIGIN, ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3, ...staffConfig(share) },
       tunnel: {
         mode: settings.mode,
         cloudflared: cloudflaredPath(),

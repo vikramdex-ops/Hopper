@@ -39,7 +39,7 @@ export function registerDialogs(d: Record<string, (...args: any[]) => unknown>) 
     announce: lazy('AnnounceDialog', (path?: string) => ({ path })),
     announcements: lazy('AnnouncementsDialog'),
     publicLink: lazy('PublicLinkDialog', (paths?: string[]) => ({ paths })),
-    publicLinks: lazy('PublicLinksDialog'),
+    publicLinks: lazy('PublicLinksDialog', (browser?: boolean) => ({ browser: browser === true })),
     shareServer: lazy('ShareServerDialog'),
     properties: lazy('PropertiesDialog', (paths: string[]) => ({ paths })),
     openWith: lazy('OpenWithDialog', (entry) => ({ entry })),

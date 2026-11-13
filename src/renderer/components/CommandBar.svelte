@@ -28,6 +28,18 @@
     at(e, [item('file.newFolder'), item('file.newFile'), ...(app.newTypes.length ? [{ separator: true }, ...app.newMenu().map((m) => ({ ...m, disabled: !writable }))] : []), { separator: true }, item('file.template')])
   }
 
+  function shareMenu(e: MouseEvent) {
+    at(e, [
+      item('share.send'),
+      item('share.clientLink'),
+      { separator: true },
+      item('share.clientLinks'),
+      item('share.browser'),
+      { separator: true },
+      item('share.announcements')
+    ])
+  }
+
   function zipMenu(e: MouseEvent) {
     const presets = app.settings?.archivePresets ?? []
     at(e, [
@@ -92,9 +104,12 @@
   <button class="btn subtle icon" onclick={() => run('file.copy')} disabled={!has || !real} title={tip('Copy', 'file.copy')}><Icon name="copy" /></button>
   <button class="btn subtle icon" onclick={() => run('file.paste')} disabled={!real} title={tip('Paste', 'file.paste')}><Icon name="paste" /></button>
   <button class="btn subtle icon" onclick={() => run('file.rename')} disabled={!has || !real} title={tip('Rename', 'file.rename')}><Icon name="rename" /></button>
-  <button class="btn subtle" onclick={() => run('share.send')} disabled={!has || !real} title={tip('Share with people on the network', 'share.send')}>
-    <Icon name="share" /> Share
-  </button>
+  <div class="split">
+    <button class="btn subtle" onclick={() => run('share.send')} disabled={!has || !real} title={tip('Share with people on the network', 'share.send')}>
+      <Icon name="share" /> Share
+    </button>
+    <button class="btn subtle icon chev" onclick={shareMenu} title="Client links, My client links and more" aria-label="Share options"><Icon name="chevronDown" size={12} /></button>
+  </div>
   <button class="btn subtle icon" onclick={() => run('file.delete')} disabled={!has} title={tip('Delete', 'file.delete')}><Icon name="delete" /></button>
   <div class="sep"></div>
   <div class="split">

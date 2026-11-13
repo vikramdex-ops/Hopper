@@ -9,7 +9,7 @@
   import { fmtAgo, fmtDateFull, fmtSize, plural } from '../../lib/format'
   import { EXPIRY_DAYS, buildEmail, daysLeft, fmtExpiryDate, normalizeStaffWeb, type PublicLink, type PublicShareStatus, type StaffPassCreated, type StaffPassInfo } from '@shared/pubshare'
 
-  let { close }: { close: (v?: unknown) => void } = $props()
+  let { close, browser = false }: { close: (v?: unknown) => void; browser?: boolean } = $props()
 
   let links = $state.raw<PublicLink[]>([])
   let status = $state<PublicShareStatus | null>(null)
@@ -97,6 +97,8 @@
   }
 
   onMount(() => {
+    // opened from "Use in a browser…": go straight to the sign-in panel
+    if (browser && web.enabled) toggleBrowser()
     void load()
     void engine.call<PublicShareStatus>('pubshare.status').then((s) => (status = s), () => {})
   })

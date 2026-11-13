@@ -65,6 +65,47 @@
     return svg
   }
 
+  /**
+   * The line of flow (see brand/dx.css): our office on the left, the reader on the right.
+   * kind: idle | connecting | flowing | done | valved shut | valved busy | broken | offline | capped
+   */
+  function route(kind) {
+    var ns = 'http://www.w3.org/2000/svg'
+    var mk = function (tag, attrs) {
+      var el = document.createElementNS(ns, tag)
+      for (var k in attrs) el.setAttribute(k, attrs[k])
+      return el
+    }
+    var svg = mk('svg', { viewBox: '0 0 400 24', 'aria-hidden': 'true', focusable: 'false', class: 'route ' + (kind || 'idle') })
+    svg.appendChild(mk('path', { class: 'seg a', d: 'M12 12H200', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'seg b', d: 'M200 12H388', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'pulse', d: 'M12 12H388', pathLength: '1' }))
+    svg.appendChild(mk('path', { class: 'gap', d: 'M194 12H206' }))
+    var fl = mk('g', { class: 'flange' })
+    fl.appendChild(mk('path', { d: 'M192 5V19M208 5V19' }))
+    svg.appendChild(fl)
+    svg.appendChild(mk('path', { class: 'cap', d: 'M200 5V19' }))
+    var valve = mk('g', { class: 'valve' })
+    valve.appendChild(mk('path', { d: 'M189 5 200 12 189 19ZM211 5 200 12 211 19Z' }))
+    svg.appendChild(valve)
+    svg.appendChild(mk('circle', { class: 'node a', cx: '6', cy: '12', r: '5' }))
+    svg.appendChild(mk('circle', { class: 'node b', cx: '394', cy: '12', r: '5.5' }))
+    svg.appendChild(mk('path', { class: 'tick', d: 'M391.4 12.2l1.9 1.9 3.4-3.8', pathLength: '1' }))
+    return svg
+  }
+  /** The "direct from our office" block: the line with its two ends named, and one quiet sentence. */
+  function direct(kind, rightLabel, words) {
+    var r = route(kind)
+    return h('div', { class: 'direct' },
+      r,
+      h('div', { class: 'route-labels eyebrow' }, h('span', { text: 'Our office' }), h('span', { text: rightLabel || 'You' })),
+      words === false ? null : h('p', { class: 'direct-words' }, h('b', { text: 'Direct from our office.' }), ' ' + (words || 'Your files stay on our own server and are never uploaded to a file-sharing service. Encrypted in transit.')))
+  }
+  function setRoute(kind) {
+    var r = card.querySelector('.route')
+    if (r) r.setAttribute('class', 'route ' + kind)
+  }
+
   function fmtBytes(n) {
     if (n < 1024) return n + ' B'
     var u = ['KB', 'MB', 'GB', 'TB']
@@ -326,46 +367,52 @@
   function split(cls, side, main) {
     return h('div', { class: 'split' + (cls ? ' ' + cls : '') }, kids(h('div', { class: 'side' }), side), kids(h('div', { class: 'main' }), main))
   }
+  // each state names itself in the kicker and shows itself on the line of flow
+  var STATE = {
+    unlink: ['Link incomplete', 'capped'], gone: ['Link withdrawn', 'capped'], expired: ['Link expired', 'valved shut'],
+    busy: ['Busy', 'valved busy'], down: ['Reconnecting', 'broken'], offline: ['Offline', 'offline'], unset: ['Not set up', 'capped']
+  }
   function stateView(kind, glyph, title, paras, actions) {
-    var main = [h('h2', { class: 'label', text: 'What to do' })].concat(paras)
+    var st = STATE[glyph] || ['', 'capped']
+    var main = [h('h2', { class: 'label eyebrow', text: 'What to do' })].concat(paras)
     if (actions && actions.length) main.push(kids(h('div', { class: 'actions' }), actions))
-    return split('state ' + kind, [h('div', { class: 'glyph' }, icon(glyph)), h('h1', { text: title })], main)
+    return split('state ' + kind, [h('p', { class: 'eyebrow kicker', text: st[0] }), h('h1', { text: title }), direct(st[1], glyph === 'offline' ? 'You · offline' : 'You', false)], main)
   }
 
   function showLoading(note) {
     clearTimers()
     var n = h('p', { class: 'loading-note', role: 'status', text: note || 'Opening your link…' })
-    var v = split('loading', [h('div', { class: 'sk sk-hero' }), h('div', { class: 'sk sk-hero short' }), h('div', { class: 'sk sk-line' })],
-      [h('div', { class: 'sk sk-label' }), h('div', { class: 'sk sk-row' }), h('div', { class: 'sk sk-row' }), h('div', { class: 'sk sk-btn' }), n])
+    var v = split('loading', [h('p', { class: 'eyebrow kicker', text: 'Connecting' }), h('div', { class: 'sk sk-hero' }), h('div', { class: 'sk sk-hero short' }), direct('connecting', 'You', false)],
+      [h('div', { class: 'sk sk-label' }), h('div', { class: 'sk sk-row' }), h('div', { class: 'sk sk-btn' }), n])
     card.replaceChildren(v)
     card.setAttribute('aria-busy', 'true')
     S.timers.push(setTimeout(function () {
-      n.textContent = 'Still connecting — our file server may be on a slow link. One moment…'
+      n.textContent = 'Still connecting. Our office line may be slow; one moment…'
     }, 6000))
   }
 
   function showNoLink() {
     show(stateView('muted', 'unlink', 'This page needs your download link', [
-      'Open the complete link from the e-mail you received. If you typed or pasted it, part of it may be missing — it ends with a long code after a # sign.',
+      'Open the complete link from the e-mail you received. If you typed or pasted it, part of it may be missing: it ends with a long code after a # sign.',
       h('p', { class: 'small', text: 'If the link was split across two lines in the e-mail, copy both parts into the address bar.' })
     ]))
   }
   function showNotFound() {
-    show(stateView('muted', 'unlink', 'This link is no longer available', [
+    show(stateView('muted', 'gone', 'This link is no longer available', [
       'The files may have been withdrawn by the sender, or the link expired some time ago and its files were removed.',
       'Please ask the person who sent you the link for a new one.'
     ]))
   }
   function showExpired() {
-    show(stateView('warn', 'clock', 'This link has expired', [
-      'For your security, download links from Dexterity Design Services stop working after the date chosen by the sender.',
-      'Please reply to the e-mail that brought you here and ask for a fresh link — it only takes us a moment.'
+    show(stateView('warn', 'expired', 'This link has expired', [
+      'Our links close on the date the sender chose, so project files are not left open indefinitely.',
+      'Reply to the e-mail that brought you here and we will send a fresh link. It takes us a minute.'
     ]))
   }
   function showBusy(retry) {
     var left = Math.min(Math.max(retry, 5), 120)
     var count = h('span', { class: 'countdown', text: String(left) })
-    show(stateView('muted', 'clock', 'One moment — the server is busy', [h('p', null, 'Trying again in ', count, ' s.')], [h('button', { class: 'btn', type: 'button', text: 'Try now', on: { click: start } })]))
+    show(stateView('muted', 'busy', 'One moment, our server is busy', [h('p', null, 'Trying again in ', count, ' s.')], [h('button', { class: 'btn', type: 'button', text: 'Try now', on: { click: start } })]))
     S.timers.push(setInterval(function () {
       if (--left <= 0) start()
       else count.textContent = String(left)
@@ -375,7 +422,7 @@
   var retryStep = 0
   function showUnreachable(configured) {
     if (!configured) {
-      show(stateView('warn', 'cloudOff', 'This service is not set up yet', ['The download page has not been connected to the office file server. Please let the sender know.']))
+      show(stateView('warn', 'unset', 'This service is not set up yet', ['The download page has not been connected to our office file server yet. Please let the sender know.']))
       return
     }
     var waits = [5, 10, 20, 30, 60]
@@ -383,8 +430,8 @@
     retryStep++
     var offline = navigator.onLine === false
     var count = h('span', { class: 'countdown', text: String(left) })
-    var v = stateView('warn', 'cloudOff', offline ? 'You appear to be offline' : "We can't reach our file server right now", offline ? ['Check your internet connection. This page will carry on by itself as soon as you are back online.'] : [
-      'This is usually brief — a short internet or power interruption at our office. Your link is still valid; nothing is lost.',
+    var v = stateView('warn', offline ? 'offline' : 'down', offline ? 'You appear to be offline' : "We can't reach our file server right now", offline ? ['Check your internet connection. This page carries on by itself as soon as you are back online.'] : [
+      'This is usually brief: a short internet or power interruption at our office. Your link is still valid and nothing is lost.',
       h('p', null, 'Trying again automatically in ', count, ' s.')
     ], [h('button', { class: 'btn primary', type: 'button', text: 'Try again now', on: { click: function () {
       start(true)
@@ -402,25 +449,31 @@
     var head = []
     var n = meta.fileCount
     var one = n === 1
-    head.push(h('p', { class: 'hero' }, h('span', { class: 'n', text: one ? (locked ? 'A file' : 'Your file') : n + ' files' }), (one ? ' is ' : ' are ') + (locked ? 'waiting for you.' : 'ready for you.')))
+    head.push(h('p', { class: 'eyebrow kicker', text: (locked ? 'Protected · ' : 'Transmittal · ') + (one ? '1 file' : n + ' files') }))
     head.push(h('h1', { class: 'title', text: meta.title }))
     var sent = typeof meta.createdAt === 'number' ? ' on ' + dateFmt.format(new Date(meta.createdAt - S.skew)).replace(',', '') : ''
     head.push(h('div', { class: 'from' }, h('div', { class: 'avatar', 'aria-hidden': 'true', text: initials(meta.sender) }),
       h('span', null, h('b', { text: meta.sender || 'Dexterity Design Services' }), ' sent you ' + (one ? 'a file' : n + ' files') + sent)))
+    // a drawing title block: label over value, hairlines between
     var pills = h('div', { class: 'pills' })
-    pills.appendChild(h('span', { class: 'pill' }, icon('box'), h('b', { text: fmtBytes(meta.totalSize) }), n === 1 ? '' : ' in ' + n + ' files'))
+    var cell = function (cls, label, value, sub) {
+      return h('span', { class: 'pill' + (cls ? ' ' + cls : '') }, h('span', { class: 'k eyebrow', 'aria-hidden': 'true', text: label }), h('span', { class: 'vh', text: label + ': ' }), h('span', { class: 'v' }, value), sub ? h('span', { class: 'vh', text: ' · ' }) : null, sub ? h('span', { class: 'd', text: sub }) : null)
+    }
+    pills.appendChild(cell('', 'Size', h('b', { text: fmtBytes(meta.totalSize) }), n === 1 ? '' : 'in ' + n + ' files'))
     var ex = h('span', { class: 'pill' })
     var paint = function () {
       var e = expiryText(meta.expiresAt)
       if (e.over) return showExpired()
-      ex.className = 'pill' + (e.soon ? ' soon' : '')
-      ex.replaceChildren(icon('clock'), 'Expires ', h('b', { text: e.rel }), ' · ' + e.abs)
+      var c = cell(e.soon ? 'soon' : '', 'Link open until', h('span', null, 'Expires ', h('b', { text: e.rel })), e.abs)
+      ex.className = c.className
+      ex.replaceChildren.apply(ex, Array.prototype.slice.call(c.childNodes))
     }
     paint()
     pills.appendChild(ex)
-    if (meta.needsPassword) pills.appendChild(h('span', { class: 'pill' }, icon('lock'), 'Password protected'))
+    if (meta.needsPassword) pills.appendChild(cell('', 'Access', h('b', { text: 'Password protected' })))
     if (meta.message) head.push(h('blockquote', { class: 'message', text: meta.message }))
     head.push(pills)
+    head.push(direct(locked ? 'valved shut' : 'idle'))
     head.tick = paint
     return head
   }
@@ -476,7 +529,7 @@
     var head = headView(meta, true)
     // the page has one h1: the link title stays the heading, the password field is the focus target
     var v = split('locked', head, [h('div', { class: 'lock-glyph' }, icon('lock')), h('h2', { class: 'ask', text: 'Enter the password to see your files' }),
-      h('p', { text: 'The sender protected this link. They will have given you the password separately — by phone or in another message.' }), form])
+      h('p', { text: 'The sender protected this link. They will have given you the password separately, by phone or in another message.' }), form])
     show(v)
     v.querySelector('h1').removeAttribute('tabindex')
     S.timers.push(setInterval(head.tick, 30000))
@@ -655,6 +708,7 @@
       update: function (p) {
         var pct = p.size ? Math.min(100, (p.got / p.size) * 100) : 100
         bar.style.width = pct.toFixed(1) + '%'
+        bar.parentNode.className = 'bar' + (p.cls === 'warn' ? ' wait' : '')
         if (p.text) {
           left.textContent = p.text
           right.replaceChildren(p.got ? fmtBytes(p.got) + ' of ' + fmtBytes(p.size) + ' · ' : '', cancel)
@@ -692,6 +746,7 @@
       return { kind: e && e.name === 'AbortError' ? 'cancelled-picker' : 'nopicker' }
     }
     var ui = progressUi(row)
+    setRoute('flowing')
     var lock = null
     try {
       lock = navigator.wakeLock ? await navigator.wakeLock.request('screen') : null
@@ -703,7 +758,8 @@
       res = { kind: 'failed' }
     }
     if (lock) lock.release().catch(function () {})
-    if (res.kind === 'verified') ui.finish('done', h('span', { class: 'ok', text: 'Saved and verified — the file arrived complete and unaltered (SHA-256 matches).' }))
+    setRoute(res.kind === 'verified' ? 'done' : 'idle')
+    if (res.kind === 'verified') ui.finish('done', h('span', { class: 'ok', text: 'Saved and verified. The file arrived complete and identical to the one we sent.' }))
     else if (res.kind === 'cancelled') ui.box.remove()
     else if (res.kind === 'corrupt') ui.finish('bad', h('span', { class: 'err', text: 'The file did not arrive intact. Please download it again; if it keeps happening, tell the sender.' }))
     else if (res.kind === 'failed') ui.finish('bad', h('span', { class: 'err', text: 'The download could not be completed after several tries. Please try again later.' }))
@@ -740,7 +796,11 @@
         return false
       }
       navigate(f)
-      say('good', 'check', 'Your download has started — look for ' + (single ? 'it' : '“' + f.name + '”') + " in your browser's downloads. ", h('button', { class: 'link', type: 'button', text: "Didn't start? Try again", on: { click: function () {
+      setRoute('flowing')
+      S.timers.push(setTimeout(function () {
+        setRoute('done')
+      }, 2600))
+      say('good', 'check', 'Your download has started. Look for ' + (single ? 'it' : '“' + f.name + '”') + " in your browser's downloads. ", h('button', { class: 'link', type: 'button', text: "Didn't start? Try again", on: { click: function () {
         navigate(f)
       } } }))
       return true
@@ -755,7 +815,7 @@
         native(f, dl)
       })
       var hashBox = null
-      var detail = h('button', { class: 'btn ghost sm', type: 'button', 'aria-expanded': 'false', text: 'Checksum' })
+      var detail = h('button', { class: 'btn ghost sm', type: 'button', 'aria-expanded': 'false', 'aria-label': 'Details of ' + f.name, text: 'Details' })
       detail.addEventListener('click', function () {
         if (hashBox) {
           hashBox.remove()
@@ -763,16 +823,16 @@
           detail.setAttribute('aria-expanded', 'false')
           return
         }
-        hashBox = h('div', { class: 'hash more' }, h('b', { text: 'SHA-256 checksum' }), h('code', { text: f.sha256 }),
-          h('button', { class: 'btn sm', type: 'button', text: 'Copy checksum', on: { click: function () {
-            copy(f.sha256, 'Checksum copied')
+        hashBox = h('div', { class: 'hash more' }, h('b', { class: 'eyebrow', text: 'Fingerprint · SHA-256' }), h('code', { text: f.sha256 }),
+          h('button', { class: 'btn sm', type: 'button', text: 'Copy fingerprint', on: { click: function () {
+            copy(f.sha256, 'Fingerprint copied')
           } } }),
-          h('p', { class: 'how', text: 'A fingerprint of the exact file we sent. To compare on Windows: open PowerShell and run  Get-FileHash "' + safeName(f.name) + '"  — the result should match.' }))
+          h('p', { class: 'how', text: 'Only needed if your IT team asks for it. On Windows, PowerShell\u2019s  Get-FileHash "' + safeName(f.name) + '"  gives the same value for an identical file.' }))
         if (canSave) {
           hashBox.appendChild(h('button', { class: 'btn sm', type: 'button', on: { click: function () {
             verifiedDownload(f, row)
-          } } }, icon('shield'), 'Download and verify automatically'))
-          hashBox.appendChild(h('p', { class: 'how', text: 'Saves the file through this page with live progress, resumes by itself after a dropped connection, and checks the fingerprint for you. Keep this tab open until it finishes.' }))
+          } } }, icon('shield'), 'Download and confirm on this page'))
+          hashBox.appendChild(h('p', { class: 'how', text: 'Saves through this page with live progress, resumes by itself after a dropped connection and compares the fingerprint for you. Keep this tab open until it finishes.' }))
         }
         row.appendChild(hashBox)
         detail.setAttribute('aria-expanded', 'true')
@@ -843,8 +903,9 @@
       cta.appendChild(h('span', { class: 'sub', text: canFolder ? 'You choose a folder; each file is saved there and verified.' : 'Or pick single files below.' }))
     }
     // the main action comes first in reading and Tab order; the style sheet shows it under the list
-    body.push(cta, status, h('h2', { class: 'files-title', text: single ? 'Your file' : 'Your files' }), list)
-    if (meta.totalSize > 300 * 1048576) body.push(h('div', { class: 'note' }, icon('info'), h('span', { text: 'This is a large download, sent straight from our office. It may take a while on a slow connection; if it is interrupted, your browser can resume it from its downloads list.' })))
+    body.push(cta, status, h('h2', { class: 'files-title eyebrow', text: single ? 'Your file' : 'Your files' }), list)
+    body.push(h('p', { class: 'assure' }, icon('shield'), h('span', null, h('b', { text: 'Integrity assured.' }), ' Every file is fingerprinted when we send it and checked again before it leaves our server. Nothing for you to do.')))
+    if (meta.totalSize > 300 * 1048576) body.push(h('div', { class: 'note' }, icon('info'), h('span', { text: 'A large download. It may take a while on a slow connection; if it is interrupted, your browser can resume it from its downloads list.' })))
     // "Trouble downloading? Reply to the e-mail…" is in the page footer, under this
     body.push(h('p', { class: 'fine', text: 'Only download files you were expecting from ' + (meta.sender || 'us') + '.' }))
 

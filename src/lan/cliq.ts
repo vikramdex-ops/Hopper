@@ -18,8 +18,8 @@ export interface CliqResult {
 
 let chain: Promise<unknown> = Promise.resolve()
 
-/** Post a bot message to the given emails. Never throws. */
-export function postCliq(cfg: OfficeConfig['cliq'] | undefined, emails: string[], text: string): Promise<CliqResult> {
+/** Post a bot message to the given emails; `extra` adds Cliq message fields (card, buttons). Never throws. */
+export function postCliq(cfg: OfficeConfig['cliq'] | undefined, emails: string[], text: string, extra?: Record<string, unknown>): Promise<CliqResult> {
   const run = async (): Promise<CliqResult> => {
     if (!cfg?.endpoint || !cfg.zapikey) return { ok: false, status: 0, error: 'Cliq bot is not configured (endpoint and zapikey)' }
     const to = [...new Set(emails.map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)))]
@@ -37,7 +37,7 @@ export function postCliq(cfg: OfficeConfig['cliq'] | undefined, emails: string[]
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.slice(0, MAX_TEXT), userids: to.join(',') }),
+        body: JSON.stringify({ ...(extra ?? {}), text: text.slice(0, MAX_TEXT), userids: to.join(',') }),
         signal: AbortSignal.timeout(TIMEOUT_MS)
       })
       if (res.ok) return { ok: true, status: res.status }
