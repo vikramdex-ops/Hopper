@@ -1,5 +1,5 @@
 /* Dexterity Share design language: "Line of flow".
-   Brand tokens from dexteritydesign.co.in (kit: <work-folder>\Dexterity-Brand). A file travels along one
+   Brand tokens from dexteritydesign.co.in. A file travels along one
    pipe run from our office to the reader. Every state is a state of that line: drawing (connecting),
    flowing (moving data), a closed valve (expired, locked, busy), a break between flanges (our server
    is not answering), a dashed far end (your connection is down), a cap (nothing at the end).

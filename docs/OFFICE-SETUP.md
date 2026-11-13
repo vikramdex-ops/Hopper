@@ -12,15 +12,14 @@ office rules need a one-time setup, done once, on whichever PC you choose.
   Office page turns read-only: *"The office is set up by its admin on PC-NAME"*, with the office
   name, where the config was loaded from, whether this PC has **Joined**, the key fingerprint and
   a **Join office** box.
-- **Who can still change it** once set up: that PC, and the Windows accounts **asha**, **admin2**
-  and **admin3** on any PC. Hopper refuses a save from anyone else.
+- **Who can still change it** once set up: that PC, and the standing admins (Windows accounts named when Hopper is built) on any PC. Hopper refuses a save from anyone else.
 - **Revoke setup** (Office page, for those same people) undoes the lock, for example to move the
   always-on server to another PC. Every PC gets the full page back until the next setup locks it
   again. The old share server keeps serving client links until the new PC presses
   **Use this PC**; then the old one stops by itself.
 - **A PC that can't read `office.json`** can't tell whether the office is set up, so it gets the
   read-only page with **Join office**, where the right file can be loaded. Creating the very first
-  `office.json` is therefore done by Asha, Admin2 or Admin3, or from a PC that can already read an
+  `office.json` is therefore done by a standing admin, or from a PC that can already read an
   existing one.
 - **Announcements**: everyone can post one, from any PC.
 
@@ -37,7 +36,7 @@ untick *Settings → General → Keep running in the tray* to change that.
 
 1. Open **Settings → Office**.
 2. **Office config file**: a path every PC can read. The default is
-   `\\10.0.0.2\office-share\_Hopper\office.json`. If it doesn't exist yet,
+   `\\<file server>\<share>\_Hopper\office.json`. If it doesn't exist yet,
    Hopper creates it when you save. To keep it somewhere else, use **Move office config to…**
    later: it writes `office.json` and the announcements into the folder you pick and leaves a
    pointer in the old file, so PCs that can read the old place follow by themselves. A folder on
@@ -45,7 +44,7 @@ untick *Settings → General → Keep running in the tray* to change that.
 3. **Office key** → **Generate**. This shared secret encrypts PC-to-PC transfers and lets Hopper
    ignore devices that aren't part of the office. Anyone with the key can send to office PCs.
 4. **Server inbox**: where shares for colleagues who are offline wait (default
-   `\\10.0.0.2\office-share\_Hopper\Inbox`). Each person gets a sub-folder
+   `\\<file server>\<share>\_Hopper\Inbox`). Each person gets a sub-folder
    named after their Windows account.
 5. **Save to server**.
 
@@ -57,7 +56,7 @@ A PC is **Joined** when it has the office key. It gets it in one of three ways:
    on start. Nothing to do. If the PC uses a different path, set it under
    *Settings → Office → Join office → Office config file*.
 2. **Invite over the LAN.** The admin clicks **Invite PCs** on the Office page. For two minutes,
-   every Hopper on the subnet that has **no key** shows a bar: *"Asha (WS-030, 10.0.0.x)
+   every Hopper on the subnet that has **no key** shows a bar: *"Asha (PC-30, 192.168.1.x)
    invites this PC to join Dexterity Design Services — Join / Ignore"*, with the key fingerprint.
    Nothing is applied until the person clicks **Join**. A PC that already has a different key only
    gets a notice. A PC already on the same key ignores the invite.
@@ -176,5 +175,5 @@ All of these reach an offline colleague through the server inbox when they next 
 | "port-in-use" | Another Hopper (or app) uses TCP 47821; Hopper tries up to 47830 automatically. |
 | Shares always go via the server | The firewall is blocking TCP 47821 on the receiving PC. |
 | An announcement did not reach a PC that was off | That PC can't read the office folder. It still gets announcements while it is on. |
-| "The office is set up on PC-NAME; only that PC, or Asha, Admin2 or Admin3, can change it" | Make the change on that PC, ask Asha, Admin2 or Admin3, or have one of them **Revoke setup** first. |
+| "The office is set up on PC-NAME; only that PC, or a standing admin, can change it" | Make the change on that PC, ask a standing admin, or have one of them **Revoke setup** first. |
 | No Cliq DM | Bot enabled, endpoint and zapikey saved; the recipient's Zoho email is filled in and they have subscribed to the bot. Use *Send test DM*. |

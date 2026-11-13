@@ -6,8 +6,19 @@ export class HopperShell {
   private proc?: ChildProcessWithoutNullStreams
   private seq = 0
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; timer?: NodeJS.Timeout }>()
+  private idleTimer?: NodeJS.Timeout
 
-  constructor(private exe: string) {}
+  /** idleMs: let the helper exit after this long with nothing to do (it restarts on the next call). */
+  constructor(private exe: string, private idleMs = 0) {}
+
+  private settled() {
+    if (!this.idleMs || this.pending.size) return
+    clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => {
+      if (!this.pending.size) this.dispose()
+    }, this.idleMs)
+    this.idleTimer.unref?.()
+  }
 
   private start() {
     if (this.proc && this.proc.exitCode === null && !this.proc.killed) return this.proc
@@ -25,8 +36,11 @@ export class HopperShell {
       this.pending.delete(msg.id)
       if (p.timer) clearTimeout(p.timer)
       msg.ok ? p.resolve(msg.result) : p.reject(new Error(msg.error))
+      this.settled()
     })
     proc.on('exit', () => {
+      // an idle helper that was let go must not take a newer one's calls with it
+      if (this.proc !== proc) return
       for (const [, p] of this.pending) p.reject(new Error('HopperShell exited'))
       this.pending.clear()
       this.proc = undefined
@@ -37,6 +51,7 @@ export class HopperShell {
   }
 
   call<T = any>(cmd: string, args: Record<string, unknown> = {}, timeoutMs = 30000): Promise<T> {
+    clearTimeout(this.idleTimer)
     const proc = this.start()
     const id = ++this.seq
     return new Promise<T>((resolve, reject) => {
@@ -45,6 +60,7 @@ export class HopperShell {
         entry.timer = setTimeout(() => {
           this.pending.delete(id)
           reject(new Error(`HopperShell ${cmd} timed out`))
+          this.settled()
         }, timeoutMs)
       }
       this.pending.set(id, entry)
@@ -53,6 +69,7 @@ export class HopperShell {
   }
 
   dispose() {
+    clearTimeout(this.idleTimer)
     this.proc?.stdin.end()
     this.proc = undefined
   }

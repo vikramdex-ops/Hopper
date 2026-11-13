@@ -1,6 +1,6 @@
 // Dexterity Share setup wizard in the real app (a private build), against local stand-ins for
 // GitHub (user, gists, the cloudflared release) and for cloudflared itself. Nothing leaves this PC.
-//   npx electron-vite build --outDir <work-folder>\_Claude_Work\temp\share-agent\app\out
+//   npx electron-vite build --outDir <HOPPER_WORK_ROOT>\share-agent\app\out
 //   node --no-warnings tests/e2e/pubshare-wizard.mjs
 import { TEST_WORK } from '../unit/pubshare-hooks.mjs'
 import { _electron as electron } from 'playwright-core'

@@ -11,7 +11,7 @@ fast archives and a transfer queue. Interview decisions are dated 2026-11-05.
 | Platform | Windows 10/11 x64 only |
 | Foundation | Electron + TypeScript + Vite + Svelte 5; heavy work in background processes |
 | Look | Fluent 11: Mica on Win 11 (solid fallback on Win 10), Segoe UI Variable, sidebar, breadcrumbs |
-| Users | Whole Dexterity office, fewer than 20 PCs on one subnet (10.0.0.x) |
+| Users | Whole Dexterity office, fewer than 20 PCs on one subnet |
 | LAN | Direct PC-to-PC transfer with fallback to a server inbox on U:; auto-accept to Inbox |
 | Cliq | One office bot sends a DM to each recipient |
 | Archives | Bundled 7-Zip engine; installed WinRAR for creating .rar |
@@ -114,4 +114,4 @@ talks to the renderer through its own MessagePort, so a long copy never delays a
 
 ## Disk rule
 
-Builds and dev runs keep every cache, temp and user-data folder under `<work-folder>\_Claude_Work`.
+Builds and dev runs keep every cache, temp and user-data folder in a work folder off the system drive.

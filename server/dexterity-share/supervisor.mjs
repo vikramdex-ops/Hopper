@@ -9,7 +9,7 @@ import fs, { promises as fsp } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Log, loadConfig, createShareServer } from './server.mjs'
+import { DEFAULTS, Log, loadConfig, createShareServer, publicHostOf } from './server.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -257,7 +257,12 @@ export class Supervisor {
     if (this.stopping) return
     if (this.cfg.inProcess) {
       // Hopper hosts the server inside its own share process: no second program to start.
-      const app = createShareServer(this.cfg.server, { log: this.serverLog })
+      // the server answers only to loopback and to the public address it is reached at (DNS-rebinding guard)
+      const allowedHosts = [...(this.cfg.server.allowedHosts ?? DEFAULTS.allowedHosts), ...publicHostOf(this.cfg.tunnel?.publicBase)]
+      // Only Cloudflare overwrites CF-Connecting-IP. Behind any other front ("external") a client could
+      // set it to a new value on every request and walk past every per-client limit, so it is ignored.
+      const clientIpHeader = this.cfg.tunnel?.mode === 'external' ? '' : this.cfg.server.clientIpHeader
+      const app = createShareServer({ ...this.cfg.server, allowedHosts, clientIpHeader }, { log: this.serverLog })
       app.listen().then(
         () => {
           this.app = app

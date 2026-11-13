@@ -65,6 +65,12 @@ foreach ($secret in 'pointer-token.txt', 'tunnel-token.txt') {
     if ($RunAs -eq 'LocalService') { & icacls $file /grant 'NT AUTHORITY\LOCAL SERVICE:R' /Q | Out-Null }
   }
 }
+# state\ holds secret.key (signs unlock tokens: whoever reads it skips every link password) and
+# pointer-key.pem (signs the server address). Node's file modes mean nothing on Windows, so the
+# folder itself is closed: no inherited "Users: read", only the service, SYSTEM and Administrators.
+$stateOwner = if ($RunAs -eq 'LocalService') { 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M' } else { 'NT AUTHORITY\SYSTEM:(OI)(CI)F' }
+& icacls $state /inheritance:r /grant:r 'BUILTIN\Administrators:(OI)(CI)F' 'NT AUTHORITY\SYSTEM:(OI)(CI)F' $stateOwner /T /Q | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "Could not restrict access to $state (icacls exit $LASTEXITCODE)." }
 
 $action = New-ScheduledTaskAction -Execute $Node -Argument '--no-warnings supervisor.mjs' -WorkingDirectory $here
 $trigger = New-ScheduledTaskTrigger -AtStartup

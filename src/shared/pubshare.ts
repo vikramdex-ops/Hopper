@@ -144,7 +144,7 @@ export const DEFAULT_MIN_FREE_GB = 5
 
 export const EXPIRY_DAYS = [1, 3, 7, 14, 30, 60, 90] as const
 export const DEFAULT_EXPIRY_DAYS = 7
-export const DEFAULT_PAGE_URL = 'https://vikramdex-ops.github.io/Hopper/share/'
+export const DEFAULT_PAGE_URL = 'https://dexterity-share.pages.dev/'
 export const MANIFEST_VERSION = 1
 /** 128 random bits as 26 lower-case base32 characters: safe in e-mail, on case-blind disks and in URLs. */
 export const SHARE_ID_RE = /^[a-z2-7]{26}$/
@@ -344,6 +344,8 @@ export const daysLeft = (expiresAt: number, now = Date.now()) => Math.max(0, Mat
 export function safeFileName(name: string, fallback = 'file') {
   const s = name
     .normalize('NFC')
+    // invisible direction controls could make "x‮fdp.exe" show as "xexe.pdf" to a client
+    .replace(/[؜‎‏‪-‮⁦-⁩]/g, '')
     .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '_')
     .replace(/[. ]+$/, '')
     .trim()
@@ -399,3 +401,6 @@ export function mailtoUrl(subject: string, body: string) {
   if (enc(b).length > 1800) b = b.split('\r\n').filter((l) => !l.startsWith('  - ')).join('\r\n')
   return `mailto:?subject=${enc(subject)}&body=${enc(b)}`
 }
+
+/** The sender clients see when a person has set no display name (never the Windows account name). */
+export const PUBLIC_SENDER = 'Dexterity Design Services'

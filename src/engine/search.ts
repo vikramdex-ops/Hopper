@@ -2,18 +2,18 @@
 // on-demand content search, and the duplicate finder.
 import { createReadStream, promises as fsp, watch, type FSWatcher } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { deserialize, serialize } from 'node:v8'
-import { basename, dirname, join } from 'node:path'
+import { deserialize } from 'node:v8'
+import { dirname, join } from 'node:path'
 import type { Entry, IndexStatus, SearchQuery } from '@shared/types'
 import type { EngineCtx } from './index'
 import { listRaw, walk } from './fsops'
 import { extOf } from './fsutil'
+import { NameIndex, type IndexMatcher } from './nameindex'
 
 // ---------------------------------------------------------------------------
 // Query parsing: words are AND-ed, * and ? are wildcards, ext:pdf, /regex/
 
-interface Matcher {
-  test(nameLower: string): boolean
+interface Matcher extends IndexMatcher {
   ext?: Set<string>
 }
 
@@ -25,6 +25,13 @@ export function parseQuery(q: string, caseSensitive = false): Matcher {
     const r = new RegExp(re[1], re[2].includes('i') || !caseSensitive ? 'i' : '')
     return { test: (n) => r.test(n) }
   }
+  // The longest literal that every match must contain lets the index jump straight to hits.
+  let anchor = ''
+  const words: string[] = []
+  let wild = false
+  const literal = (t: string) => {
+    if (t.length > anchor.length) anchor = t
+  }
   for (const raw of q.trim().split(/\s+/).filter(Boolean)) {
     const m = /^ext:(.+)$/i.exec(raw)
     if (m) {
@@ -33,11 +40,21 @@ export function parseQuery(q: string, caseSensitive = false): Matcher {
     }
     const w = raw.toLowerCase()
     if (/[*?]/.test(w)) {
+      wild = true
+      for (const part of w.split(/[*?]/)) literal(part)
       const r = new RegExp('^' + w.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
       tests.push((n) => r.test(n))
-    } else tests.push((n) => n.includes(w))
+    } else {
+      literal(w)
+      words.push(w)
+      tests.push((n) => n.includes(w))
+    }
   }
+  if (!anchor && exts.size === 1) anchor = '.' + [...exts][0]
   return {
+    anchor: anchor || undefined,
+    // extOf() never returns '' for a name with an extension or anything containing a dot
+    plain: wild || [...exts].some((e) => !e || e.includes('.')) ? undefined : { words, exts: [...exts] },
     ext: exts.size ? exts : undefined,
     test: (n) => {
       if (exts.size && !exts.has(extOf(n))) return false
@@ -48,207 +65,202 @@ export function parseQuery(q: string, caseSensitive = false): Matcher {
 }
 
 // ---------------------------------------------------------------------------
-// Index: per root, folders are stored once; files reference their folder by number.
+// Index: one compact NameIndex per root (see nameindex.ts), kept current by a recursive watcher.
 
 interface RootIndex {
-  root: string
-  dirs: string[]
-  dirIds: Map<string, number>
-  names: string[] // lower-case; '' = deleted
-  display: string[]
-  dirOf: number[]
-  size: number[]
-  mtime: number[]
-  isDir: boolean[]
-  byDir: Map<number, number[]>
-  ready: boolean
-  scannedAt?: number
-  dead: number
+  ix: NameIndex
   watcher?: FSWatcher
 }
 
-function emptyIndex(root: string): RootIndex {
-  return { root, dirs: [], dirIds: new Map(), names: [], display: [], dirOf: [], size: [], mtime: [], isDir: [], byDir: new Map(), ready: false, dead: 0 }
-}
+const norm = (p: string) => (p.endsWith('\\') ? p : p + '\\').toLowerCase()
 
-function dirId(ix: RootIndex, dir: string) {
-  const k = dir.toLowerCase()
-  let id = ix.dirIds.get(k)
-  if (id === undefined) {
-    id = ix.dirs.length
-    ix.dirs.push(dir)
-    ix.dirIds.set(k, id)
+/** Roots that sit inside another wanted root are covered by it; indexing them again doubles the memory. */
+export function nestedRoots(want: string[]) {
+  const covered = new Map<string, string>()
+  const sorted = [...new Set(want)].sort((a, b) => a.length - b.length)
+  const kept: string[] = []
+  for (const r of sorted) {
+    const outer = kept.find((o) => norm(r).startsWith(norm(o)))
+    if (outer) covered.set(r, outer)
+    else kept.push(r)
   }
-  return id
+  return { kept, covered }
 }
 
-function addEntry(ix: RootIndex, e: Entry) {
-  const d = dirId(ix, dirname(e.path))
-  const i = ix.names.length
-  ix.names.push(e.name.toLowerCase())
-  ix.display.push(e.name)
-  ix.dirOf.push(d)
-  ix.size.push(e.size)
-  ix.mtime.push(e.mtime)
-  ix.isDir.push(e.dir)
-  let list = ix.byDir.get(d)
-  if (!list) ix.byDir.set(d, (list = []))
-  list.push(i)
-}
-
-function compact(ix: RootIndex): RootIndex {
-  const next = emptyIndex(ix.root)
-  next.ready = ix.ready
-  next.scannedAt = ix.scannedAt
-  next.watcher = ix.watcher
-  for (let i = 0; i < ix.names.length; i++) {
-    if (!ix.names[i]) continue
-    const dir = ix.dirs[ix.dirOf[i]]
-    addEntry(next, { name: ix.display[i], path: join(dir, ix.display[i]), dir: ix.isDir[i], size: ix.size[i], mtime: ix.mtime[i], ctime: 0, atime: 0, attrs: 0, ext: '' })
-  }
-  return next
+/** Convert an index saved by Hopper 2.6 and earlier (v8-serialised arrays). */
+function fromV1(root: string, d: any): NameIndex {
+  const ix = new NameIndex(root)
+  for (let i = 0; i < d.names.length; i++) ix.add(d.names[i], d.dirs[d.dirOf[i]], !!d.isDir[i], d.size[i], d.mtime[i])
+  ix.trim()
+  ix.ready = true
+  ix.scannedAt = d.scannedAt
+  return ix
 }
 
 export function searchHandlers(ctx: EngineCtx) {
   const roots = new Map<string, RootIndex>()
+  let covered = new Map<string, string>()
   const indexDir = join(ctx.dataDir, 'index')
   let building = false
-  const fileFor = (root: string) => join(indexDir, createHash('sha1').update(root.toLowerCase()).digest('hex').slice(0, 16) + '.bin')
+  const baseFor = (root: string) => join(indexDir, createHash('sha1').update(root.toLowerCase()).digest('hex').slice(0, 16))
+  const fileFor = (root: string) => baseFor(root) + '.ix2'
 
   const status = (): IndexStatus => ({
-    roots: [...roots.values()].map((r) => ({ path: r.root, files: r.names.length - r.dead, ready: r.ready, scannedAt: r.scannedAt })),
-    total: [...roots.values()].reduce((a, r) => a + r.names.length - r.dead, 0),
+    roots: [
+      ...[...roots.values()].map((r) => ({ path: r.ix.root, files: r.ix.live, ready: r.ix.ready, scannedAt: r.ix.scannedAt })),
+      ...[...covered].map(([path, outer]) => {
+        const o = roots.get(outer.toLowerCase())?.ix
+        return { path, files: 0, ready: !!o?.ready, scannedAt: o?.scannedAt, coveredBy: outer }
+      })
+    ],
+    total: [...roots.values()].reduce((a, r) => a + r.ix.live, 0),
     building
   })
 
-  const save = async (ix: RootIndex) => {
-    const c = ix.dead > ix.names.length * 0.2 ? compact(ix) : ix
-    if (c !== ix) roots.set(ix.root.toLowerCase(), c)
+  const save = async (r: RootIndex) => {
+    if (r.ix.dead > r.ix.n * 0.2) r.ix = r.ix.compact()
     await fsp.mkdir(indexDir, { recursive: true })
-    const data = serialize({ v: 1, root: c.root, dirs: c.dirs, names: c.display, dirOf: c.dirOf, size: c.size, mtime: c.mtime, isDir: c.isDir, scannedAt: c.scannedAt })
-    await fsp.writeFile(fileFor(c.root) + '.tmp', data)
-    await fsp.rename(fileFor(c.root) + '.tmp', fileFor(c.root))
+    const f = fileFor(r.ix.root)
+    await r.ix.save(f + '.tmp')
+    await fsp.rename(f + '.tmp', f)
   }
 
-  const load = async (root: string): Promise<RootIndex | null> => {
+  const load = async (root: string): Promise<NameIndex | null> => {
     try {
-      const d = deserialize(await fsp.readFile(fileFor(root)))
-      const ix = emptyIndex(root)
-      ix.dirs = d.dirs
-      d.dirs.forEach((p: string, i: number) => ix.dirIds.set(p.toLowerCase(), i))
-      ix.display = d.names
-      ix.names = d.names.map((n: string) => n.toLowerCase())
-      ix.dirOf = d.dirOf
-      ix.size = d.size
-      ix.mtime = d.mtime
-      ix.isDir = d.isDir
-      ix.dirOf.forEach((dd, i) => {
-        let l = ix.byDir.get(dd)
-        if (!l) ix.byDir.set(dd, (l = []))
-        l.push(i)
-      })
-      ix.ready = true
-      ix.scannedAt = d.scannedAt
+      const ix = await NameIndex.load(fileFor(root))
+      if (ix) return ix
+    } catch {
+      /* missing or unreadable: fall through */
+    }
+    // Older format: convert once, then drop the old file.
+    const old = baseFor(root) + '.bin'
+    try {
+      const ix = fromV1(root, deserialize(await fsp.readFile(old)))
+      // the old file goes only once the new one is safely written
+      if (await save({ ix }).then(() => true, () => false)) await fsp.rm(old, { force: true }).catch(() => {})
       return ix
     } catch {
       return null
     }
   }
 
-  /** Re-list one folder and patch the index (called from the recursive watcher). */
-  const rescanDir = async (ix: RootIndex, dir: string) => {
-    const id = ix.dirIds.get(dir.toLowerCase())
-    if (id !== undefined) {
-      for (const i of ix.byDir.get(id) ?? []) {
-        if (ix.names[i]) {
-          ix.names[i] = ''
-          ix.dead++
-        }
-      }
-      ix.byDir.set(id, [])
+  /** Re-list changed folders and patch the index (called from the recursive watcher). */
+  const rescanDirs = async (r: RootIndex, dirs: string[]) => {
+    const fresh = await Promise.all(dirs.map((d) => listRaw(ctx, d, 'index').catch(() => [] as Entry[])))
+    const ix = r.ix
+    const ids = new Set<number>()
+    for (const d of dirs) {
+      const id = ix.lookupDir(d)
+      if (id >= 0) ids.add(id)
     }
-    try {
-      for (const e of await listRaw(ctx, dir, 'index')) addEntry(ix, e)
-    } catch {
-      /* folder removed */
-    }
+    ix.removeIn(ids)
+    for (let k = 0; k < dirs.length; k++) for (const e of fresh[k]) ix.add(e.name, dirs[k], e.dir, e.size, e.mtime)
   }
 
-  const startWatcher = (ix: RootIndex) => {
-    if (ix.watcher) return
+  const saveTimers = new Map<string, NodeJS.Timeout>()
+  const dirtySave = (r: RootIndex) => {
+    clearTimeout(saveTimers.get(r.ix.root))
+    saveTimers.set(r.ix.root, setTimeout(() => void save(r).catch(() => {}), 60000))
+  }
+
+  const startWatcher = (r: RootIndex) => {
+    if (r.watcher) return
     const pending = new Set<string>()
     let timer: NodeJS.Timeout | undefined
     try {
-      ix.watcher = watch(ix.root, { recursive: true, persistent: false }, (_ev, rel) => {
+      r.watcher = watch(r.ix.root, { recursive: true, persistent: false }, (_ev, rel) => {
         if (!rel) return
-        pending.add(dirname(join(ix.root, rel.toString())))
+        pending.add(dirname(join(r.ix.root, rel.toString())))
         clearTimeout(timer)
         timer = setTimeout(async () => {
           const dirs = [...pending]
           pending.clear()
-          for (const d of dirs) await rescanDir(ix, d)
-          dirtySave(ix)
+          await rescanDirs(r, dirs)
+          dirtySave(r)
         }, 1500)
       })
-      ix.watcher.on('error', () => {
-        ix.watcher?.close()
-        ix.watcher = undefined
+      r.watcher.on('error', () => {
+        r.watcher?.close()
+        r.watcher = undefined
       })
     } catch {
       /* not watchable */
     }
   }
 
-  const saveTimers = new Map<string, NodeJS.Timeout>()
-  const dirtySave = (ix: RootIndex) => {
-    clearTimeout(saveTimers.get(ix.root))
-    saveTimers.set(ix.root, setTimeout(() => void save(ix).catch(() => {}), 60000))
-  }
-
   const build = async (root: string) => {
-    const ix = emptyIndex(root)
-    const prev = roots.get(root.toLowerCase())
+    const ix = new NameIndex(root)
+    const key = root.toLowerCase()
+    let r = roots.get(key)
     // keep serving the old index while the new one builds
-    if (!prev) roots.set(root.toLowerCase(), ix)
+    if (!r) roots.set(key, (r = { ix }))
     await walk(ctx, root, (e) => {
       // skip noise that nobody searches for
       if (e.dir && /^(\$recycle\.bin|system volume information|node_modules|\.git)$/i.test(e.name)) return false
-      addEntry(ix, e)
+      ix.add(e.name, dirname(e.path), e.dir, e.size, e.mtime)
     }, { concurrency: 3, lane: 'index' })
+    ix.trim()
     ix.ready = true
     ix.scannedAt = Date.now()
-    ix.watcher = prev?.watcher
-    roots.set(root.toLowerCase(), ix)
-    startWatcher(ix)
-    await save(ix).catch(() => {})
+    if (roots.get(key) !== r) return // the root was removed while building
+    r.ix = ix
+    startWatcher(r)
+    await save(r).catch(() => {})
     ctx.emit('index', status())
   }
 
-  const configure = async (want: string[]) => {
+  // Background refreshes run one at a time: each holds a second index while the old one is
+  // served, and several drives walked at once multiplied that.
+  let refreshes = Promise.resolve()
+  const refresh = (root: string) => {
+    refreshes = refreshes.then(() => (roots.has(root.toLowerCase()) ? build(root) : undefined)).catch(() => {})
+  }
+
+  /** Delete index files of folders that are no longer indexed (they are hundreds of MB each). */
+  const dropUnused = async (want: string[]) => {
+    if (!want.length) return // indexing switched off: keep the files for when it comes back
+    const keep = new Set(want.map((r) => baseFor(r)))
+    const names = await fsp.readdir(indexDir).catch(() => [] as string[])
+    for (const f of names) {
+      const base = join(indexDir, f.replace(/\.(bin|ix2)(\.tmp)?$/, ''))
+      // a kept root's .bin was converted (and removed) on load; any other is stale
+      if ((f.endsWith('.bin') || f.endsWith('.ix2')) && !keep.has(base)) await fsp.rm(join(indexDir, f), { force: true }).catch(() => {})
+    }
+  }
+
+  let generation = 0
+  const configure = async (wantAll: string[]) => {
+    const gen = ++generation
+    const nest = nestedRoots(wantAll)
+    covered = nest.covered
+    const want = nest.kept
     const wanted = new Set(want.map((w) => w.toLowerCase()))
-    for (const [k, ix] of roots) {
+    for (const [k, r] of roots) {
       if (!wanted.has(k)) {
-        ix.watcher?.close()
+        r.watcher?.close()
+        clearTimeout(saveTimers.get(r.ix.root))
         roots.delete(k)
       }
     }
     building = true
     ctx.emit('index', status())
     for (const root of want) {
-      if (roots.get(root.toLowerCase())?.ready) continue
+      if (roots.get(root.toLowerCase())?.ix.ready) continue
       const loaded = await load(root)
       if (loaded) {
-        roots.set(root.toLowerCase(), loaded)
-        startWatcher(loaded)
+        const r: RootIndex = { ix: loaded }
+        roots.set(root.toLowerCase(), r)
+        startWatcher(r)
         ctx.emit('index', status())
         // refresh stale indexes in the background (older than a day)
-        if (!loaded.scannedAt || Date.now() - loaded.scannedAt > 86400000) void build(root).catch(() => {})
+        if (!loaded.scannedAt || Date.now() - loaded.scannedAt > 86400000) refresh(root)
       } else {
         await build(root).catch(() => {})
       }
     }
     building = false
     ctx.emit('index', status())
+    if (gen === generation) await dropUnused(want) // a newer configure decides instead
   }
 
   const query = (q: string, opts: { limit?: number; dirsOnly?: boolean; under?: string } = {}) => {
@@ -256,22 +268,29 @@ export function searchHandlers(ctx: EngineCtx) {
     const m = parseQuery(q)
     const limit = opts.limit ?? 500
     const out: Entry[] = []
-    const under = opts.under?.toLowerCase()
-    let total = 0
-    for (const ix of roots.values()) {
-      for (let i = 0; i < ix.names.length; i++) {
-        const n = ix.names[i]
-        if (!n || !m.test(n)) continue
-        if (opts.dirsOnly && !ix.isDir[i]) continue
-        const dir = ix.dirs[ix.dirOf[i]]
-        if (under && !dir.toLowerCase().startsWith(under)) continue
-        total++
-        if (out.length < limit) {
-          const name = ix.display[i]
-          out.push({ name, path: join(dir, name), dir: ix.isDir[i], size: ix.size[i], mtime: ix.mtime[i], ctime: 0, atime: 0, attrs: ix.isDir[i] ? 0x10 : 0, ext: ix.isDir[i] ? '' : extOf(name) })
+    const under = opts.under ? norm(opts.under) : undefined
+    for (const { ix } of roots.values()) {
+      if (out.length >= limit) break
+      // a search inside one folder never needs the other drives' indexes
+      if (under && !norm(ix.root).startsWith(under) && !under.startsWith(norm(ix.root))) continue
+      // whether a folder lies under `under`, worked out once per folder
+      const inside = new Map<number, boolean>()
+      ix.scan(m, (i) => {
+        if (under) {
+          const d = ix.dirIdOf(i)
+          let ok = inside.get(d)
+          if (ok === undefined) inside.set(d, (ok = norm(ix.dirPath(d)).startsWith(under)))
+          if (!ok) return
         }
-      }
+        const h = ix.hit(i)
+        out.push({ name: h.name, path: join(h.dir, h.name), dir: h.isDir, size: h.size, mtime: h.mtime, ctime: 0, atime: 0, attrs: h.isDir ? 0x10 : 0, ext: h.isDir ? '' : extOf(h.name) })
+        // stop at the limit: callers only show the entries, and counting every hit of a
+        // one-letter query over millions of names costs seconds
+        return out.length < limit
+      }, opts.dirsOnly ? (i) => ix.isDirEntry(i) : undefined)
     }
+    // total is a lower bound once the limit is reached
+    const total = out.length
     return { entries: out, total, ms: Date.now() - t }
   }
 
@@ -302,7 +321,7 @@ export function searchHandlers(ctx: EngineCtx) {
     },
     'index.status': () => status(),
     'index.rebuild': async (root?: string) => {
-      for (const r of root ? [root] : [...roots.values()].map((x) => x.root)) await build(r)
+      for (const r of root ? [root] : [...roots.values()].map((x) => x.ix.root)) await build(r)
       return status()
     },
     'index.query': (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string }) => query(q, opts),

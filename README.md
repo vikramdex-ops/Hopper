@@ -94,7 +94,7 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 - **Anyone can set the office up, once.** Until a PC sets the office up, every PC gets the full
   *Settings → Office* page, so the always-on Dexterity Share server can be any PC. **Use this PC**
   (or **Finish setup on this PC**) locks it: the other PCs' Office pages turn read-only within
-  about 20 seconds. That PC and asha, admin2 and admin3 can still change it.
+  about 20 seconds. That PC and the standing admins can still change it.
 - **Revoke setup** to move the always-on server: every PC gets the full page back until the next
   setup. Client links keep working until the new PC takes over.
 - **Announcements for everyone**: any colleague can post one.
@@ -215,7 +215,7 @@ A one-time setup, about five minutes:
 2. **Whoever sets the office up** (any PC, until one finishes): **Settings → Office**, point
    *Office config file* at a shared folder every PC can reach, create the office key and
    **Save to server**. **Use this PC** in Dexterity Share setup, or **Finish setup on this PC**,
-   locks the Office page to that PC (plus asha, admin2 and admin3); **Revoke setup** opens it again.
+   locks the Office page to that PC (plus the standing admins); **Revoke setup** opens it again.
 3. **Everyone else joins**: automatically from the shared config, from an invite the admin sends
    over the network (**Invite PCs**), or by pasting the key. Then **Settings → Sharing → Allow
    through Windows Firewall** (asks for admin once; the row then reads **Allowed**) and fill in

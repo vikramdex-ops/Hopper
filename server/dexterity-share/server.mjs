@@ -24,6 +24,12 @@ export const DEFAULTS = {
   allowedOrigins: ['https://vikramdex-ops.github.io'],
   stateDir: '',
   logDir: '',
+  /**
+   * Host names this server answers to, besides loopback. A request whose Host is anything else is
+   * refused: that stops a web page on this PC from reaching the server through DNS rebinding.
+   * '*.' matches any sub-domain. The supervisor adds the host of tunnel.publicBase.
+   */
+  allowedHosts: ['*.trycloudflare.com'],
   /** header that carries the real client address behind the tunnel ('' = use the socket address) */
   clientIpHeader: 'cf-connecting-ip',
   logClientIp: true,
@@ -82,6 +88,7 @@ const AUTH_RE = /^Bearer ([a-z2-7]{26})\.([A-Za-z0-9_-]{43})$/
 export function safeFileName(name, fallback = 'file') {
   const s = String(name)
     .normalize('NFC')
+    .replace(BIDI, '')
     .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '_')
     .replace(/[. ]+$/, '')
     .trim()
@@ -197,9 +204,16 @@ export function parseRange(header, size) {
   return { start, end: Math.min(end, size - 1) }
 }
 
+/**
+ * Invisible direction controls. "invoice‮fdp.exe" shows as "invoiceexe.pdf": a name a client
+ * sees must never carry them, so it always shows its real extension.
+ */
+const BIDI = /[؜‎‏‪-‮⁦-⁩]/g
+export const shownName = (name) => String(name).replace(BIDI, '')
+
 /** RFC 6266 / RFC 5987: an ASCII fallback plus the exact UTF-8 name. */
 export function contentDisposition(name) {
-  const clean = String(name).replace(/[\u0000-\u001f\u007f]/g, '').replace(/[\\/]/g, '_').slice(0, 255) || 'download'
+  const clean = shownName(name).replace(/[\u0000-\u001f\u007f]/g, '').replace(/[\\/]/g, '_').slice(0, 255) || 'download'
   const ascii = clean.replace(/[^\x20-\x7e]/g, '_').replace(/["\\%;]/g, '_')
   const star = encodeURIComponent(clean).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())
   return `attachment; filename="${ascii}"; filename*=UTF-8''${star}`
@@ -288,10 +302,41 @@ export function validateManifest(m, id) {
   return m
 }
 
+/** The host name of a Host header, lower-case, without port; '' when it is not a plain name or address. */
+export function hostOf(header) {
+  const h = String(header ?? '').trim().toLowerCase()
+  const m = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::\d{1,5})?$/.exec(h)
+  return m ? m[1].replace(/\.$/, '') : ''
+}
+
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
+/** May a request with this Host header be served? Loopback always; otherwise only the listed names. */
+export function hostAllowed(header, allowed = []) {
+  const h = hostOf(header)
+  if (!h) return false
+  if (LOOPBACK.has(h)) return true
+  for (const a of allowed) {
+    const want = String(a).trim().toLowerCase()
+    if (!want) continue
+    if (want.startsWith('*.') ? h.endsWith(want.slice(1)) && h.length > want.length - 1 : h === want) return true
+  }
+  return false
+}
+
 /** Is `child` strictly inside `parent`? Both must already be absolute. */
 export function inside(child, parent) {
   const rel = path.relative(parent, child)
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
+/** [host] of an https:// address, or []. */
+export function publicHostOf(base) {
+  try {
+    return base ? [new URL(String(base)).hostname.toLowerCase()] : []
+  } catch {
+    return []
+  }
 }
 
 /** A store must be an absolute folder at least one level below a drive or share root. */
@@ -314,6 +359,9 @@ export function loadConfig(file, env = process.env) {
   cfg.stateDir = path.resolve(base, cfg.stateDir || 'state')
   cfg.logDir = path.resolve(base, cfg.logDir || 'logs')
   cfg.allowedOrigins = (cfg.allowedOrigins ?? []).map((o) => String(o).replace(/\/+$/, '').toLowerCase())
+  cfg.allowedHosts = [...(cfg.allowedHosts ?? []), ...publicHostOf(raw.tunnel?.publicBase)]
+  // only Cloudflare overwrites CF-Connecting-IP; behind any other front a client could forge it
+  if (raw.tunnel?.mode === 'external') cfg.clientIpHeader = ''
   if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new Error('config: port must be 1-65535')
   if (!storeLooksSafe(cfg.store)) throw new Error('config: "store" must be an absolute folder path (not a drive root)')
   cfg.store = path.resolve(cfg.store)
@@ -504,8 +552,12 @@ export function createShareServer(config, hooks = {}) {
     let share = { state: 'missing' }
     try {
       if (!ID_RE.test(id) || !inside(dir, store)) throw new Error('bad id')
+      // A share folder must be a real folder in the store: a symbolic link or junction could point
+      // the server at anything this PC can read.
+      const dst = await fsp.lstat(dir)
+      if (!dst.isDirectory() || dst.isSymbolicLink()) throw new Error('not a plain folder')
       const file = path.join(dir, 'manifest.json')
-      const st = await fsp.stat(file)
+      const st = await fsp.lstat(file)
       if (!st.isFile() || st.size > 1 << 20) throw new Error('bad manifest')
       const m = validateManifest(JSON.parse((await fsp.readFile(file, 'utf8')).replace(/^\uFEFF/, '')), id)
       if (!m) throw new Error('invalid manifest')
@@ -519,6 +571,21 @@ export function createShareServer(config, hooks = {}) {
   }
 
   const bindOf = (m) => (m.password ? m.password.hash : '')
+
+  // At most two password hashes at a time: each is 32 MB of scrypt on the thread pool that file
+  // reads also use, so a flood of unlock attempts must not stall every running download.
+  let hashing = 0
+  const hashQueue = []
+  async function hashSlot(fn) {
+    if (hashing >= 2) await new Promise((r) => hashQueue.push(r))
+    hashing++
+    try {
+      return await fn()
+    } finally {
+      hashing--
+      hashQueue.shift()?.()
+    }
+  }
 
   async function statsFor(id, dir, nFiles) {
     let s = stats.get(id)
@@ -658,7 +725,7 @@ export function createShareServer(config, hooks = {}) {
     })
   }
 
-  const publicFiles = (m) => m.files.map((f, n) => ({ n, name: f.name, size: f.size, sha256: f.sha256 }))
+  const publicFiles = (m) => m.files.map((f, n) => ({ n, name: shownName(f.name), size: f.size, sha256: f.sha256 }))
 
   async function handleMeta(req, res, id, query) {
     const share = await loadShare(id)
@@ -698,19 +765,23 @@ export function createShareServer(config, hooks = {}) {
     const m = share.manifest
     if (!m.password) return send(req, res, 400, { error: 'bad_request' })
     const winIp = cfg.unlockWindowMinutes * 60_000
-    const a = limiter.peek(`u:${ip}:${id}`, cfg.unlockFailuresPerIp, winIp, now())
-    const b = limiter.peek(`us:${id}`, cfg.unlockFailuresPerShareHour, HOUR, now())
-    if (!a.ok || !b.ok) return tooMany(req, res, !a.ok ? a.retryAfter : b.retryAfter)
+    // Count the attempt the moment it arrives, before any await: requests sent in parallel each
+    // take a slot, so a burst cannot all pass the check and then all run the password hash.
+    // A client already over its own limit does not use up the link's: one address alone cannot lock
+    // the real recipient out of their link.
+    const ha = limiter.hit(`u:${ip}:${id}`, cfg.unlockFailuresPerIp, winIp, now())
+    const hb = ha.ok ? limiter.hit(`us:${id}`, cfg.unlockFailuresPerShareHour, HOUR, now()) : null
+    if (!ha.ok || !hb.ok) {
+      log.info('unlock-limited', { id: id.slice(0, 6), ip: cfg.logClientIp ? ip : undefined })
+      return tooMany(req, res, !ha.ok ? ha.retryAfter : hb.retryAfter)
+    }
     let password
     try {
       password = JSON.parse((await readBody(req, 4096)).toString('utf8')).password
     } catch (e) {
       return send(req, res, e.status ?? 400, { error: 'bad_request' })
     }
-    // Count the attempt before the slow hash, so parallel guesses cannot outrun the limit.
-    const ha = limiter.hit(`u:${ip}:${id}`, cfg.unlockFailuresPerIp, winIp, now())
-    limiter.hit(`us:${id}`, cfg.unlockFailuresPerShareHour, HOUR, now())
-    const ok = await verifyPassword(password, m.password).catch(() => false)
+    const ok = await hashSlot(() => verifyPassword(password, m.password)).catch(() => false)
     if (!ok) {
       log.info('unlock-failed', { id: id.slice(0, 6), ip: cfg.logClientIp ? ip : undefined })
       return send(req, res, 403, { error: 'wrong_password', attemptsLeft: ha.left })
@@ -733,15 +804,31 @@ export function createShareServer(config, hooks = {}) {
     if (!file) return notFound(req, res)
     if (m.password && !verifyToken(secret, id, bindOf(m), query.get('t'), now())) return send(req, res, 401, { error: 'locked' })
     const s = await statsFor(id, share.dir, m.files.length)
-    if (m.maxDownloads > 0 && s.data.files[n].completed >= m.maxDownloads) return send(req, res, 410, { error: 'limit' })
+    // downloads of this file still running count too, so several started at once cannot pass the limit together
+    const running = [...active].filter((d) => d.id === id && d.n === n).length
+    if (m.maxDownloads > 0 && s.data.files[n].completed + running >= m.maxDownloads) return send(req, res, 410, { error: 'limit' })
 
     // Payloads are stored as data/<number>: no client- or manifest-supplied text ever reaches a path.
     const full = path.join(share.dir, 'data', String(n))
     if (!inside(full, share.dir)) return notFound(req, res)
     let fh
     try {
+      // Neither data\ nor the payload may be a symbolic link or junction (hard links, which Hopper
+      // uses for instant links, are plain files on the same drive and are allowed).
+      const dd = await fsp.lstat(path.join(share.dir, 'data'))
+      const lst = await fsp.lstat(full)
+      if (!dd.isDirectory() || dd.isSymbolicLink() || lst.isSymbolicLink() || !lst.isFile()) {
+        log.warn('payload-not-plain', { id: id.slice(0, 6), n })
+        return notFound(req, res)
+      }
       fh = await fsp.open(full, 'r')
       const st = await fh.stat()
+      // the file opened must be the one just checked, not something swapped in between
+      if (st.ino !== lst.ino || st.dev !== lst.dev) {
+        await fh.close().catch(() => {})
+        log.warn('payload-swapped', { id: id.slice(0, 6), n })
+        return notFound(req, res)
+      }
       if (!st.isFile() || st.size !== file.size || (file.mtime != null && Math.abs(st.mtimeMs - file.mtime) > 2500)) {
         // A file linked (not copied) into the store shares its bytes with the original: if someone
         // edited the original in place, what we hold is no longer what was checksummed. Never serve it.
@@ -803,7 +890,7 @@ export function createShareServer(config, hooks = {}) {
       return tooMany(req, res, 30, 'busy')
     }
 
-    const dl = { id, res }
+    const dl = { id, n, res }
     active.add(dl)
     perIp.set(ip, mine + 1)
     s.data.started++
@@ -1196,7 +1283,7 @@ export function createShareServer(config, hooks = {}) {
       id: up.id,
       title: s.title || s.name,
       message: s.message ?? '',
-      sender: s.sender || up.owner.user,
+      sender: s.sender || 'Dexterity Design Services', // never the Windows account name
       createdAt,
       expiresAt: createdAt + s.days * DAY,
       files: [{ name: s.name, size: s.size, sha256: hash.digest('hex') }],
@@ -1396,6 +1483,9 @@ export function createShareServer(config, hooks = {}) {
 
     if (pathname === '/healthz') {
       if (method !== 'GET' && method !== 'HEAD') return send(req, res, 405, { error: 'method' }, { Allow: 'GET, HEAD' })
+      // From outside, only "this server is up" (and which instance, for the supervisor's public check):
+      // whether the office file server is reachable is nobody else's business.
+      if (!LOOPBACK.has(hostOf(req.headers.host))) return send(req, res, 200, { ok: true, i: instance })
       return send(req, res, storeOk ? 200 : 503, { ok: storeOk, i: instance })
     }
     if (pathname === '/robots.txt' && (method === 'GET' || method === 'HEAD')) {
@@ -1448,6 +1538,10 @@ export function createShareServer(config, hooks = {}) {
       log.info('req', { ip: cfg.logClientIp ? ip : undefined, m: req.method, p: p.slice(0, 80), s: res.statusCode, ms: now() - t0, ...(res.locals ?? {}), ua: String(req.headers['user-agent'] ?? '').slice(0, 120) })
     })
     if (closing) res.setHeader('Connection', 'close')
+    if (!hostAllowed(req.headers.host, cfg.allowedHosts)) {
+      res.locals = { host: hostOf(req.headers.host).slice(0, 60) || '?' }
+      return send(req, res, 421, { error: 'not_found' }, { Connection: 'close' })
+    }
     route(req, res, ip).catch((e) => {
       log.error('handler', { message: String(e?.message ?? e), stack: String(e?.stack ?? '').split('\n').slice(0, 4).join(' | ') })
       if (res.headersSent) res.destroy()

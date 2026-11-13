@@ -12,6 +12,9 @@
   var EXT_RE = /\.(zip|rar|7z)$/i
   var DAY = 86400000
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
+  // The office share server's signing-key fingerprints (as in share.js). A sign-in link naming any
+  // other key would send this person's uploads to someone else's server: it is refused.
+  var OFFICE_KEYS = ['8b661fa7556546826513']
   var main = document.getElementById('main')
   var toastEl = document.getElementById('toast')
   var whoEl = document.getElementById('who')
@@ -253,6 +256,12 @@
     var m = PASS_RE.exec(frag)
     if (!m) return null
     var p = { id: m[1], secret: m[2], gist: m[3] || '', key: m[4] || '' }
+    // a sign-in link for another server is not ours: never let it replace or create a sign-in
+    if (!LOCAL && (!p.key || OFFICE_KEYS.indexOf(p.key) < 0)) return null
+    // Never swap the person signed in here for another silently: a link someone else sent could
+    // otherwise put every later upload under their pass.
+    var had = readPass()
+    if (had && had.id !== p.id && !window.confirm('This browser is already signed in to Dexterity Share. Replace that sign-in with the one in this link?\n\nOnly do this if you made the link yourself in Hopper.')) return had
     if (!local(PASS_KEY, JSON.stringify(p))) S.memoryOnly = true // this browser will not keep it
     return p
   }
@@ -310,6 +319,7 @@
   async function pointerGenuine(p) {
     var jwk = S.cfg.pointerKey
     if (S.keyHash) {
+      if (!LOCAL && OFFICE_KEYS.indexOf(S.keyHash) < 0) return false
       if (!p.key || p.key.kty !== 'EC' || p.key.crv !== 'P-256' || typeof p.key.x !== 'string' || typeof p.key.y !== 'string' || !p.sig) return false
       try {
         var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p.key.x + '.' + p.key.y))

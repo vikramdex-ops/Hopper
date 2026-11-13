@@ -11,6 +11,11 @@
   var card = document.getElementById('card')
   var toastEl = document.getElementById('toast')
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
+  // The fingerprints of the office share server's signing key (office.json publicShare.pointer.key).
+  // A link naming any other key is refused: otherwise anyone could make their own key and gist and
+  // have this page show their files as ours. Moving the server to a new PC without its state folder
+  // makes a new key: add it here (and keep the old one while its links are live).
+  var OFFICE_KEYS = ['8b661fa7556546826513']
   var S = { id: '', gist: '', keyHash: '', cfg: null, base: '', meta: null, files: null, token: '', skew: 0, timers: [], run: 0, active: 0 }
 
   // ---- small helpers --------------------------------------------------------------------------
@@ -265,6 +270,7 @@
   async function pointerGenuine(p) {
     var jwk = S.cfg.pointerKey
     if (S.keyHash) {
+      if (!LOCAL && OFFICE_KEYS.indexOf(S.keyHash) < 0) return false
       if (!p.key || p.key.kty !== 'EC' || p.key.crv !== 'P-256' || typeof p.key.x !== 'string' || typeof p.key.y !== 'string' || !p.sig) return false
       try {
         var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p.key.x + '.' + p.key.y))

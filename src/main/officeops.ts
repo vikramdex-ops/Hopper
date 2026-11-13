@@ -102,7 +102,7 @@ export async function lockOffice(user: string) {
  */
 export async function revokeOffice(user: string) {
   await fresh()
-  if (!isAdmin(user)) throw new Error('Only the PC that set the office up, or Asha, Admin2 or Admin3, can revoke the setup')
+  if (!isAdmin(user)) throw new Error('Only the PC that set the office up, or a standing admin, can revoke the setup')
   const path = ctx.office.loadedFrom || ctx.settings.data.officeConfigPath
   if (!path) throw new Error('No office config is loaded')
   const next: OfficeConfig = { ...ctx.office.data }
@@ -117,7 +117,7 @@ export async function revokeOffice(user: string) {
  */
 export async function saveOffice(user: string, cfg: OfficeConfig, opts?: { moveTo?: string }) {
   await fresh()
-  if (!isAdmin(user)) throw new Error(`The office is set up on ${officeSetup(ctx.office.data)?.pc || 'another PC'}; only that PC, or Asha, Admin2 or Admin3, can change it`)
+  if (!isAdmin(user)) throw new Error(`The office is set up on ${officeSetup(ctx.office.data)?.pc || 'another PC'}; only that PC, or a standing admin, can change it`)
   if (!cfg || typeof cfg !== 'object') throw new Error('bad office config')
   const next: OfficeConfig = { ...cfg, admins: names(cfg.admins), announcers: names(cfg.announcers) }
   delete next.movedTo

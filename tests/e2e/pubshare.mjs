@@ -1,6 +1,6 @@
 // Dexterity Share end-to-end: creates links exactly as Hopper does (src/engine/pubshare.ts) into a
 // scratch store, runs the real share server against it and attacks it from the client side.
-// Everything is written under <work-folder>\_Claude_Work\temp\share-agent\e2e (never C: on office PCs).
+// Everything is written under <HOPPER_WORK_ROOT or the temp folder>\share-agent\e2e.
 //   node --no-warnings tests/e2e/pubshare.mjs [--only <text>] [--keep]
 import { TEST_WORK } from '../unit/pubshare-hooks.mjs'
 import http from 'node:http'
@@ -569,7 +569,7 @@ await check('traversal and malformed ids: every one is the same 404, and no outs
   eq(long.status, 414)
   // raw bytes a normal client cannot send: NUL, backslashes and a bare ".." on the request line
   const rawLine = (line) => new Promise((resolve) => {
-    const sock = net.connect(PORT, '127.0.0.1', () => sock.write(`GET ${line} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`))
+    const sock = net.connect(PORT, '127.0.0.1', () => sock.write(`GET ${line} HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nConnection: close\r\n\r\n`)) // a Host the server answers, so the path checks are what is tested
     let out = ''
     sock.on('data', (d) => (out += d))
     sock.on('close', () => resolve(out))

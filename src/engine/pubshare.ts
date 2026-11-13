@@ -10,7 +10,7 @@ import { DEFAULT_PRESETS } from '@shared/defaults'
 import {
   DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_SHARE_FILES, STAFF_DIR, encodeShareId, isShareId, normalizeDays, normalizeStaffWeb, safeFileName, shareUrl, staffPassUrl,
   type PasswordVerifier, type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus, type ShareManifest, type ShareStats,
-  type StaffPass, type StaffPassCreated, type StaffPassInfo
+  type StaffPass, type StaffPassCreated, type StaffPassInfo, PUBLIC_SENDER
 } from '@shared/pubshare'
 import type { EngineCtx } from './index'
 import type { JobCtl } from './jobs'
@@ -290,7 +290,8 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
         id,
         title: spec.title.trim().slice(0, 200) || files[0].name,
         message: (spec.message ?? '').trim().slice(0, 4000),
-        sender: (ctx.settings?.profile?.displayName || who.user).slice(0, 120),
+        // clients see this: a person's display name, never their Windows account name
+        sender: (ctx.settings?.profile?.displayName?.trim() || PUBLIC_SENDER).slice(0, 120),
         createdAt,
         expiresAt,
         files,
@@ -467,7 +468,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
         id,
         user,
         host: who.host,
-        name: (ctx.settings?.profile?.displayName || who.user).trim().slice(0, 120),
+        name: (ctx.settings?.profile?.displayName?.trim() || PUBLIC_SENDER).slice(0, 120), // becomes the public sender
         createdAt: deps.now(),
         verifier: createHash('sha256').update(secret).digest('hex')
       }

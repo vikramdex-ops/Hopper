@@ -342,7 +342,7 @@
   async function lockSetup() {
     if (!(await app.confirm(
       'Finish the office setup on this PC?',
-      `Every other PC's Office page becomes read-only. Only this PC (${lanx.meta.pc}) and Asha, Admin2 and Admin3 can change the office afterwards. You can revoke it later.`,
+      `Every other PC's Office page becomes read-only. Only this PC (${lanx.meta.pc}) and the standing admins can change the office afterwards. You can revoke it later.`,
       'Finish setup'
     ))) return
     setupBusy = true
@@ -914,7 +914,7 @@
         {#if !setup}
           <div class="note" data-office-unread><Icon name="info" /> <span>This PC can't read the office config, so it can't tell how the office is set up. Load the right file under <b>Join office</b> below; once it loads, this page shows the office.</span></div>
         {:else}
-        <div class="note" data-office-locked><Icon name="lock" /> <span>The office is set up by its admin on <b>{setup?.pc || 'another PC'}</b>{setup?.user ? ` (${app.personName(setup.user)})` : ''}{setup?.at ? `, ${fmtDateFull(setup.at)}` : ''}. Only that PC, and Asha, Admin2 and Admin3, can change it. This page shows what this PC uses.</span></div>
+        <div class="note" data-office-locked><Icon name="lock" /> <span>The office is set up by its admin on <b>{setup?.pc || 'another PC'}</b>{setup?.user ? ` (${app.personName(setup.user)})` : ''}{setup?.at ? `, ${fmtDateFull(setup.at)}` : ''}. Only that PC, and the standing admins, can change it. This page shows what this PC uses.</span></div>
         {/if}
         <div class="item">
           <span class="txt">
@@ -988,7 +988,7 @@
           <div class="item setup" data-office-setup="locked">
             <span class="txt">
               <span><b>Set up on {setup.pc}{lanx.meta.setupPc ? ' (this PC)' : ''}</b>{setup.user ? ` by ${app.personName(setup.user)}` : ''}{setup.at ? ` · ${fmtDateFull(setup.at)}` : ''}</span>
-              <span class="caption">Other PCs see a read-only page. {lanx.meta.setupPc ? 'This PC' : 'That PC'} and Asha, Admin2 and Admin3 can change the office. To move the always-on server, revoke first: every PC then gets this page back until the next setup.</span>
+              <span class="caption">Other PCs see a read-only page. {lanx.meta.setupPc ? 'This PC' : 'That PC'} and the standing admins can change the office. To move the always-on server, revoke first: every PC then gets this page back until the next setup.</span>
             </span>
             <button type="button" class="btn danger" disabled={setupBusy || officeBusy} onclick={revokeSetup} data-office-revoke><Icon name="refresh" /> Revoke setup</button>
           </div>
@@ -996,7 +996,7 @@
           <div class="item setup" data-office-setup="open">
             <span class="txt">
               <span><b>Not set up yet: anyone can configure the office</b></span>
-              <span class="caption">On the always-on PC, use Dexterity Share → Set up… → Use this PC, and the setup locks to that PC. Or finish it here. After that, only that PC and Asha, Admin2 and Admin3 can change the office.</span>
+              <span class="caption">On the always-on PC, use Dexterity Share → Set up… → Use this PC, and the setup locks to that PC. Or finish it here. After that, only that PC and the standing admins can change the office.</span>
             </span>
             <button type="button" class="btn primary" disabled={setupBusy || officeBusy || !officeInfo || (!!officeInfo.error && officeInfo.error !== 'not-found')} onclick={lockSetup} data-office-lock><Icon name="lock" /> Finish setup on this PC</button>
           </div>
@@ -1274,7 +1274,7 @@
               <Icon name="folder" />
               <span class="ellipsis grow" title={r}>{r}</span>
               <span class="caption">
-                {#if !s.indexEnabled}off{:else if !st}waiting{:else if !st.ready}indexing… {st.files.toLocaleString()}{:else}{plural(st.files, 'item')}{st.scannedAt ? ` · scanned ${fmtAgo(st.scannedAt)}` : ''}{/if}
+                {#if !s.indexEnabled}off{:else if !st}waiting{:else if st.coveredBy}included in {st.coveredBy}{:else if !st.ready}indexing… {st.files.toLocaleString()}{:else}{plural(st.files, 'item')}{st.scannedAt ? ` · scanned ${fmtAgo(st.scannedAt)}` : ''}{/if}
               </span>
               <button type="button" class="btn subtle icon sm" aria-label={`Stop indexing ${r}`} title="Remove" onclick={() => removeRoot(r)}><Icon name="close" /></button>
             </div>

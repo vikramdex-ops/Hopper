@@ -6,9 +6,8 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-/** Scratch folder for the tests: the office work drive when it exists (never C:), else the system temp folder (CI). */
-const OFFICE_WORK = '<work-folder>/_Claude_Work/temp'
-export const TEST_WORK = process.env.DXSHARE_TEST_WORK || (existsSync(OFFICE_WORK) ? join(OFFICE_WORK, 'share-agent') : join(tmpdir(), 'dxshare-test'))
+/** Scratch folder for the tests: HOPPER_WORK_ROOT (a folder off the system drive; else the system temp folder). */
+export const TEST_WORK = process.env.DXSHARE_TEST_WORK || join(process.env.HOPPER_WORK_ROOT || tmpdir(), 'share-agent')
 
 const shared = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'shared')
 

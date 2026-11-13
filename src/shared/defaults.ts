@@ -55,7 +55,9 @@ export function defaultSettings(home: string, docs: string): Settings {
     verifyCopies: false,
     parallelSmallFiles: 4,
     inboxDir: '',
-    officeConfigPath: '\\\\10.0.0.2\\office-share\\_Hopper\\office.json',
+    // No built-in office address (this repository is public). A PC joins with an office invite,
+    // which fills this in, or the file is picked under Settings → Office.
+    officeConfigPath: '',
     indexRoots: [],
     indexEnabled: true,
     autoUpdate: true,
@@ -72,8 +74,8 @@ export function defaultOffice(): OfficeConfig {
   return {
     officeName: 'Dexterity Design Services',
     officeKey: '',
-    serverInbox: '\\\\10.0.0.2\\office-share\\_Hopper\\Inbox',
-    publicShare: { enabled: false, store: '', pageUrl: 'https://vikramdex-ops.github.io/Hopper/share/', defaultDays: 7 },
+    serverInbox: '', // set in office.json
+    publicShare: { enabled: false, store: '', pageUrl: 'https://dexterity-share.pages.dev/', defaultDays: 7 },
     cliq: { enabled: false, endpoint: 'https://cliq.zoho.in/api/v2/bots/spreadsheetstatus/message', zapikey: '' },
     groups: [],
     // The "Dexterity project" and "Issue / submission pack" templates are built in
@@ -96,7 +98,7 @@ export function defaultOffice(): OfficeConfig {
       order: []
     },
     conventions: [],
-    admins: ['asha'],
+    admins: [], // office.json names them
     announcers: []
   }
 

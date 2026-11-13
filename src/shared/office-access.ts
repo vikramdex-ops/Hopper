@@ -10,8 +10,11 @@
 // edit office.json by hand.
 import type { OfficeConfig, OfficeSetup } from './types'
 
+// Filled in at build time (electron.vite.config.ts): the names are not kept in this public repository.
+declare const __HOPPER_STANDING_ADMINS__: string[] | undefined
+
 /** Windows accounts (lower-case) that may always configure the office, set up or not. */
-export const STANDING_ADMINS = ['asha', 'admin2', 'admin3'] as const
+export const STANDING_ADMINS: readonly string[] = typeof __HOPPER_STANDING_ADMINS__ !== 'undefined' ? __HOPPER_STANDING_ADMINS__ : []
 
 export const normUser = (u: unknown) =>
   String(u ?? '')
@@ -27,7 +30,7 @@ export function officeSetup(office: Partial<OfficeConfig> | null | undefined): O
   return s && typeof s === 'object' && normPc(s.pc) ? s : null
 }
 
-export const isStandingAdmin = (user: string) => (STANDING_ADMINS as readonly string[]).includes(normUser(user))
+export const isStandingAdmin = (user: string) => STANDING_ADMINS.includes(normUser(user))
 
 /** True when this PC is the one that set the office up. */
 export function isSetupPc(office: Partial<OfficeConfig> | null | undefined, pc: string) {

@@ -5,18 +5,19 @@
 //   - STUBBED (inside the window, via window.__hopperNet.netApi): the computer list (NAS-DEMO,
 //     FILES-DEMO, LOCKED-DEMO…), those computers' share lists, and every sign-in reply. No real
 //     sign-in is attempted, so no connection or saved credential is created on this PC.
-//   npx electron-vite build --outDir <work-folder>\_Claude_Work\temp\net-agent\app\out
+//   npx electron-vite build --outDir <HOPPER_WORK_ROOT>\net-agent\app\out
 //   node --no-warnings tests/e2e/network.mjs
 import { _electron as electron } from 'playwright-core'
 import fs from 'node:fs'
 import path from 'node:path'
+import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const BASE = process.env.HOPPER_NET_WORK || '<work-folder>\\_Claude_Work\\temp\\net-agent'
+const BASE = process.env.HOPPER_NET_WORK || path.join(process.env.HOPPER_WORK_ROOT || tmpdir(), 'net-agent')
 const APP = path.join(BASE, 'app')
 const WORK = path.join(BASE, 'e2e')
 const SHOTS = path.join(WORK, 'shots')

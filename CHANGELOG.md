@@ -4,6 +4,28 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Much less memory.** The instant-search index keeps file names packed in one buffer instead of
+  millions of separate strings: on a PC indexing 8.6 million files the background process drops
+  from about 2 GB to under 0.5 GB, and typed searches are faster. A folder inside another indexed
+  folder (for example your user folder inside C:\) is no longer indexed twice, and Settings says
+  "included in …". Stale indexes are refreshed one at a time, index files of folders no longer
+  indexed are deleted, and the zip/copy helper programs close after a quiet minute. Existing
+  indexes are converted on first start; nothing needs re-scanning.
+
+### Security
+- **Dexterity Share hardening.** The share server answers only requests addressed to its public
+  tunnel name or to this PC (stops DNS rebinding from a web page on the server PC); refuses share
+  folders and files that are symbolic links or junctions; counts password guesses as they arrive,
+  so parallel guesses get no extra tries, and runs at most two password checks at once; counts
+  running downloads against a download limit; strips invisible direction characters from file
+  names; and no longer tells outsiders whether the office file server is up. Links show the
+  sender's display name or the company name, never a Windows account name. The client and staff
+  pages accept only links signed with the office's own key, and the staff page never replaces a
+  sign-in silently. The standalone service installer closes its `state` folder to other users.
+
 ## [2.6.0] — 2026-11-13
 
 ### Added
@@ -49,12 +71,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
   Dexterity Share server. Pressing **Use this PC** in *Set up Dexterity Share*, or **Finish setup
   on this PC** on the Office page, locks the setup to that PC. Within about 20 seconds every other
   PC's Office page turns read-only and names the PC that set it up. That PC, and the accounts
-  asha, admin2 and admin3 on any PC, can still change it; Hopper refuses a save from anyone else.
+  the standing admins on any PC, can still change it; Hopper refuses a save from anyone else.
 - **Revoke setup** gives every PC the full Office page back, for example to move the always-on
   server. The old share server keeps serving client links until another PC presses
   **Use this PC**, then stops by itself so the two never fight over the link pointer.
 - A PC that cannot read `office.json` cannot tell whether the office is set up, so it shows the
-  read-only page with **Join office** (Asha, Admin2 and Admin3 still get the full page there).
+  read-only page with **Join office** (the standing admins still get the full page there).
 - **Everyone can post announcements.** The poster and admins see who acknowledged; a poster can
   withdraw their own, admins any.
 - Office changes made on another PC (a setup, a revoke, a save) now reach every PC within about

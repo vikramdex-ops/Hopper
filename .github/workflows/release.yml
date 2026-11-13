@@ -23,7 +23,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node tools/build-native.mjs
-      - run: npx electron-vite build
+      - name: Build the app
+        run: npx electron-vite build
+        env:
+          # the office's standing admins, kept out of the public source (comma-separated Windows accounts)
+          HOPPER_STANDING_ADMINS: ${{ secrets.HOPPER_STANDING_ADMINS }}
       - name: Build installer and portable zip
         run: npx electron-builder --win --x64 --publish never
       - name: Checksums

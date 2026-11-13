@@ -39,8 +39,9 @@ const ctx: EngineCtx = {
   emit,
   jobs: new JobQueue(emit),
   shell: new HopperShell(process.env.HOPPER_HELPER!),
-  bulkShell: new HopperShell(process.env.HOPPER_HELPER!),
-  indexShell: new HopperShell(process.env.HOPPER_HELPER!),
+  // bulk and index helpers exit after a quiet minute (~25 MB each); the listing one stays warm
+  bulkShell: new HopperShell(process.env.HOPPER_HELPER!, 60000),
+  indexShell: new HopperShell(process.env.HOPPER_HELPER!, 60000),
   undo: new Undo(process.env.HOPPER_DATA!, emit),
   sevenZip: process.env.HOPPER_7Z!,
   dataDir: process.env.HOPPER_DATA!,

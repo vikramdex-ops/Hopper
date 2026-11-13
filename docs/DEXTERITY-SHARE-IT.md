@@ -97,10 +97,30 @@ new signing key, so links made before the move stop finding the server; re-send 
   A link id is 128 random bits. Nothing lists links, folders or files.
 - File paths are built from the validated id and a file *number* only. `..`, encoded slashes and
   75 similar tricks were tested: all "not found".
-- No response contains the PC's name, user names, paths or addresses. Clients see Cloudflare's
-  addresses, never the office's.
-- Passwords are stored as salted scrypt hashes; wrong guesses are limited (8 per client per
-  10 minutes, 40 per link per hour).
+- No response contains the PC's name, Windows user names, paths or addresses, and the public
+  health check never says whether the office file server is up. Clients see Cloudflare's
+  addresses, never the office's. A link's sender is the person's display name in Hopper, or
+  "Dexterity Design Services" when they have none, never their Windows account name.
+- The server answers only requests addressed to the tunnel's public name (or to 127.0.0.1 from this
+  PC). That stops a web page opened on the server PC from reaching it through DNS rebinding.
+- Nothing in the store can point the server elsewhere: a share folder, its `data` folder or a
+  file that is a symbolic link or junction is "not found". (Hard links, used for instant links,
+  are allowed: they are plain files on the same drive.)
+- Passwords are stored as salted scrypt hashes; wrong guesses are limited to 8 per client per
+  10 minutes and 40 per link per hour, counted the moment a request arrives, so guesses sent in
+  parallel get no more tries. One address over its limit does not use up the link's. At most two
+  password checks run at once, so a flood of guesses cannot slow downloads. A download limit also
+  counts downloads still running.
+- File names clients see have invisible direction characters removed, so a name always shows its
+  real extension.
+- **The pages trust only the office's key.** Each page carries the fingerprint of the share
+  server's signing key (`OFFICE_KEYS` in `site/share/share.js` and `site/share/create/create.js`).
+  A link naming any other key is refused, so nobody can make the Dexterity page show their files.
+  **If the share server moves to a PC without copying its `state` folder, add the new
+  fingerprint (`office.json` → `publicShare.pointer.key`) to both lists and keep the old one while
+  its links are live.**
+- In *My own address* mode the `CF-Connecting-IP` header is ignored (only Cloudflare sets it
+  reliably), so per-client limits apply to all clients of that front together.
 - **The gist cannot be used to redirect clients.** The address in it is signed with a key that
   never leaves the share-server PC, and each link carries that key's fingerprint. Someone who
   stole the GitHub token could break the pointer (clients would see "can't reach our file

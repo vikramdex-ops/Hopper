@@ -1,7 +1,7 @@
 {
   "server": {
     "port": 47880,
-    "store": "D:\\Shares\\office-share\\_Hopper\\PublicShares",
+    "store": "D:\\Shares\\Office\\_Hopper\\PublicShares",
     "allowedOrigins": ["https://vikramdex-ops.github.io"],
     "maxConcurrentDownloads": 24,
     "maxDownloadsPerIp": 6,

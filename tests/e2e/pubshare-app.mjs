@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
+import { userInfo } from 'node:os'
 import { launch, makeDemo, WORK } from './harness.mjs'
 
 const base = join(WORK, 'pubshare-app')
@@ -53,7 +54,7 @@ await check('Hopper creates a link for a folder (zipped) with a password', async
 await check('client: metadata hides names until unlocked, wrong password refused', async () => {
   const meta = await (await fetch(`${api}/api/s/${created.id}`)).json()
   if (!meta.needsPassword) throw new Error('not protected: ' + JSON.stringify(meta))
-  if (JSON.stringify(meta).includes('Lot 07.zip') || JSON.stringify(meta).toLowerCase().includes('asha\\')) throw new Error('metadata leaks')
+  if (JSON.stringify(meta).includes('Lot 07.zip') || JSON.stringify(meta).toLowerCase().includes(userInfo().username.toLowerCase() + '\\')) throw new Error('metadata leaks')
   const bad = await fetch(`${api}/api/s/${created.id}/unlock`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: 'nope' }) })
   if (bad.ok) throw new Error('wrong password accepted')
 })

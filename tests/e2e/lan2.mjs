@@ -4,19 +4,21 @@
 // through the server inbox), announcements (online, picked up after being off, acknowledged),
 // joining by pasted key and joining from an admin's LAN invite.
 //
-// It runs its own build so it never collides with other runs:
-//   npx electron-vite build --outDir <work-folder>\_Claude_Work\temp\lan2-agent\app\out
+// It runs its own build so it never collides with other runs (asha must be a standing admin of it):
+//   set HOPPER_STANDING_ADMINS=asha
+//   npx electron-vite build --outDir <HOPPER_WORK_ROOT>\lan2-agent\app\out
 //   node tests/e2e/lan2.mjs
 // HOPPER_LAN2_WORK moves the work folder; nothing is written to C:.
 import { _electron as electron } from 'playwright-core'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { randomBytes, createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const BASE = process.env.HOPPER_LAN2_WORK || '<work-folder>\\_Claude_Work\\temp\\lan2-agent'
+const BASE = process.env.HOPPER_LAN2_WORK || join(process.env.HOPPER_WORK_ROOT || tmpdir(), 'lan2-agent')
 const APP = join(BASE, 'app')
 const WORK = join(BASE, 'e2e')
 const SHOTS = join(BASE, 'shots')
@@ -41,7 +43,7 @@ const serverInbox = join(officeDir, 'Inbox')
 const KEY = randomBytes(32).toString('hex')
 const FP = createHash('sha256').update(Buffer.from(KEY, 'hex')).digest('hex').slice(0, 8)
 mkdirSync(serverInbox, { recursive: true })
-// set up on another PC: both test users run on this one, so bob is not the setup PC and asha is a standing admin
+// set up on another PC: both test users run on this one, so bob is not the setup PC and asha is a standing admin (build with HOPPER_STANDING_ADMINS=asha)
 const SETUP = { user: 'asha', pc: 'OTHER-PC', at: 1 }
 const officeCfg = { officeName: 'Test office', officeKey: KEY, serverInbox, cliq: { enabled: false, endpoint: '', zapikey: '' }, groups: [], admins: ['asha'], announcers: [], setup: SETUP }
 writeFileSync(office, JSON.stringify(officeCfg))
@@ -154,10 +156,10 @@ await check('non-admin cannot save the office config (IPC refuses, file untouche
   })
   if (!/set up on|admin/i.test(err)) throw new Error(`save was not refused: "${err}"`)
   if (readFileSync(office, 'utf8') !== before) throw new Error('office.json changed')
-  const moved = await ev('bob', async () => {
+  const moved = await ev('bob', async (elsewhere) => {
     const r = await window.hopper.office.get()
-    return window.hopper.office.save(r.config, { moveTo: '<work-folder>\\_Claude_Work\\temp\\lan2-agent\\e2e\\elsewhere' }).then(() => 'moved', (e) => String(e.message))
-  })
+    return window.hopper.office.save(r.config, { moveTo: elsewhere }).then(() => 'moved', (e) => String(e.message))
+  }, join(WORK, 'elsewhere'))
   if (!/set up on|admin/i.test(moved)) throw new Error(`move was not refused: "${moved}"`)
 })
 

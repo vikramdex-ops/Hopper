@@ -1,8 +1,10 @@
 // Launches the built app (out/) with Playwright, isolated user data, and a generated demo tree.
-// Everything is written under HOPPER_WORK (default <work-folder>\_Claude_Work\temp\hopper-e2e), never C:.
+// Everything is written under HOPPER_WORK (default <HOPPER_WORK_ROOT or the temp folder>\hopper-e2e).
+// On office PCs set HOPPER_WORK_ROOT to a folder off C: (the system drive is kept free).
 import { _electron as electron } from 'playwright-core'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { deflateSync } from 'node:zlib'
@@ -10,7 +12,8 @@ import { deflateSync } from 'node:zlib'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 // HOPPER_APP_ROOT: launch a private build (a folder with package.json + out/) instead of this checkout's out/
 const appRoot = process.env.HOPPER_APP_ROOT || root
-export const WORK = process.env.HOPPER_WORK || '<work-folder>\\_Claude_Work\\temp\\hopper-e2e'
+export const WORK_ROOT = process.env.HOPPER_WORK_ROOT || tmpdir()
+export const WORK = process.env.HOPPER_WORK || join(WORK_ROOT, 'hopper-e2e')
 export const DEMO = join(WORK, 'demo')
 
 function crcTable() {

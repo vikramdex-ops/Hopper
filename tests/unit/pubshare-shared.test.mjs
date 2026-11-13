@@ -35,7 +35,7 @@ test('share ids: 26 base32 characters from 16 random bytes, same pattern as the 
 
 test('link address keeps the id in the fragment', () => {
   const id = 'a'.repeat(26)
-  assert.equal(P.shareUrl(undefined, id), `https://vikramdex-ops.github.io/Hopper/share/#${id}`)
+  assert.equal(P.shareUrl(undefined, id), `https://dexterity-share.pages.dev/#${id}`)
   assert.equal(P.shareUrl('https://share.example.com', id), `https://share.example.com/#${id}`)
   assert.equal(P.shareUrl(' https://x.test/share/ ', id), `https://x.test/share/#${id}`)
   assert.equal(P.shareUrl('https://x.test/share/index.html#old', id), `https://x.test/share/index.html#${id}`)

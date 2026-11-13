@@ -173,7 +173,8 @@ export interface SearchQuery {
 }
 
 export interface IndexStatus {
-  roots: { path: string; files: number; ready: boolean; scannedAt?: number }[]
+  /** coveredBy: the root is inside another indexed root and is searched through that one */
+  roots: { path: string; files: number; ready: boolean; scannedAt?: number; coveredBy?: string }[]
   total: number
   building: boolean
 }

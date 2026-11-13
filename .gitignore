@@ -11,3 +11,6 @@ native/bin/
 Thumbs.db
 desktop.ini
 .freebuff/
+
+# office-specific values, never in the public repository (see electron.vite.config.ts)
+office.local.json
