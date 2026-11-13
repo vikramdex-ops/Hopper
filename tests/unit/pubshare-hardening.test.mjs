@@ -61,7 +61,7 @@ test('hostAllowed: loopback and listed names only', () => {
   const allow = ['*.trycloudflare.com', 'share.example.com']
   for (const h of ['127.0.0.1', '127.0.0.1:47880', 'localhost:47880', '[::1]:47880', 'abc-def.trycloudflare.com', 'ABC.TRYCLOUDFLARE.COM', 'share.example.com', 'share.example.com.'])
     assert.equal(S.hostAllowed(h, allow), true, h)
-  for (const h of [undefined, '', 'trycloudflare.com', 'eviltrycloudflare.com', 'x.trycloudflare.com.evil.net', 'evil.net', 'share.example.com.evil.net', '10.0.0.5', '10.0.0.2:47880', '127.0.0.2', 'localhost.evil.net', 'a b', 'x.trycloudflare.com@evil.net', '0.0.0.0'])
+  for (const h of [undefined, '', 'trycloudflare.com', 'eviltrycloudflare.com', 'x.trycloudflare.com.evil.net', 'evil.net', 'share.example.com.evil.net', '10.0.0.5', '10.20.30.40:47880', '127.0.0.2', 'localhost.evil.net', 'a b', 'x.trycloudflare.com@evil.net', '0.0.0.0'])
     assert.equal(S.hostAllowed(h, allow), false, String(h))
   assert.deepEqual(S.publicHostOf('https://Share.Example.com/x'), ['share.example.com'])
   assert.deepEqual(S.publicHostOf('nonsense'), [])
@@ -71,7 +71,7 @@ test('a request through an unknown Host name is refused before any route (DNS re
   const { port, store } = await start(TEST_WORK)
   const sid = id()
   writeShare(store, sid, ['hello'])
-  for (const host of ['attacker.example', 'rebind.attacker.example:47880', '10.0.0.2:47880']) {
+  for (const host of ['attacker.example', 'rebind.attacker.example:47880', '10.20.30.40:47880']) {
     for (const p of ['/healthz', `/api/s/${sid}`, `/d/${sid}/0`, '/api/staff/me']) {
       const r = await req(port, p, { host, headers: { 'cf-connecting-ip': '1.2.3.4' } })
       assert.equal(r.status, 421, `${host} ${p}`)
