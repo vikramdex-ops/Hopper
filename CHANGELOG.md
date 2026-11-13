@@ -4,7 +4,7 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.7.0] — 2026-11-13
 
 ### Changed
 - **Much less memory.** The instant-search index keeps file names packed in one buffer instead of
@@ -14,6 +14,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
   "included in …". Stale indexes are refreshed one at a time, index files of folders no longer
   indexed are deleted, and the zip/copy helper programs close after a quiet minute. Existing
   indexes are converted on first start; nothing needs re-scanning.
+- **No built-in office address.** PCs that already use Hopper keep theirs. A new PC joins the
+  office with an office invite (or picks `office.json` under *Settings → Office*). Client links
+  default to the Dexterity Share page on `dexterity-share.pages.dev`.
 
 ### Security
 - **Dexterity Share hardening.** The share server answers only requests addressed to its public
