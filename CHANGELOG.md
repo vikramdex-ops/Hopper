@@ -4,6 +4,13 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Notices can go to **Dexterity Connect** instead of Zoho Cliq: files, folder links and requests sent
+  with Hopper, and Dexterity Share first-download and closing reminders, arrive as Direct messages from
+  the Hopper integration. Set up with a token from Connect's Control room (docs/CONNECT-SETUP.md).
+  The hub is trusted by certificate fingerprint; Cliq stays as it was when Connect is not configured.
+
 ## [2.7.0] — 2026-11-13
 
 ### Changed

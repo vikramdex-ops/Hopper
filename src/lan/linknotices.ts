@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path'
 import type { ShareManifest, ShareStats } from '@shared/pubshare'
 import { DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, isShareId, shareUrl } from '@shared/pubshare'
 import { postCliq } from './cliq'
+import { connectEnabled, postConnect } from './connect'
 import type { Discovery } from './discovery'
 import { formatBytes } from './protocol'
 import type { LanCtx } from './types'
@@ -108,7 +109,8 @@ export class LinkNotices {
   private active() {
     const o = this.ctx.office
     const ps = o?.publicShare
-    if (!o?.cliq?.enabled || o.cliq.linkNotices === false || !ps?.enabled) return false
+    const viaConnect = connectEnabled(o?.connect) && o?.connect?.linkNotices !== false
+    if ((!viaConnect && (!o?.cliq?.enabled || o.cliq.linkNotices === false)) || !ps?.enabled) return false
     const pc = ps.host?.pc?.trim().toLowerCase()
     return !!pc && pc === this.ctx.me.host.trim().toLowerCase()
   }
@@ -166,6 +168,13 @@ export class LinkNotices {
 
   private async send(kind: 'firstDownload' | 'expiring', m: ShareManifest, stats: ShareStats | null, url: string, pageUrl: string, now: number) {
     const user = m.owner.user.toLowerCase()
+    const connect = this.ctx.office?.connect
+    if (connectEnabled(connect) && connect.linkNotices !== false) {
+      const note = linkNotice(kind, m, stats, url, pageUrl, now)
+      const res = await postConnect(connect, [user], note.text, { title: note.title, url: note.url })
+      this.ctx.log('notices', res.ok ? `${kind} notice for ${m.id} sent to ${user} (Dexterity Connect)` : `${kind} notice for ${m.id} to ${user} failed: ${res.status ? `HTTP ${res.status} ` : ''}${res.error ?? ''}`)
+      return res.ok
+    }
     const email = this.discovery.emailFor(user)
     if (!email) {
       this.ctx.log('notices', `no Zoho email known for ${user}; ${kind} notice for ${m.id} skipped`)
