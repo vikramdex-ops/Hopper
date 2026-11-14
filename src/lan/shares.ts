@@ -6,6 +6,7 @@ import { promises as fsp } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ShareSpec } from '@shared/types'
 import { postCliq, shareText } from './cliq'
+import { connectEnabled, postConnect } from './connect'
 import type { Discovery } from './discovery'
 import type { Sent } from './history'
 import { MAX_MESSAGE, parseKind, parseLink, replyId, sanitizeName, stamp } from './protocol'
@@ -223,6 +224,14 @@ export class Shares {
   }
 
   private async notify(s: Live, user: string, via: 'direct' | 'server') {
+    const text0 = () => shareText({ fromName: this.ctx.me.displayName, files: s.files, bytes: s.bytes, message: s.message ?? '', zipped: s.zipFirst, via, kind: s.kind, linkPath: s.spec.link?.path })
+    // Dexterity Connect takes over from Cliq when it is set up: no email needed, Windows user names are enough
+    const connect = this.ctx.office?.connect
+    if (connectEnabled(connect)) {
+      const res = await postConnect(connect, [user], text0())
+      this.ctx.log('connect', res.ok ? `notified ${user}` : `notice to ${user} failed: ${res.status ? `HTTP ${res.status} ` : ''}${res.error ?? ''}`)
+      return
+    }
     const cliq = this.ctx.office?.cliq
     if (!cliq?.enabled) return
     const email = this.discovery.emailFor(user)

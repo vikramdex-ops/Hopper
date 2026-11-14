@@ -409,6 +409,22 @@ export interface OfficeConfig {
     /** tell senders when a client first downloads a link and before it closes (sent by the share PC); default on */
     linkNotices?: boolean
   }
+  /**
+   * Dexterity Connect (the office messenger) as the notice channel instead of Zoho Cliq.
+   * Settings come from Dexterity Connect → Control room → Integrations. When enabled, Hopper's
+   * notices go to Connect and the Cliq bot is not used.
+   */
+  connect?: {
+    enabled: boolean
+    /** "host:port" of the Dexterity Connect hub, e.g. "192.168.1.20:47900" */
+    hub: string
+    /** SHA-256 fingerprint of the hub's certificate (AB:CD:…) */
+    fingerprint: string
+    /** integration token (dxc_…) */
+    token: string
+    /** tell senders when a client first downloads a link and before it closes; default on */
+    linkNotices?: boolean
+  }
   groups: PeerGroup[]
   templates: FolderTemplate[]
   revisions: RevisionRules
