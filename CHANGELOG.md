@@ -67,6 +67,31 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
   the whole office. Set them with right-click → Label, Alt+L, Ctrl+Alt+1 to 5, or in the details
   pane; filter with `label:checked`, `label:any` or `label:none`, and Group by → Label. Labels are
   kept next to office.json (never in project folders) and follow renames and moves made in Hopper.
+- **Watch this folder** (right-click a folder or a folder's background, or the command palette):
+  Hopper tells you when files arrive, change or are deleted in a folder you care about, such as a
+  client drop folder on the share. Choose whether subfolders count, what to be told about (new,
+  changed, deleted) and optional quiet hours. A burst becomes one notice once it settles ("300 new
+  files in Client drop"), as an in-app toast with Open and Show in folder, a Windows notification
+  (also while Hopper is in the tray), an unread count on the folder under **Watched folders** in the
+  sidebar, and an entry in Activity. Optionally a Dexterity Connect message to yourself, with the
+  folder name and counts only. Temp and lock files (~$…, .tmp, .~lock…, .dwl, Thumbs.db,
+  desktop.ini) and files you copy, move, create or delete with Hopper on this PC are left out.
+  Network folders are checked every 30 seconds as well, since change notifications on shares get
+  lost; at most 20,000 items per folder are compared (the folder's settings say when the limit is
+  reached).
+- **Revision timeline** (right-click a drawing such as ISO-1001_RevB.pdf, or the command palette):
+  every revision of the same drawing number in this folder and its subfolders, or in any folder
+  above it up to the whole project, newest first, with date modified, folder, size and status
+  label, and Open / Show in folder. Revision order follows the office's revision rules; when they
+  cannot order the tokens, the list is by date modified and says so. The search stops after 20,000
+  files or 15 seconds and can be stopped.
+- **Compare PDFs**: pick two revisions in the timeline, right-click any two PDFs, or use Compare
+  next to a PDF in Compare panes. Both pages are drawn at the same scale and overlaid: ink only in
+  the older file is red, only in the newer green, in both dark grey. Overlay, side by side and
+  swipe views share zoom and pan; boxes and a heatmap mark the changed areas, with next / previous
+  change (N / P), a page picker and a resolution choice. Pages of different sizes are aligned at the
+  top-left (and the difference noted); large sheets are capped at 8,000 pixels and compared in the
+  background. Hopper only shows where the pages differ; it does not judge the changes.
 
 ### Fixed
 - **Updating never stops at "Failed to uninstall old application files".** The installer now closes

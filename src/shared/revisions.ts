@@ -130,6 +130,42 @@ function gaps(items: RevisionItem[], rules: RevisionRules): string[] {
   return []
 }
 
+/**
+ * The drawing number a file name stands for (its base without the revision token, lower case),
+ * or null when the name carries no revision token. Two files are revisions of the same drawing
+ * when their keys are equal, whatever folder or extension they have.
+ */
+export function drawingKey(fileName: string, rules: RevisionRules): string | null {
+  const p = parseRevision(fileName, rules)
+  return p.rev === null ? null : p.base.trim().toLowerCase()
+}
+
+export type TimelineItem<T extends RevisionEntry = RevisionEntry> = T & { rev: string; ext: string }
+
+/**
+ * Every revision of `target`'s drawing among `entries` (any folder, any extension), newest first.
+ * Newest means the later revision when the rules can order every token; otherwise the later
+ * modified time (orderKnown false says which one was used). Same revision: later modified first.
+ */
+export function revisionTimeline<T extends RevisionEntry>(target: string, entries: T[], rules: RevisionRules): { items: TimelineItem<T>[]; orderKnown: boolean } {
+  const key = drawingKey(target, rules)
+  if (key === null) return { items: [], orderKnown: false }
+  const seen = new Set<string>()
+  const items: TimelineItem<T>[] = []
+  for (const e of entries) {
+    const k = e.path.toLowerCase()
+    if (seen.has(k)) continue
+    const p = parseRevision(e.name, rules)
+    if (p.rev === null || p.base.trim().toLowerCase() !== key) continue
+    seen.add(k)
+    items.push({ ...e, rev: p.rev, ext: p.ext })
+  }
+  const first = items[0]
+  const orderKnown = !!first && items.every((i) => compareRevs(i.rev, first.rev, rules) !== null)
+  items.sort((a, b) => (orderKnown ? compareRevs(b.rev, a.rev, rules)! : 0) || b.mtime - a.mtime || a.path.localeCompare(b.path))
+  return { items, orderKnown }
+}
+
 /** Groups of files that carry a revision token. Files without one are standalone and not returned. */
 export function groupRevisions(entries: RevisionEntry[], rules: RevisionRules): RevisionGroup[] {
   const map = new Map<string, { base: string; ext: string; items: RevisionItem[] }>()

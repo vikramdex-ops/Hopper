@@ -5,6 +5,7 @@ import { app } from './lib/app.svelte'
 import { engine } from './lib/api'
 import { dialogs } from './lib/commands'
 import { formatPath } from './lib/pathcopy'
+import { watchUi } from './lib/folderwatch.svelte'
 
 const density = (() => {
   try {
@@ -20,5 +21,6 @@ if (density) document.documentElement.dataset.density = density
 ;(app as any).__engine = (m: string, ...a: unknown[]) => engine.call(m, ...a)
 ;(app as any).__dialogs = dialogs
 ;(app as any).__formatPath = formatPath
+;(app as any).__watch = watchUi
 
 mount(App, { target: document.getElementById('app')! })

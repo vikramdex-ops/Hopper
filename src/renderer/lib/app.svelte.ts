@@ -7,6 +7,7 @@ import { basename, collator, dirname, fmtSize, join, plural } from './format'
 import { kindOf } from './filetypes'
 import { lanx, receivedBody, receivedTitle } from './lan2.svelte'
 import { unlockUi } from './unlock.svelte'
+import { watchUi } from './folderwatch.svelte'
 import { pushRecent } from '@shared/shellops'
 import type {
   Conflict, DriveInfo, Entry, InboxItem, JobInfo, OfficeConfig, Peer, PeerGroup, QuickDest, Settings, ShareSpec, TabState, UndoRecord, Workspace
@@ -133,6 +134,7 @@ export class App {
     this.wireEvents()
     lanx.init()
     unlockUi.init()
+    watchUi.init()
     this.ready = true
     await Promise.all(this.panes.map((p) => p.load()))
     void this.refreshDrives()
@@ -403,6 +405,7 @@ export class App {
     void engine.call('watch.set', dirs)
     this.persistSoon()
     const p = _p.path
+    watchUi.seen(p)
     if (this.settings && !isVirtual(p) && !isArchivePath(p) && this.settings.recentFolders?.[0]?.toLowerCase() !== p.toLowerCase()) {
       this.updateSettings({ recentFolders: [p, ...(this.settings.recentFolders ?? []).filter((x) => x.toLowerCase() !== p.toLowerCase())].slice(0, 15) })
     }

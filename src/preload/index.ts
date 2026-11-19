@@ -80,6 +80,8 @@ const api = {
     on: listen('hopper:share')
   },
   onOpen: listen('hopper:open'),
+  /** a watched-folder notification was clicked: { folder, select } */
+  onWatchOpen: listen('hopper:watch-open'),
   onTheme: listen('hopper:theme')
 }
 

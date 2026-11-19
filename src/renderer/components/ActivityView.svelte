@@ -3,6 +3,7 @@
   import { app } from '../lib/app.svelte'
   import { basename, fmtAgo, fmtSize, plural } from '../lib/format'
   import Icon from './Icon.svelte'
+  import { watchUi } from '../lib/folderwatch.svelte'
 
   let { pane }: { pane: Pane } = $props()
 
@@ -20,6 +21,7 @@
     for (const i of app.inbox) out.push({ at: i.at, icon: 'inbox', title: `Received ${plural(i.files, 'file')} from ${i.fromName}`, detail: i.message ?? fmtSize(i.bytes), path: i.folder })
     for (const s of Object.values(app.shares)) if (s.state === 'done') out.push({ at: Date.now(), icon: 'send', title: `Sent to ${app.personName(s.to)}`, detail: `${fmtSize(s.total)}${s.via === 'server' ? ' · via office server' : ''}` })
     for (const d of app.clientDownloads) out.push({ at: d.at, icon: 'download', title: `Your client downloaded ${d.title}`, detail: d.downloads > 1 ? `${d.downloads} downloads so far` : 'First download', tone: 'ok' })
+    for (const w of watchUi.events) out.push({ at: w.at, icon: 'eye', title: w.title, detail: w.body, path: w.added[0] ?? w.changed[0] ?? w.folder, tone: w.counts.removed && !w.counts.added && !w.counts.changed ? 'warn' : '' })
     for (const u of app.undoList) if (u.kind === 'rename' || u.kind === 'recycle' || u.kind === 'new') out.push({ at: u.at, icon: u.kind === 'recycle' ? 'delete' : u.kind === 'new' ? 'plus' : 'rename', title: u.label, detail: u.undone ? 'undone' : undefined, path: u.pairs[0]?.[1] || undefined })
     return out.sort((a, b) => b.at - a.at).slice(0, 300)
   })
@@ -28,7 +30,7 @@
 <div class="activity">
   <h1 class="title">Activity</h1>
   {#if !events.length}
-    <p class="caption">Copies, moves, zips, shares and received files from this session appear here.</p>
+    <p class="caption">Copies, moves, zips, shares, received files and news from watched folders in this session appear here.</p>
   {/if}
   {#each events as ev, i (i)}
     <button class="ev" disabled={!ev.path} onclick={() => ev.path && app.reveal(ev.path)}>

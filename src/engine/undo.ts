@@ -13,6 +13,8 @@ export class Undo {
   private items: UndoRecord[] = []
   private saveTimer?: NodeJS.Timeout
   private seq = 0
+  /** told about every record (folder watch: these paths were written by this Hopper) */
+  onRecord?: (r: UndoRecord) => void
 
   constructor(dataDir: string, private emit: (e: string, d: unknown) => void) {
     this.file = join(dataDir, 'undo.json')
@@ -31,6 +33,11 @@ export class Undo {
     if (!r.pairs.length) return
     const rec: UndoRecord = { ...r, id: `u${Date.now().toString(36)}${++this.seq}`, at: Date.now() }
     this.items.push(rec)
+    try {
+      this.onRecord?.(rec)
+    } catch {
+      /* a listener never breaks the journal */
+    }
     if (this.items.length > MAX) this.items.splice(0, this.items.length - MAX)
     this.changed()
     return rec.id

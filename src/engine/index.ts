@@ -17,6 +17,8 @@ import { pubshareHandlers } from './pubshare'
 import { previewHandlers } from './preview'
 import { Labels, labelHandlers } from './labels'
 import { unlockHandlers } from './unlock'
+import { FolderWatch, folderWatchHandlers } from './folderwatch'
+import { revisionHandlers } from './revisions'
 
 export interface EngineCtx {
   emit: (event: string, data: unknown) => void
@@ -33,6 +35,8 @@ export interface EngineCtx {
   /** where office.json was loaded from ('' = none): shared labels live next to it */
   officePath: string
   labels: Labels
+  /** Watch this folder (folderwatch.ts) */
+  folderWatch: FolderWatch
 }
 
 const servers: ReturnType<typeof serve>[] = []
@@ -53,9 +57,13 @@ const ctx: EngineCtx = {
   office: null,
   settings: null,
   officePath: '',
-  labels: null as unknown as Labels
+  labels: null as unknown as Labels,
+  folderWatch: null as unknown as FolderWatch
 }
 ctx.labels = new Labels(ctx)
+ctx.folderWatch = new FolderWatch(ctx)
+// what this Hopper creates, moves or deletes is never reported by a watched folder as someone else's
+ctx.undo.onRecord = (r) => ctx.folderWatch.noteOwn(r.pairs.flatMap(([from, to]) => (r.kind === 'recycle' ? [from] : r.kind === 'move' || r.kind === 'rename' ? [from, to] : [to])))
 
 const handlers: Handlers = {
   ping: () => 'pong',
@@ -75,7 +83,9 @@ const handlers: Handlers = {
   ...pubshareHandlers(ctx),
   ...previewHandlers(ctx),
   ...labelHandlers(ctx),
-  ...unlockHandlers(ctx)
+  ...unlockHandlers(ctx),
+  ...folderWatchHandlers(ctx),
+  ...revisionHandlers(ctx)
 }
 
 process.parentPort.on('message', (e) => {
@@ -95,6 +105,7 @@ process.parentPort.on('message', (e) => {
     ctx.office = data.office
     ctx.settings = data.settings
     ctx.officePath = String(data.officePath || '')
+    ctx.folderWatch.configure(ctx.settings?.watchedFolders)
     emit('office', null)
   }
 })

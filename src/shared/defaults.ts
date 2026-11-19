@@ -71,7 +71,8 @@ export function defaultSettings(home: string, docs: string): Settings {
     defaultView: { view: 'details', sort: { key: 'name', dir: 1 }, groupBy: 'none' },
     folderViews: {},
     smartFolders: [],
-    unlock: { via: 'both', waitMinutes: 10 }
+    unlock: { via: 'both', waitMinutes: 10 },
+    watchedFolders: []
   }
 }
 

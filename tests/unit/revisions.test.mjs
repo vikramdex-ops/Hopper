@@ -1,7 +1,7 @@
 // Revision parsing, comparison and grouping (src/shared/revisions.ts via Node type stripping).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseRevision, compareRevs, groupRevisions } from '../../src/shared/revisions.ts'
+import { parseRevision, compareRevs, groupRevisions, drawingKey, revisionTimeline } from '../../src/shared/revisions.ts'
 
 const rules = {
   patterns: [
@@ -84,4 +84,41 @@ test('groupRevisions: unknown token with order list', () => {
   assert.equal(g.orderKnown, false)
   assert.equal(g.latest, null)
   assert.deepEqual(g.outOfSequence, [])
+})
+
+test('drawingKey: same drawing whatever the revision, case or extension', () => {
+  assert.equal(drawingKey('ISO-1001_RevA.pdf', rules), 'iso-1001')
+  assert.equal(drawingKey('iso-1001 rev 0.DWG', rules), 'iso-1001')
+  assert.equal(drawingKey('ISO-1001.pdf', rules), null)
+})
+
+test('revisionTimeline: across folders, newest revision first, other drawings left out', () => {
+  const e = (path, mtime, size = 1) => ({ name: path.split('\\').pop(), path, mtime, size })
+  const entries = [
+    e('D:\\P1\\Lot 07\\ISO-1001_Rev2.pdf', 300),
+    e('D:\\P1\\Superseded\\ISO-1001_Rev0.pdf', 100),
+    e('D:\\P1\\Superseded\\ISO-1001_Rev1.pdf', 200),
+    e('D:\\P1\\Lot 07\\ISO-1001_Rev1.dwg', 210),
+    e('D:\\P1\\Lot 07\\ISO-10011_Rev3.pdf', 400),
+    e('D:\\P1\\Lot 07\\ISO-1002_Rev3.pdf', 400),
+    e('D:\\P1\\Lot 07\\ISO-1001.pdf', 500),
+    e('D:\\P1\\LOT 07\\iso-1001_rev2.pdf', 300) // the same file reached twice
+  ]
+  const t = revisionTimeline('ISO-1001_Rev1.pdf', entries, rules)
+  assert.equal(t.orderKnown, true)
+  assert.deepEqual(t.items.map((i) => `${i.rev}:${i.ext}`), ['2:pdf', '1:dwg', '1:pdf', '0:pdf'])
+  assert.equal(t.items[0].size, 1) // extra fields pass through
+  // a name with no revision token has no timeline
+  assert.deepEqual(revisionTimeline('ISO-1001.pdf', entries, rules).items, [])
+})
+
+test('revisionTimeline: tokens the rules cannot order fall back to modified time', () => {
+  const e = (name, mtime) => ({ name, path: `D:\\x\\${name}`, mtime })
+  const t = revisionTimeline('P-1_RevA.pdf', [e('P-1_RevA.pdf', 10), e('P-1_Rev0.pdf', 30), e('P-1_RevB.pdf', 20)], rules)
+  assert.equal(t.orderKnown, false)
+  assert.deepEqual(t.items.map((i) => i.rev), ['0', 'B', 'A'])
+  // with an office order list the same files sort by revision
+  const ordered = revisionTimeline('P-1_RevA.pdf', [e('P-1_RevA.pdf', 10), e('P-1_Rev0.pdf', 5), e('P-1_RevB.pdf', 20)], { ...rules, order: ['A', 'B', '0', '1'] })
+  assert.equal(ordered.orderKnown, true)
+  assert.deepEqual(ordered.items.map((i) => i.rev), ['0', 'B', 'A'])
 })

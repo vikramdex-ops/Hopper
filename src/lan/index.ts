@@ -10,6 +10,7 @@ import { HopperShell } from '@shared/hshell'
 import type { InboxItem, ShareSpec } from '@shared/types'
 import { Announcements, type AnnouncementDraft } from './announce'
 import { postCliq } from './cliq'
+import { connectEnabled, postConnect } from './connect'
 import { LinkNotices } from './linknotices'
 import { Discovery } from './discovery'
 import { Sent } from './history'
@@ -317,6 +318,10 @@ process.parentPort.on('message', (e) => {
     reconcile()
   } else if (data?.type === 'shutdown') {
     void shutdown()
+  } else if (data?.type === 'watch-connect' && typeof data.text === 'string') {
+    // Watch this folder: a copy of the notice to me on Dexterity Connect (folder name and counts only)
+    const cfg = ctx.office?.connect
+    if (connectEnabled(cfg) && ctx.me.user) void postConnect(cfg, [ctx.me.user], data.text.slice(0, 500), { title: 'Watched folder' }).then((r) => { if (!r.ok) ctx.log('watch-connect', r.error ?? r.status) })
   }
 })
 

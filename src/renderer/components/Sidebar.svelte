@@ -9,6 +9,8 @@
   import { net } from '../lib/network.svelte'
   import { networkHostOf, networkHostPath, parseAddress, type NetworkPlace } from '@shared/network'
   import { SMART_SUGGESTIONS, type SmartFolder } from '@shared/listing'
+  import { watchUi } from '../lib/folderwatch.svelte'
+  import type { WatchedFolder } from '@shared/folderwatch'
 
   const s = $derived(app.settings!)
   const here = $derived(app.active?.path.toLowerCase() ?? '')
@@ -119,6 +121,26 @@
     ])
   }
 
+  // ---- watched folders: unread counts until the folder is opened
+  const watched = $derived(watchUi.folders)
+
+  function openWatched(w: WatchedFolder, e?: MouseEvent) {
+    watchUi.markRead(w.id)
+    go(w.path, e)
+  }
+
+  function watchMenu(e: MouseEvent, w: WatchedFolder) {
+    e.preventDefault()
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open', icon: 'open', run: () => openWatched(w) },
+      { label: 'Open in new tab', icon: 'plus', run: () => { watchUi.markRead(w.id); app.active.openTab(w.path) } },
+      { separator: true },
+      { label: 'Mark as read', icon: 'check', disabled: !watchUi.unread[w.id], run: () => watchUi.markRead(w.id) },
+      { label: 'Watch settings…', icon: 'settings', run: () => void watchUi.watch(w.path) },
+      { label: 'Stop watching', icon: 'close', run: () => watchUi.stop(w.id) }
+    ])
+  }
+
   function driveMenu(e: MouseEvent, d: { root: string; kind: string }) {
     e.preventDefault()
     app.openMenu(e.clientX, e.clientY, [
@@ -216,6 +238,20 @@
           <button class="chip" title={`Add a smart folder for ${app.active?.searchRoot ? 'this folder' : 'everywhere'}: ${sg.q}`} onclick={() => app.addSmartSuggestion(sg)}><Icon name="plus" size={12} />{sg.name}</button>
         {/each}
       </div>
+    {/if}
+
+    {#if watched.length}
+      <div class="head">Watched folders</div>
+      {#each watched as w (w.id)}
+        {@const st = watchUi.statusOf(w.id)}
+        <button class="row watched" class:on={here === w.path.toLowerCase()} class:dim={!!st?.error} class:drop={dropKey === w.path}
+          title={`${w.path}${st?.error ? `\nCan't read the folder: ${st.error}` : ''}${st?.limited ? '\nOnly the first 20,000 items are compared' : ''}`}
+          onclick={(e) => openWatched(w, e)} onauxclick={(e) => e.button === 1 && openWatched(w, e)} oncontextmenu={(e) => watchMenu(e, w)}
+          ondragover={(e) => over(e, w.path)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, w.path)}>
+          <Icon name="eye" /><span class="ellipsis">{basename(w.path) || w.path}</span>
+          {#if watchUi.unread[w.id]}<span class="badge" aria-label={`${watchUi.unread[w.id]} unread`}>{watchUi.unread[w.id] > 999 ? '999+' : watchUi.unread[w.id]}</span>{/if}
+        </button>
+      {/each}
     {/if}
 
     {#if s.workspaces.length}

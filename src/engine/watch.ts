@@ -3,6 +3,25 @@
 import { promises as fsp, watch, type FSWatcher } from 'node:fs'
 import type { EngineCtx } from './index'
 
+/**
+ * Change notifications for one folder (and, if asked, everything below it). Calls `onChange` with
+ * the changed name relative to `dir` (may be empty). Returns null when the folder refuses
+ * notifications; `onError` is called when they stop later (SMB shares drop them). Either way the
+ * caller polls instead.
+ */
+export function watchTree(dir: string, recursive: boolean, onChange: (rel: string) => void, onError: () => void): FSWatcher | null {
+  try {
+    const w = watch(dir, { persistent: false, recursive }, (_ev, name) => onChange(name ? String(name) : ''))
+    w.on('error', () => {
+      w.close()
+      onError()
+    })
+    return w
+  } catch {
+    return null
+  }
+}
+
 export function watchHandlers(ctx: EngineCtx) {
   const watchers = new Map<string, { w?: FSWatcher; timer?: NodeJS.Timeout; poll?: NodeJS.Timeout }>()
 
@@ -66,7 +85,8 @@ export function watchHandlers(ctx: EngineCtx) {
         poll(key, key)
         n++
       }
-      return n
+      // watched folders (Watch this folder) hold handles too; they fall back to polling
+      return n + (ctx.folderWatch?.release(roots) ?? 0)
     }
   }
 }

@@ -13,6 +13,10 @@ import { mappableUnc } from '@shared/network'
 import { GROUP_BY } from '@shared/listing'
 import { net } from './network.svelte'
 import { labelMenu, unlockUi } from './unlock.svelte'
+import { watchUi } from './folderwatch.svelte'
+import { comparePdfs } from './commands'
+import { drawingKey } from '@shared/revisions'
+import { defaultOffice } from '@shared/defaults'
 
 const pathCopyMenu = (paths: string[]): MenuItem[] => [
   { label: 'Name', run: () => copyPaths('name', paths) },
@@ -117,6 +121,13 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   if (targets.length > 1 && !inArchive) m.push(cmd('file.massRename'))
   if (!virt && !inArchive) m.push(cmd('file.duplicate'), { label: 'Create shortcut', icon: 'link', run: () => createShortcuts(paths) })
   m.push(cmd('file.delete', { danger: true }))
+  const drawing = one && !one.dir && !virt && !inArchive && drawingKey(one.name, app.office?.revisions ?? defaultOffice().revisions) !== null
+  const pdfPair = !virt && !inArchive && targets.length === 2 && pdfs.length === 2
+  if (drawing || pdfPair) {
+    m.push({ separator: true })
+    if (pdfPair) m.push({ label: 'Compare PDFs', icon: 'compare', run: () => void comparePdfs(targets[0], targets[1]) })
+    if (drawing) m.push({ label: 'Revision timeline', icon: 'history', run: () => dialogs.revisionTimeline?.(one.path) })
+  }
   if (!virt && !inArchive && (pdfs.length || targets.length > 1)) {
     m.push({ separator: true })
     const office: MenuItem[] = []
@@ -134,6 +145,7 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   m.push({ label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu(paths) })
   if (one?.dir && !inArchive && mappableUnc(one.path)) m.push({ label: 'Map network drive…', icon: 'network', run: () => net.mapDrive(one.path) })
   if (allDirs && one && !inArchive) m.push({ label: 'Pin to Quick access', icon: 'pin', run: () => app.updateSettings({ pinned: [...(app.settings?.pinned ?? []), one.path] }) })
+  if (allDirs && one && !inArchive && !virt) m.push({ label: watchUi.watchedFolder(one.path) ? 'Watched folder settings…' : 'Watch this folder…', icon: 'eye', run: () => void watchUi.watch(one.path) })
   if (!virt && !inArchive) {
     m.push({ label: 'Who has this open?', icon: 'lock', run: () => unlockUi.open(paths) })
     m.push({ label: 'Properties', icon: 'info', keys: 'Alt+Enter', run: () => dialogs.properties?.(paths) })
@@ -157,6 +169,7 @@ export function backgroundMenu(pane: Pane): MenuItem[] {
   if (!virt && !inArchive) {
     m.push({ label: 'New', icon: 'plus', submenu: [cmd('file.newFolder'), cmd('file.newFile'), ...(app.newTypes.length ? [{ separator: true } as MenuItem, ...app.newMenu()] : []), { separator: true }, cmd('file.template')] })
     m.push({ separator: true }, cmd('sel.all'), cmd('file.terminal'), cmd('file.size'), cmd('tools.pin'))
+    m.push({ label: watchUi.watchedFolder(pane.path) ? 'Watched folder settings…' : 'Watch this folder…', icon: 'eye', run: () => void watchUi.watch(pane.path) })
     if (mappableUnc(pane.path)) m.push({ label: 'Map network drive…', icon: 'network', run: () => net.mapDrive(pane.path) })
     m.push({ separator: true }, { label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu([pane.path]) }, { label: 'Properties', icon: 'info', run: () => dialogs.properties?.([pane.path]) })
     m.push({ separator: true }, { label: 'More options', icon: 'windows', keys: 'Shift+F10', run: () => windowsMenu(pane, []) })

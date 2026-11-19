@@ -7,6 +7,7 @@
   import { fmtDate, fmtSize, plural } from '../../lib/format'
   import { isArchivePath, isVirtual } from '../../lib/pane.svelte'
   import type { Entry } from '@shared/types'
+  import { comparePdfs } from '../../lib/commands'
 
   let { close }: { close: (v?: unknown) => void } = $props()
 
@@ -125,7 +126,7 @@
     {/if}
 
     <div class="table">
-      <div class="tr th caption"><span>Name</span><span>Left</span><span></span><span>Right</span></div>
+      <div class="tr th caption"><span>Name</span><span>Left</span><span></span><span>Right</span><span></span></div>
       {#each visible as i (i.name + i.kind)}
         <div class="tr {i.kind}">
           <span class="ellipsis nm" title={LABELS[i.kind]}><Icon name={(i.left ?? i.right)?.dir ? 'folder' : 'file'} size={14} /> {i.name}</span>
@@ -134,6 +135,11 @@
             {#if i.kind === 'onlyLeft' || i.kind === 'newerLeft'}<Icon name="chevronRight" size={14} />{:else if i.kind === 'onlyRight' || i.kind === 'newerRight'}<Icon name="chevronLeft" size={14} />{:else if i.kind === 'same'}={:else if i.kind === 'bothDirs'}·{:else}<Icon name="warning" size={14} />{/if}
           </span>
           <span class="caption ellipsis">{i.right ? `${i.right.dir ? 'folder' : fmtSize(i.right.size)} · ${fmtDate(i.right.mtime)}` : '—'}</span>
+          <span>
+            {#if i.left && i.right && !i.left.dir && !i.right.dir && i.left.ext === 'pdf' && i.right.ext === 'pdf'}
+              <button type="button" class="btn subtle sm" title="Compare the two PDFs page by page" onclick={() => void comparePdfs(i.left!, i.right!)}>Compare</button>
+            {/if}
+          </span>
         </div>
       {:else}
         <div class="caption empty">{show === 'diff' ? 'The two folders match at the top level.' : 'Nothing in this category.'}</div>
@@ -216,7 +222,7 @@
   }
   .tr {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 28px 1fr;
+    grid-template-columns: 1.4fr 1fr 28px 1fr 76px;
     align-items: center;
     gap: 8px;
     height: 28px;

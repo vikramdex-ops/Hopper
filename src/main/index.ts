@@ -1,6 +1,6 @@
 // Hopper main process: window, tray, protocols, IPC and the background processes.
 // Nothing here reads file contents or blocks; heavy work lives in engine/lan utility processes.
-import { app, BrowserWindow, Menu, nativeImage, nativeTheme, screen, shell, Tray, utilityProcess } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray, utilityProcess } from 'electron'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { sendToWindow } from './ctx'
@@ -75,7 +75,31 @@ function onUtilityMessage(name: string, msg: any) {
     pushOfficeToUtilities()
   } else if (msg?.type === 'attention') {
     if (ctx.win && !ctx.win.isDestroyed() && !ctx.win.isFocused()) ctx.win.flashFrame(true)
+  } else if (msg?.type === 'watch-notify' && name === 'engine') {
+    watchNotify(msg)
   }
+}
+
+/**
+ * A watched folder changed (engine/folderwatch.ts). The window shows its own toast when it has
+ * focus; otherwise Windows shows a notification, and a click opens the folder in Hopper.
+ * The Dexterity Connect copy goes through the LAN process, which knows whether Connect is set up.
+ */
+function watchNotify(msg: { title?: unknown; body?: unknown; folder?: unknown; select?: unknown; connect?: unknown }) {
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
+  const folder = str(msg.folder, 4000)
+  const connect = str(msg.connect, 500)
+  if (connect) ctx.lan?.postMessage({ type: 'watch-connect', text: connect })
+  const win = ctx.win
+  if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return
+  if (!Notification.isSupported()) return
+  const n = new Notification({ title: str(msg.title, 200) || 'Hopper', body: str(msg.body, 300), icon: iconPath() })
+  n.on('click', () => {
+    ctx.win?.show()
+    ctx.win?.focus()
+    sendToWindow('hopper:watch-open', { folder, select: str(msg.select, 4000) })
+  })
+  n.show()
 }
 
 

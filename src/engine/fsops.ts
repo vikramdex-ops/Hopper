@@ -217,6 +217,7 @@ export function fsHandlers(ctx: EngineCtx) {
       else if (encoding === 'utf8-bom') data = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text, 'utf8')])
       else if (encoding === 'windows-1252') data = Buffer.from(text, 'latin1')
       else data = Buffer.from(text, 'utf8')
+      ctx.folderWatch?.noteOwn([p])
       const tmp = `${p}.hopper-save`
       await fsp.writeFile(tmp, data)
       await fsp.rename(tmp, p)
@@ -277,6 +278,7 @@ export function fsHandlers(ctx: EngineCtx) {
     'fs.recordRecycle': (paths: string[]) => ctx.undo.record({ kind: 'recycle', label: `Delete ${paths.length} item${paths.length > 1 ? 's' : ''}`, pairs: paths.map((p) => [p, '']) }),
     'fs.deletePermanent': async (paths: string[]) => {
       const failed: { path: string; message: string }[] = []
+      ctx.folderWatch?.noteOwn(paths)
       for (const p of paths) {
         try {
           await fsp.rm(p, { recursive: true, force: false, maxRetries: 2 })

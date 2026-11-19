@@ -549,5 +549,7 @@ export interface Settings {
   smartFolders: import('./listing').SmartFolder[]
   /** "Who has it open": how close requests reach people, and how long a blocked operation waits */
   unlock?: { via: 'hopper' | 'connect' | 'both'; waitMinutes: number }
+  /** folders that notify when files arrive, change or go (see shared/folderwatch.ts) */
+  watchedFolders: import('./folderwatch').WatchedFolder[]
 }
 

@@ -12,6 +12,10 @@ import { canRunAsAdmin } from '@shared/shellops'
 import { mappableUnc } from '@shared/network'
 import { GROUP_BY } from '@shared/listing'
 import { editNote, labelDefs, labelMenu, unlockUi } from './unlock.svelte'
+import { watchUi } from './folderwatch.svelte'
+import { compareRevs, drawingKey, parseRevision } from '@shared/revisions'
+import { defaultOffice } from '@shared/defaults'
+import type { Entry } from '@shared/types'
 
 export interface Command {
   id: string
@@ -34,6 +38,26 @@ const realTargets = () => hasTargets() && T().every((e) => !isVirtual(e.path) &&
 const listing = () => !isVirtual(app.active.path) || app.active.path.startsWith(VIRTUAL.search) || app.active.path === VIRTUAL.recycle
 const isPdfSel = () => T().length > 0 && T().every((e) => e.ext === 'pdf')
 const paths = () => T().map((e) => e.path)
+/** the folder "Watch this folder" acts on: one selected folder, else the folder on screen */
+const watchTarget = () => {
+  const t = T()
+  if (t.length === 1 && t[0].dir && !isVirtual(t[0].path) && !isArchivePath(t[0].path)) return t[0].path
+  return !t.some((e) => e.dir) && writable() ? app.active.path : ''
+}
+const revRules = () => app.office?.revisions ?? defaultOffice().revisions
+/** one file whose name carries a revision token (e.g. ISO-1001_RevB.pdf) */
+const isDrawingSel = () => realTargets() && T().length === 1 && !T()[0].dir && drawingKey(T()[0].name, revRules()) !== null
+const isPdfPair = () => realTargets() && T().length === 2 && T().every((e) => e.ext === 'pdf' && !e.dir)
+
+/** Compare two PDFs, older first: by revision when the rules can order both, else by modified time. */
+export function comparePdfs(a: Pick<Entry, 'name' | 'path' | 'mtime'>, b: Pick<Entry, 'name' | 'path' | 'mtime'>) {
+  const ra = parseRevision(a.name, revRules()).rev
+  const rb = parseRevision(b.name, revRules()).rev
+  const byRev = ra !== null && rb !== null ? compareRevs(ra, rb, revRules()) : null
+  const aFirst = byRev !== null && byRev !== 0 ? byRev < 0 : a.mtime <= b.mtime
+  const [o, n] = aFirst ? [a, b] : [b, a]
+  return dialogs.pdfCompare?.(o.path, n.path)
+}
 /** a label shortcut: the n-th office label (1-based) */
 const labelCmd = (n: number): Command => ({
   id: `label.${n}`,
@@ -173,6 +197,11 @@ export const commands: Command[] = [
   { id: 'tools.package', label: 'Package a lot / transmittal…', group: 'Office', icon: 'package', keys: ['Ctrl+Shift+P'], run: open('packager') },
   { id: 'tools.pdf', label: 'PDF tools…', group: 'Office', icon: 'pdf', when: isPdfSel, run: open('pdf') },
   { id: 'tools.pdfMerge', label: 'Merge PDFs', group: 'Office', icon: 'merge', when: () => isPdfSel() && T().length > 1, run: open('pdf', 'merge') },
+  { id: 'tools.pdfCompare', label: 'Compare PDFs', group: 'Office', icon: 'compare', when: isPdfPair, run: () => comparePdfs(T()[0], T()[1]) },
+  { id: 'tools.revisionTimeline', label: 'Revision timeline', group: 'Office', icon: 'history', when: isDrawingSel, run: () => dialogs.revisionTimeline?.(T()[0].path) },
+  { id: 'watch.folder', label: 'Watch this folder…', group: 'Watch', icon: 'eye', when: () => !!watchTarget() && !watchUi.watchedFolder(watchTarget()), run: () => watchUi.watch(watchTarget()) },
+  { id: 'watch.edit', label: 'Watched folder settings…', group: 'Watch', icon: 'eye', when: () => !!watchTarget() && !!watchUi.watchedFolder(watchTarget()), run: () => watchUi.watch(watchTarget()) },
+  { id: 'watch.stop', label: 'Stop watching this folder', group: 'Watch', icon: 'eye', when: () => !!watchTarget() && !!watchUi.watchedFolder(watchTarget()), run: () => { const w = watchUi.watchedFolder(watchTarget()); if (w) watchUi.stop(w.id) } },
   { id: 'tools.workspaceSave', label: 'Save workspace…', group: 'Workspaces', icon: 'workspace', run: async () => { const n = await app.prompt('Save workspace', '', 'Name'); if (n) app.saveWorkspace(n) } },
   { id: 'tools.workspaces', label: 'Switch workspace…', group: 'Workspaces', icon: 'workspace', keys: ['Ctrl+Shift+W'], run: open('workspaces') },
   { id: 'tools.pin', label: 'Pin folder to Quick access', group: 'Navigate', icon: 'pin', keys: ['Ctrl+B'], when: real, run: () => { const p = (T().find((e) => e.dir) ?? null)?.path ?? app.active.path; const pins = app.settings?.pinned ?? []; if (!pins.some((x) => x.toLowerCase() === p.toLowerCase())) app.updateSettings({ pinned: [...pins, p] }); app.toast('success', 'Pinned to Quick access') } },

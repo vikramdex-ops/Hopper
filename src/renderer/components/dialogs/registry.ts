@@ -44,6 +44,10 @@ export function registerDialogs(d: Record<string, (...args: any[]) => unknown>) 
     properties: lazy('PropertiesDialog', (paths: string[]) => ({ paths })),
     openWith: lazy('OpenWithDialog', (entry) => ({ entry })),
     pickFolder: lazy('FolderPickerDialog', (opts) => ({ ...(opts ?? {}) })),
-    unlock: lazy('UnlockDialog', (paths: string[], op?: unknown) => ({ paths, op }))
+    unlock: lazy('UnlockDialog', (paths: string[], op?: unknown) => ({ paths, op })),
+    watchFolder: lazy('WatchFolderDialog', (folder, isNew?: boolean) => ({ folder, isNew: isNew === true })),
+    revisionTimeline: lazy('RevisionTimelineDialog', (path: string) => ({ path })),
+    /** two PDFs, older first (the viewer can swap them) */
+    pdfCompare: lazy('PdfCompareDialog', (older: string, newer: string, labels?: [string, string]) => ({ older, newer, labels }))
   })
 }

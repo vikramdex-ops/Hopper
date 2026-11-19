@@ -80,7 +80,7 @@ export function registerIpc() {
   h('settings:get', () => ctx.settings.data)
   h('settings:set', (patch: Partial<Settings>) => {
     const themeChanged = patch.theme && patch.theme !== ctx.settings.data.theme
-    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset', 'recentFiles'].some((k) => k in patch)
+    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset', 'recentFiles', 'watchedFolders'].some((k) => k in patch)
     ctx.settings.set(patch)
     if (themeChanged) applyTheme()
     if (lanChanged) pushOfficeToUtilities()
