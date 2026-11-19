@@ -361,6 +361,51 @@ await step('sidebar shows free space and collapses to a rail', async () => {
   await until(() => !!document.querySelector('.sidebar'))
 })
 
+await step('right-click menu offers More options and Create shortcut', async () => {
+  await ev((p) => window.__hopper.panes[0].navigate(p), demo)
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'Site photos'))
+  await win.locator('.pane').first().locator('.row', { hasText: 'Site photos' }).first().click({ button: 'right' })
+  await win.locator('.menu .mi', { hasText: 'More options' }).waitFor({ timeout: 10000 })
+  if (!(await win.locator('.menu .mi', { hasText: 'Create shortcut' }).count())) throw new Error('no Create shortcut in the right-click menu')
+  await win.keyboard.press('Escape')
+  await until(() => !document.querySelector('.menu'))
+})
+
+await step('create shortcut, and opening it goes into the folder', async () => {
+  const lnk = join(demo, 'Site photos - Shortcut.lnk')
+  rmSync(lnk, { force: true })
+  await ev((p) => window.__hopperShell.createShortcuts([p]), join(demo, 'Site photos'))
+  if (!existsSync(lnk)) throw new Error('shortcut not created')
+  await ev((p) => window.__hopper.panes[0].navigate(p), demo)
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'Site photos - Shortcut.lnk'), null, 15000)
+  await ev(() => window.__hopper.openEntry(window.__hopper.panes[0].rows.find((r) => r.name === 'Site photos - Shortcut.lnk')))
+  await until(() => window.__hopper.panes[0].path.endsWith('Site photos'), null, 15000)
+  // a second one gets a number instead of replacing the first
+  await ev((p) => window.__hopperShell.createShortcuts([p]), join(demo, 'Site photos'))
+  if (!existsSync(join(demo, 'Site photos - Shortcut (2).lnk'))) throw new Error('second shortcut not numbered')
+  rmSync(lnk, { force: true })
+  rmSync(join(demo, 'Site photos - Shortcut (2).lnk'), { force: true })
+})
+
+await step('Home lists recent files and drops missing ones', async () => {
+  const keep = join(demo, 'recent-keep.txt')
+  const gone = join(demo, 'recent-gone.txt')
+  writeFileSync(keep, 'keep')
+  writeFileSync(gone, 'gone')
+  await ev(({ keep, gone }) => { window.__hopper.noteRecentFile(gone); window.__hopper.noteRecentFile(keep) }, { keep, gone })
+  rmSync(gone, { force: true })
+  await ev(() => window.__hopper.panes[0].navigate('hopper:home'))
+  const card = win.locator('section[aria-label="Recent files"]').first() // both panes may show Home
+  await card.locator('.line', { hasText: 'recent-keep.txt' }).waitFor({ timeout: 15000 })
+  await until(() => !(window.__hopper.settings.recentFiles ?? []).some((p) => p.endsWith('recent-gone.txt')), null, 15000)
+  if (await card.locator('.line', { hasText: 'recent-gone.txt' }).count()) throw new Error('a missing file is still listed')
+  await win.screenshot({ path: join(shots, '12-home-recent-files.png') })
+  await card.locator('.line', { hasText: 'recent-keep.txt' }).hover()
+  await card.locator('.line', { hasText: 'recent-keep.txt' }).locator('button[aria-label="Open file location"]').click()
+  await until((p) => window.__hopper.panes[0].path.toLowerCase() === p.toLowerCase() && window.__hopper.panes[0].focused?.name === 'recent-keep.txt', demo, 15000)
+  rmSync(keep, { force: true })
+})
+
 await step('memory stays reasonable', async () => {
   const m = await app.evaluate(async ({ app }) => app.getAppMetrics().map((p) => ({ type: p.type, name: p.name ?? p.serviceName ?? '', kb: p.memory.workingSetSize })))
   const total = m.reduce((a, p) => a + p.kb, 0)

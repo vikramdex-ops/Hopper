@@ -97,6 +97,19 @@
     ])
   }
 
+  function driveMenu(e: MouseEvent, d: { root: string; kind: string }) {
+    e.preventDefault()
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open in new tab', icon: 'plus', run: () => app.active.openTab(d.root) },
+      ...(app.dual ? [{ label: 'Open in other pane', icon: 'dualPane', run: () => app.other.navigate(d.root) }] : []),
+      { separator: true },
+      { label: 'Map network drive…', icon: 'network', run: () => void net.mapDrive() },
+      ...(d.kind === 'network' ? [{ label: 'Disconnect', icon: 'close', run: () => void net.unmapDrive(d.root) }] : []),
+      { separator: true },
+      { label: 'Properties', icon: 'info', run: () => dialogs.properties?.([d.root]) }
+    ])
+  }
+
   function personMenu(e: MouseEvent, user: string) {
     e.preventDefault()
     app.openMenu(e.clientX, e.clientY, [
@@ -177,7 +190,7 @@
       {@const used = d.total ? 1 - d.free / d.total : 0}
       <button class="row drive" class:on={here.startsWith(d.root.toLowerCase()) && here.length <= 3} class:drop={dropKey === d.root} class:dim={!d.ready}
         title={`${d.remote ?? d.root}${d.ready ? `\n${fmtSize(d.free)} free of ${fmtSize(d.total)}` : '\nNot available'}`}
-        onclick={(e) => go(d.root, e)} onauxclick={(e) => e.button === 1 && go(d.root, e)}
+        onclick={(e) => go(d.root, e)} onauxclick={(e) => e.button === 1 && go(d.root, e)} oncontextmenu={(e) => driveMenu(e, d)}
         ondragover={(e) => d.ready && over(e, d.root)} ondragleave={() => (dropKey = '')} ondrop={(e) => dropOn(e, d.root)}>
         <Icon name={driveIcon(d.kind, d.root)} />
         <span class="dl">

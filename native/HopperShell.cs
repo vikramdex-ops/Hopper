@@ -45,8 +45,9 @@ namespace Hopper
                 Interlocked.Increment(ref pending);
                 ThreadPool.QueueUserWorkItem(delegate { try { Handle(reqLine); } finally { Interlocked.Decrement(ref pending); } });
             }
-            // stdin closed (parent gone): finish what is in flight, then exit.
-            for (int i = 0; i < 600 && Volatile.Read(ref pending) > 0; i++) Thread.Sleep(50);
+            // stdin closed (parent gone): give in-flight work a moment, then exit. Kept short: a helper
+            // lingering after Hopper quits locks its own exe and breaks the next upgrade.
+            for (int i = 0; i < 40 && Volatile.Read(ref pending) > 0; i++) Thread.Sleep(50);
             return 0;
         }
 
@@ -105,6 +106,18 @@ namespace Hopper
                 case "openWithInvoke":
                     ui.Invoke(delegate { OpenWith.Invoke(Str(a, "path"), Str(a, "name")); });
                     return "true";
+                case "shellMenu":
+                {
+                    // -> { invoked, verb? }. Interactive: returns when the Windows menu closes (native/ShellMenu.cs).
+                    var paths = StrList(a, "paths");
+                    string folder = Str(a, "folder");
+                    bool extended = Bool(a, "extended");
+                    ShellMenu.Validate(paths, folder);
+                    object shown = null;
+                    bool probe = Bool(a, "probe");
+                    ui.Invoke(delegate { shown = ShellMenu.Show(paths, folder, extended, probe); });
+                    return Json.Serialize(shown);
+                }
                 case "recycleList": return Json.Serialize(Recycle.List());
                 case "recycleRestore": return Json.Serialize(Recycle.Restore(StrList(a, "paths")));
                 default: return PreviewTools.Dispatch(cmd, a); // preview helpers live in PreviewTools.cs

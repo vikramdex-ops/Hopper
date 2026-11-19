@@ -5,6 +5,9 @@
   import { app } from '../lib/app.svelte'
   import { basename, dirname, fmtAgo, fmtSize, initials, personColor, plural } from '../lib/format'
   import { dialogs, run } from '../lib/commands'
+  import { engine } from '../lib/api'
+  import { KIND_COLOR, KIND_ICON, kindOf } from '../lib/filetypes'
+  import type { Entry } from '@shared/types'
   import Icon from './Icon.svelte'
 
   let { pane }: { pane: Pane } = $props()
@@ -18,6 +21,22 @@
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
   const recent = $derived((app.settings?.recentFolders ?? []).slice(0, 8))
+  // Recent files: shown once checked; files that are gone (or unreachable) are dropped from the list.
+  const recentFileList = $derived(app.settings?.recentFiles ?? [])
+  let files = $state<string[]>([])
+  $effect(() => {
+    const list = recentFileList.slice()
+    let stale = false
+    void Promise.all(list.map((p) => engine.call<{ exists: boolean; dir?: boolean }>('fs.stat', p).then((st) => st.exists && !st.dir, () => false))).then((ok) => {
+      if (stale) return
+      const keep = list.filter((_, i) => ok[i])
+      files = keep.slice(0, 8)
+      if (keep.length !== list.length) app.updateSettings({ recentFiles: keep })
+    })
+    return () => (stale = true)
+  })
+  const extOf = (p: string) => (/\.([^.\\/]+)$/.exec(p)?.[1] ?? '').toLowerCase()
+  const openFile = (p: string) => void app.openEntry({ path: p, name: basename(p), ext: extOf(p), dir: false } as Entry)
   const pinned = $derived(app.settings?.pinned ?? [])
   const online = $derived(app.peers.filter((p) => !p.self && p.status !== 'offline'))
   const inbox = $derived(app.inbox.slice(0, 4))
@@ -64,6 +83,25 @@
         {/each}
       {:else}
         <p class="caption">Folders you open appear here.</p>
+      {/if}
+    </section>
+
+    <section class="card" aria-label="Recent files">
+      <h2 class="subtitle">Recent files</h2>
+      {#if files.length}
+        {#each files as p (p)}
+          {@const k = kindOf(extOf(p))}
+          <div class="line file" title={p}>
+            <button class="open" onclick={() => openFile(p)}>
+              <span class="fold" style:color={KIND_COLOR[k]}><Icon name={KIND_ICON[k]} /></span>
+              <span class="ellipsis nm">{basename(p)}</span>
+              <span class="caption ellipsis where">{dirname(p)}</span>
+            </button>
+            <button class="btn subtle icon sm loc" title="Open file location" aria-label="Open file location" onclick={() => pane.navigate(dirname(p), { select: p })}><Icon name="folderOpen" /></button>
+          </div>
+        {/each}
+      {:else}
+        <p class="caption">Files you open in Hopper appear here.</p>
       {/if}
     </section>
 
@@ -214,6 +252,30 @@
   }
   .line:hover {
     background: var(--hover);
+  }
+  .line.file {
+    padding: 0 2px 0 0;
+  }
+  .open {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 6px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+  .loc {
+    flex: none;
+    opacity: 0;
+  }
+  .line.file:hover .loc,
+  .loc:focus-visible {
+    opacity: 1;
   }
   .line.unseen .nm {
     font-weight: 600;

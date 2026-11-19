@@ -6,6 +6,7 @@ import { Pane, VIRTUAL, isArchivePath, isVirtual, splitArchive, titleFor } from 
 import { basename, collator, dirname, fmtSize, join, plural } from './format'
 import { kindOf } from './filetypes'
 import { lanx, receivedBody, receivedTitle } from './lan2.svelte'
+import { pushRecent } from '@shared/shellops'
 import type {
   Conflict, DriveInfo, Entry, InboxItem, JobInfo, OfficeConfig, Peer, PeerGroup, QuickDest, Settings, ShareSpec, TabState, UndoRecord, Workspace
 } from '@shared/types'
@@ -316,11 +317,24 @@ export class App {
       return
     }
     if (kindOf(e.ext) === 'archive' && !e.ext.match(/^(exe|msi)$/)) return pane.navigate(`${e.path}::`, { newTab: opts.newTab })
+    // a shortcut to a folder opens the folder here, not in Explorer
+    if (e.ext === 'lnk') {
+      const t = (await host.shell.readShortcut(e.path).catch(() => null)) as { target: string; dir: boolean } | null
+      if (t?.dir) return pane.navigate(t.target, { newTab: opts.newTab })
+    }
     try {
       await host.shell.open(e.path)
+      this.noteRecentFile(e.path)
     } catch (err: any) {
       this.toast('error', `Couldn't open ${e.name}`, err.message)
     }
+  }
+
+  /** Home's "Recent files": files opened through Hopper (real paths only, not virtual or inside archives). */
+  noteRecentFile(path: string) {
+    if (!this.settings || isVirtual(path) || isArchivePath(path)) return
+    if (this.settings.recentFiles?.[0]?.toLowerCase() === path.toLowerCase()) return
+    this.updateSettings({ recentFiles: pushRecent(this.settings.recentFiles, path) })
   }
 
   saveWorkspace(name: string) {

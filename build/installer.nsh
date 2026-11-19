@@ -4,6 +4,43 @@
 
 !include LogicLib.nsh
 
+; ---------------------------------------------------------------------------
+; Closing Hopper before install / uninstall.
+; electron-builder's default check finds ANY process running from the install folder but
+; only kills Hopper.exe, so a lingering HopperShell.exe or 7z.exe made the old uninstaller
+; abort ("Failed to uninstall old application files ... : 2"). close-hopper.ps1 closes every
+; process from the folder (politely, then by force) and waits until none is left.
+!macro customCheckAppRunning
+  System::Call 'Kernel32::SetEnvironmentVariable(t "HOPPER_INSTDIR", t "$INSTDIR")i'
+  InitPluginsDir
+  File "/oname=$PLUGINSDIR\close-hopper.ps1" "${BUILD_RESOURCES_DIR}\close-hopper.ps1"
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close-hopper.ps1"`
+  Pop $0
+  ${If} $0 != 0
+    ; PowerShell unavailable or blocked by policy: fall back to taskkill by name (this user only).
+    ExpandEnvStrings $1 "%USERNAME%"
+    nsExec::Exec `"$SYSDIR\taskkill.exe" /F /T /FI "USERNAME eq $1" /IM "${APP_EXECUTABLE_FILENAME}"`
+    Pop $0
+    nsExec::Exec `"$SYSDIR\taskkill.exe" /F /T /FI "USERNAME eq $1" /IM "HopperShell.exe"`
+    Pop $0
+    nsExec::Exec `"$SYSDIR\taskkill.exe" /F /T /FI "USERNAME eq $1" /IM "7z.exe"`
+    Pop $0
+    Sleep 1500
+  ${EndIf}
+!macroend
+
+; The old version's uninstaller failing must never stop the upgrade: everything from the old
+; folder is closed above, and the new files are written over the old ones.
+!macro customUnInstallCheck
+  ${If} $R0 != 0
+    DetailPrint `Old version's uninstaller returned $R0; installing over it.`
+  ${EndIf}
+!macroend
+
+!macro customUnInstallCheckCurrentUser
+  !insertmacro customUnInstallCheck
+!macroend
+
 !macro customUnInstall
   ; Restore the effective default verb to Windows only when ours is still in
   ; place — never overwrite a change made later by the user or another app.

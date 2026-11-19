@@ -7,6 +7,7 @@
   import { kindOf, typeLabel, KIND_COLOR, KIND_ICON, THUMB_KINDS } from '../lib/filetypes'
   import { startDrag, dropPaths, dropOp, isNoopDrop, hasFiles } from '../lib/dnd'
   import { fileMenu, backgroundMenu } from '../lib/ctxmenu'
+  import { canWindowsMenu, windowsMenu } from '../lib/winshell'
   import { ATTR, type ColumnSpec } from '@shared/types'
   import Icon from './Icon.svelte'
 
@@ -145,6 +146,16 @@
   function ctx(e: MouseEvent, i: number | null) {
     e.preventDefault()
     pane.app.setActive(pane.index)
+    // Shift+right-click: the Windows menu straight away, with its extended verbs (as in Explorer)
+    if (e.shiftKey) {
+      if (i !== null && !isSel(rows[i])) pane.selectIndex(i, 'single')
+      const paths = i === null ? [] : pane.targets().map((t) => t.path)
+      if (i === null) pane.clearSelection()
+      if (canWindowsMenu(pane, paths)) {
+        void windowsMenu(pane, paths, true)
+        return
+      }
+    }
     if (i === null) {
       pane.clearSelection()
       app.openMenu(e.clientX, e.clientY, backgroundMenu(pane))

@@ -521,6 +521,8 @@ export interface Settings {
   recentShares: string[]
   /** most recently visited folders, newest first */
   recentFolders: string[]
+  /** files opened through Hopper, newest first (at most 20) */
+  recentFiles: string[]
   pathCopy: { quote: 'never' | 'spaces' | 'always'; defaultMode: string }
   tagColors: Record<string, string>
   /** this PC hosts the Dexterity Share server (set by the setup wizard; secrets are stored elsewhere) */

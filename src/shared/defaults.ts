@@ -65,6 +65,7 @@ export function defaultSettings(home: string, docs: string): Settings {
     lan: { enabled: true, acceptFrom: 'all', blocked: [], askFor: [] },
     recentShares: [],
     recentFolders: [],
+    recentFiles: [],
     pathCopy: { quote: 'never', defaultMode: 'path' },
     tagColors: {}
   }

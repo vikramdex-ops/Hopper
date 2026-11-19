@@ -25,5 +25,9 @@ export function registerNetworkIpc() {
       45000
     )
   )
-  h('net:disconnect', (server: string, forget?: boolean) => ctx.shell.call('netDisconnect', { server: str(server, 260), forget: forget === true }, 20000))
+  h('net:mapDrive', (spec: { letter?: string; remote?: string; reconnect?: boolean }) =>
+    ctx.shell.call('netMapDrive', { letter: str(spec?.letter, 3), remote: str(spec?.remote, 520), reconnect: spec?.reconnect === true, timeoutMs: 30000 }, 45000)
+  )
+  h('net:unmapDrive', (letter: string, force?: boolean) => ctx.shell.call('netUnmapDrive', { letter: str(letter, 3), force: force === true }, 20000))
+  h('net:disconnect',(server: string, forget?: boolean) => ctx.shell.call('netDisconnect', { server: str(server, 260), forget: forget === true }, 20000))
 }

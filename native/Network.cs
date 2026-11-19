@@ -37,6 +37,10 @@ namespace Hopper
                 case "netDisconnect": return Json.Serialize(Disconnect(Str(a, "server"), Bool(a, "forget")));
                 // -> [{ local, remote, status }]
                 case "netConnections": return Json.Serialize(Connections());
+                // -> { ok: true, local, remote } | { error: { stage, code } }
+                case "netMapDrive": return Json.Serialize(MapDrive(Str(a, "letter"), Str(a, "remote"), Bool(a, "reconnect"), Int(a, "timeoutMs", 30000)));
+                // -> { ok: true } | { error: { stage, code } }
+                case "netUnmapDrive": return Json.Serialize(UnmapDrive(Str(a, "letter"), Bool(a, "force")));
                 default: throw new Exception("unknown command " + cmd);
             }
         }
@@ -130,6 +134,7 @@ namespace Hopper
         const int RESOURCEUSAGE_CONTAINER = 2;
         const int RESOURCEDISPLAYTYPE_SERVER = 2;
         const int CONNECT_TEMPORARY = 4;
+        const int CONNECT_UPDATE_PROFILE = 1;
 
         // -------------------------------------------------------------------
         // Computers
@@ -473,6 +478,49 @@ namespace Hopper
             r["closed"] = closed;
             r["failed"] = failed;
             r["forgot"] = forget && host.Length > 0 && Creds.Delete(host);
+            return r;
+        }
+
+        // -------------------------------------------------------------------
+        // Mapped drives
+
+        /// <summary>"z", "Z:", "Z:\\" -> "Z:"; null when it is not a drive letter.</summary>
+        static string DriveName(string letter)
+        {
+            string l = (letter ?? "").Trim().TrimEnd('\\').TrimEnd(':');
+            if (l.Length != 1 || !char.IsLetter(l[0]) || l[0] > 'z') return null;
+            return char.ToUpperInvariant(l[0]) + ":";
+        }
+
+        static Dictionary<string, object> MapDrive(string letter, string remote, bool reconnect, int timeoutMs)
+        {
+            string local = DriveName(letter);
+            if (local == null) return Err("input", 1200); // ERROR_BAD_DEVICE
+            string target = (remote ?? "").Trim().Replace('/', '\\').TrimEnd('\\');
+            string host = Host(target);
+            if (!target.StartsWith("\\\\") || host.Length == 0 || target.Substring(2).IndexOf('\\') < 0) return Err("input", 67); // needs \\server\share
+            var reach = Reach(host, Math.Min(timeoutMs, 8000));
+            if (reach != null) return reach;
+            var nr = new NETRESOURCE { dwType = RESOURCETYPE_DISK, lpLocalName = local, lpRemoteName = target };
+            int rc;
+            // the current Windows sign-in (or one saved in Credential Manager); Hopper's sign-in dialog handles other accounts
+            bool done = Within(timeoutMs, delegate { return WNetAddConnection2W(nr, null, null, reconnect ? CONNECT_UPDATE_PROFILE : 0); }, out rc);
+            if (!done) return Err("connect", 1460);
+            if (rc != 0) return Err("map", rc);
+            var r = new Dictionary<string, object>();
+            r["ok"] = true; r["local"] = local; r["remote"] = target;
+            return r;
+        }
+
+        static Dictionary<string, object> UnmapDrive(string letter, bool force)
+        {
+            string local = DriveName(letter);
+            if (local == null) return Err("input", 1200);
+            // also forgets "reconnect at sign-in"
+            int rc = WNetCancelConnection2W(local, CONNECT_UPDATE_PROFILE, force);
+            if (rc != 0) return Err("unmap", rc);
+            var r = new Dictionary<string, object>();
+            r["ok"] = true;
             return r;
         }
     }

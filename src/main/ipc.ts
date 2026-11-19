@@ -2,8 +2,8 @@
 // drag-out, recycle bin, settings. File work goes to the engine over a MessagePort.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
 import { execFile } from 'node:child_process'
-import { promises as fsp } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, promises as fsp } from 'node:fs'
+import { dirname, extname, join } from 'node:path'
 import { release } from 'node:os'
 import { applyTheme, ctx, pushOfficeToUtilities } from './ctx'
 import { clearThumbCache } from './protocol'
@@ -11,6 +11,7 @@ import { checkForUpdates, installUpdate, updaterState } from './updater'
 import defmgr from './defmgr'
 import { lockOffice, officeMeta, officeUser, revokeOffice, saveOffice } from './officeops'
 import { registerNetworkIpc } from './network'
+import { canRunAsAdmin, shortcutBaseName, shortcutName } from '@shared/shellops'
 import type { OfficeConfig, Settings } from '@shared/types'
 
 const h = (name: string, fn: (...args: any[]) => unknown) => ipcMain.handle(name, (_e, ...args) => fn(...args))
@@ -141,6 +142,65 @@ export function registerIpc() {
     execFile(exe, [p], { windowsHide: false }).unref()
     return true
   })
+  // "More options": the real Windows context menu (native/ShellMenu.cs). It stays open until the user picks or
+  // clicks away, so there is no practical time limit.
+  h('shell:menu', (paths: string[], folder?: string, extended?: boolean) =>
+    ctx.shell.call('shellMenu', { paths: Array.isArray(paths) ? paths.filter((p) => typeof p === 'string').slice(0, 500) : [], folder: typeof folder === 'string' ? folder : '', extended: extended === true }, 0)
+  )
+  h('shell:createShortcut', async (paths: string[]) => {
+    const done: string[] = []
+    const failed: { path: string; message: string }[] = []
+    for (const p of Array.isArray(paths) ? paths : []) {
+      try {
+        const dir = dirname(p.replace(/[\\/]+$/, '')) || p
+        // a drive root's shortcut goes on the desktop, as Explorer does
+        const where = /^[a-z]:\\?$/i.test(p) ? app.getPath('desktop') : dir
+        const lnk = join(where, shortcutName(shortcutBaseName(p), (n) => existsSync(join(where, n))))
+        if (!shell.writeShortcutLink(lnk, 'create', { target: p, cwd: dir })) throw new Error("Windows couldn't write the shortcut")
+        done.push(lnk)
+      } catch (e: any) {
+        failed.push({ path: p, message: String(e?.message ?? e) })
+      }
+    }
+    return { done, failed }
+  })
+  /** A .lnk's target and whether it is a folder; null when it can't be read or the target is gone. */
+  h('shell:readShortcut', async (p: string) => {
+    try {
+      const target = shell.readShortcutLink(p).target
+      if (!target) return null
+      const st = await fsp.stat(target)
+      return { target, dir: st.isDirectory() }
+    } catch {
+      return null
+    }
+  })
+  h('shell:runAsAdmin', (p: string) =>
+    new Promise<{ ok: boolean; cancelled?: boolean; error?: string }>((resolve) => {
+      if (typeof p !== 'string' || !canRunAsAdmin(extname(p))) return resolve({ ok: false, error: 'This file type cannot run as administrator' })
+      // The path travels in an environment variable, never inside the command text. Windows file names
+      // cannot contain a double quote, so quoting it for the child's command line is safe.
+      const script = [
+        "$ProgressPreference = 'SilentlyContinue'",
+        '$p = $env:HOPPER_TARGET; $d = Split-Path -LiteralPath $p; $x = [IO.Path]::GetExtension($p).ToLowerInvariant()',
+        'try {',
+        "  if ($x -eq '.ps1') { Start-Process -FilePath powershell.exe -Verb RunAs -WorkingDirectory $d -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('\"' + $p + '\"')) }",
+        "  elseif ($x -eq '.msi') { Start-Process -FilePath msiexec.exe -Verb RunAs -ArgumentList @('/i',('\"' + $p + '\"')) }",
+        '  else { Start-Process -FilePath $p -Verb RunAs -WorkingDirectory $d }',
+        '} catch { $c = $_.Exception.InnerException; if ($c -and $c.NativeErrorCode -eq 1223) { exit 2 }; [Console]::Out.WriteLine($_.Exception.Message); exit 1 }'
+      ].join('\n')
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+        { windowsHide: true, timeout: 10 * 60000, env: { ...process.env, HOPPER_TARGET: p } },
+        (err: any, stdout) => {
+          if (!err) return resolve({ ok: true })
+          if (err.code === 2) return resolve({ ok: false, cancelled: true })
+          resolve({ ok: false, error: String(stdout || err.message).trim().split(/\r?\n/)[0] })
+        }
+      )
+    })
+  )
   h('shell:props', (paths: string[]) => ctx.shell.call('props', { paths }, 60000))
   h('shell:setAttrs', (paths: string[], set: number, clear: number) => ctx.shell.call('setAttrs', { paths, set, clear }, 60000))
   h('shell:cluster', (p: string) => ctx.shell.call('cluster', { path: p }, 8000))
@@ -153,8 +213,10 @@ export function registerIpc() {
             // The shell "print" verb hands the file to its registered app (Acrobat, Word…).
             execFile(
               'powershell.exe',
-              ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -FilePath $args[0] -Verb Print', p],
-              { windowsHide: true, timeout: 60000 },
+              // The path travels in an environment variable: with -Command, PowerShell 5.1 parses trailing
+              // arguments as part of the command text, so a file name could otherwise run as code.
+              ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -FilePath $env:HOPPER_TARGET -Verb Print'],
+              { windowsHide: true, timeout: 60000, env: { ...process.env, HOPPER_TARGET: p } },
               (err) => resolve(!err)
             )
           })

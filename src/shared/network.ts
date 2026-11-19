@@ -123,6 +123,23 @@ export function shareRootHost(path: string): string | null {
   return m ? m[1] : null
 }
 
+/** Drive letters free for "Map network drive", Z first like Windows does. A to C are never offered. */
+export function freeDriveLetters(usedRoots: readonly string[]): string[] {
+  const used = new Set(usedRoots.map((r) => r.trim().slice(0, 1).toUpperCase()))
+  const out: string[] = []
+  for (let c = 'Z'.charCodeAt(0); c >= 'D'.charCodeAt(0); c--) {
+    const l = String.fromCharCode(c)
+    if (!used.has(l)) out.push(l)
+  }
+  return out
+}
+
+/** What to map for a path: \\server\share (and any folder inside it), or null for anything else. */
+export function mappableUnc(path: string): string | null {
+  const p = path.trim().replace(/\//g, '\\').replace(/\\+$/, '')
+  return /^\\\\[^\\]+\\[^\\]+/.test(p) ? p : null
+}
+
 // ---------------------------------------------------------------------------------------------
 // Discovery: merge what each source found into one list of computers
 
@@ -247,7 +264,13 @@ export function netError(e: { stage?: string; code?: number } | undefined, host:
   }
   if (stage === 'resolve') return mk('notfound', `Hopper can't find a computer called ${H} on the network. Check the name, or try its IP address.`)
   if (stage === 'connect' && code === 1231) return mk('offline', `${H} isn't answering. It may be switched off, asleep, or not sharing any folders.`)
+  if (stage === 'input' && code === 1200) return mk('failed', 'That is not a drive letter.')
+  if (stage === 'input' && code === 67) return mk('noshare', 'Type a shared folder, for example \\\\server\\share.')
   if (stage === 'input') return mk('notfound', 'That is not a valid computer name.')
+  if (stage === 'map' && code === 85) return mk('busy', 'That drive letter is already in use. Pick another one.') // ERROR_ALREADY_ASSIGNED
+  if (stage === 'map' && code === 1202) return mk('busy', 'Windows already remembers a drive with that letter. Pick another one, or disconnect it first.') // ERROR_DEVICE_ALREADY_REMEMBERED
+  if (stage === 'unmap' && code === 2250) return mk('failed', "That drive isn't connected.") // ERROR_NOT_CONNECTED
+  if (stage === 'unmap' && (code === 2401 || code === 2404)) return mk('busy', 'Files on that drive are still open. Close them, then disconnect again.')
   switch (code) {
     case 5: // ERROR_ACCESS_DENIED
     case 65: // ERROR_NETWORK_ACCESS_DENIED

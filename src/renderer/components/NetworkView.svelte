@@ -91,6 +91,7 @@
       { separator: true },
       { label: 'Add as a network place', icon: 'pin', run: () => addPlace(s.path) },
       { label: 'Sign in to this share…', icon: 'lock', run: () => void net.signIn(server!, s.name) },
+      { label: 'Map network drive…', icon: 'drive', run: () => void net.mapDrive(s.path) },
       { label: 'Copy path', icon: 'copyPath', run: () => void copy(s.path) }
     ])
   }
@@ -127,6 +128,7 @@
       </div>
       <div class="actions">
         <button class="btn" onclick={() => addPlace()}><Icon name="plus" /> Add a network place</button>
+        <button class="btn" onclick={() => void net.mapDrive()}><Icon name="drive" /> Map network drive</button>
         <button class="btn subtle icon" title="Look for computers again" aria-label="Refresh" onclick={refresh} disabled={net.busy > 0}><Icon name="refresh" /></button>
       </div>
     </header>

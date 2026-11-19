@@ -41,6 +41,11 @@ const api = {
     openWithList: invoke('shell:openWithList'),
     openWithInvoke: invoke('shell:openWithInvoke'),
     openWithApp: invoke('shell:openWithApp'),
+    /** the real Windows context menu (More options); resolves when it closes: { invoked, verb? } */
+    menu: invoke('shell:menu'),
+    createShortcut: invoke('shell:createShortcut'),
+    readShortcut: invoke('shell:readShortcut'),
+    runAsAdmin: invoke('shell:runAsAdmin'),
     props: invoke('shell:props'),
     setAttrs: invoke('shell:setAttrs'),
     cluster: invoke('shell:cluster'),
@@ -55,7 +60,7 @@ const api = {
     firewallStatus: invoke('shell:firewallStatus')
   },
   /** Network node: discovery, share lists, sign-in (passwords go straight to the native helper) */
-  net: { computers: invoke('net:computers'), shares: invoke('net:shares'), connect: invoke('net:connect'), disconnect: invoke('net:disconnect') },
+  net: { computers: invoke('net:computers'), shares: invoke('net:shares'), connect: invoke('net:connect'), disconnect: invoke('net:disconnect'), mapDrive: invoke('net:mapDrive'), unmapDrive: invoke('net:unmapDrive') },
   clip: { writeFiles: invoke('clip:writeFiles'), read: invoke('clip:read'), writeText: invoke('clip:writeText') },
   drag: { start: (paths: string[]) => ipcRenderer.send('drag:start', paths) },
   /** Real paths for files dropped in from Explorer (File.path no longer exists). */

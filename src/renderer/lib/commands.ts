@@ -7,6 +7,9 @@ import { kindOf } from './filetypes'
 import { dirname } from './format'
 import { copyPaths, PATH_MODES, type PathMode } from './pathcopy'
 import { net } from './network.svelte'
+import { canWindowsMenu, createShortcuts, runAsAdmin, windowsMenu } from './winshell'
+import { canRunAsAdmin } from '@shared/shellops'
+import { mappableUnc } from '@shared/network'
 
 export interface Command {
   id: string
@@ -24,6 +27,7 @@ const real = () => !isVirtual(app.active.path)
 const writable = () => real() && !isArchivePath(app.active.path)
 const hasTargets = () => T().length > 0
 const isArchiveSel = () => T().some((e) => kindOf(e.ext) === 'archive')
+const realTargets = () => hasTargets() && T().every((e) => !isVirtual(e.path) && !isArchivePath(e.path))
 const isPdfSel = () => T().length > 0 && T().every((e) => e.ext === 'pdf')
 
 /** Dialog openers are registered by components at startup (avoids import cycles). */
@@ -43,6 +47,8 @@ export const commands: Command[] = [
   { id: 'nav.activity', label: 'Open Activity', group: 'Navigate', icon: 'activity', run: () => app.active.navigate(VIRTUAL.activity) },
   { id: 'nav.recycle', label: 'Open Recycle Bin', group: 'Navigate', icon: 'trash', run: () => app.active.navigate(VIRTUAL.recycle) },
   { id: 'nav.network', label: 'Open Network', group: 'Navigate', icon: 'network', run: () => app.active.navigate(VIRTUAL.network) },
+  { id: 'net.mapDrive', label: 'Map network drive…', group: 'Navigate', icon: 'network', run: () => net.mapDrive(mappableUnc(T().find((e) => e.dir)?.path ?? '') ?? mappableUnc(app.active.path) ?? '') },
+  { id: 'net.unmapDrive', label: 'Disconnect network drive…', group: 'Navigate', icon: 'network', when: () => app.drives.some((d) => d.kind === 'network'), run: () => app.openMenu(window.innerWidth / 2 - 110, 80, app.drives.filter((d) => d.kind === 'network').map((d) => ({ label: `${d.root.slice(0, 2)}  ${d.remote ?? ''}`, icon: 'network', run: () => void net.unmapDrive(d.root) }))) },
   { id: 'net.addPlace', label: 'Add a network place…', group: 'Navigate', icon: 'network', run: () => net.addPlace() },
   { id: 'nav.switchPane', label: 'Switch pane', group: 'Navigate', icon: 'dualPane', keys: ['Tab'], when: () => app.dual, run: () => app.setActive(app.activeIndex === 0 ? 1 : 0) },
   { id: 'nav.mirror', label: 'Open this folder in the other pane', group: 'Navigate', icon: 'dualPane', keys: ['Ctrl+Shift+M'], when: () => app.dual, run: () => app.other.navigate(app.active.path) },
@@ -77,6 +83,9 @@ export const commands: Command[] = [
   { id: 'file.open', label: 'Open', group: 'File', icon: 'open', keys: ['Enter'], when: hasTargets, run: () => { for (const e of T().slice(0, 12)) void app.openEntry(e) } },
   { id: 'file.openNewTab', label: 'Open in new tab', group: 'File', icon: 'plus', keys: ['Ctrl+Enter'], when: () => T().some((e) => e.dir), run: () => { for (const e of T().filter((x) => x.dir)) app.active.openTab(e.path, false) } },
   { id: 'file.openWith', label: 'Open with…', group: 'File', icon: 'openWith', when: () => T().length === 1 && !T()[0].dir, run: () => dialogs.openWith?.(T()[0]) },
+  { id: 'file.moreOptions', label: 'More options', group: 'File', icon: 'windows', keys: ['Shift+F10'], when: () => canWindowsMenu(app.active, T().map((e) => e.path)), run: () => windowsMenu(app.active, T().map((e) => e.path)) },
+  { id: 'file.createShortcut', label: 'Create shortcut', group: 'New', icon: 'link', when: realTargets, run: () => createShortcuts(T().map((e) => e.path)) },
+  { id: 'file.runAsAdmin', label: 'Run as administrator', group: 'File', icon: 'shield', when: () => realTargets() && T().length === 1 && !T()[0].dir && canRunAsAdmin(T()[0].ext), run: () => runAsAdmin(T()[0].path) },
   { id: 'file.properties', label: 'Properties', group: 'File', icon: 'info', keys: ['Alt+Enter'], when: real, run: () => dialogs.properties?.(T().length ? T().map((e) => e.path) : [app.active.path]) },
   { id: 'file.terminal', label: 'Open terminal here', group: 'File', icon: 'terminal', keys: ['Ctrl+`'], when: writable, run: () => host.shell.terminal(app.active.path) },
   { id: 'file.copyPath', label: 'Copy path', group: 'Path Copy', icon: 'copyPath', keys: ['Ctrl+Shift+C'], run: () => copyPaths((app.settings?.pathCopy?.defaultMode as PathMode) || 'path') },

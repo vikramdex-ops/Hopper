@@ -7,6 +7,10 @@ import { isArchivePath, isVirtual, VIRTUAL, type Pane, type Row } from './pane.s
 import { kindOf } from './filetypes'
 import { basename } from './format'
 import { copyPaths, PATH_MODES } from './pathcopy'
+import { createShortcuts, runAsAdmin, windowsMenu } from './winshell'
+import { canRunAsAdmin } from '@shared/shellops'
+import { mappableUnc } from '@shared/network'
+import { net } from './network.svelte'
 
 const pathCopyMenu = (paths: string[]): MenuItem[] => [
   { label: 'Name', run: () => copyPaths('name', paths) },
@@ -78,6 +82,7 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   if (allDirs) m.push({ label: 'Open in new tab', icon: 'plus', keys: 'Ctrl+Enter', run: () => targets.forEach((t) => pane.openTab(t.path, false)) })
   if (one?.dir && app.dual) m.push({ label: 'Open in other pane', icon: 'dualPane', run: () => app.other.navigate(one.path) })
   if (one && !one.dir && !inArchive) m.push(cmd('file.openWith'))
+  if (one && !one.dir && !inArchive && !virt && canRunAsAdmin(one.ext)) m.push({ label: 'Run as administrator', icon: 'shield', run: () => runAsAdmin(one.path) })
   if (archives.length) {
     m.push({ separator: true })
     m.push({ label: 'Extract here', icon: 'extract', keys: 'Ctrl+Alt+X', run: () => app.extract('smart', undefined, archives.map((a) => a.path)) })
@@ -107,7 +112,7 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   m.push({ separator: true })
   if (!virt) m.push(cmd('file.rename'))
   if (targets.length > 1 && !inArchive) m.push(cmd('file.massRename'))
-  if (!virt && !inArchive) m.push(cmd('file.duplicate'))
+  if (!virt && !inArchive) m.push(cmd('file.duplicate'), { label: 'Create shortcut', icon: 'link', run: () => createShortcuts(paths) })
   m.push(cmd('file.delete', { danger: true }))
   if (!virt && !inArchive && (pdfs.length || targets.length > 1)) {
     m.push({ separator: true })
@@ -124,8 +129,12 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   }
   m.push({ separator: true })
   m.push({ label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu(paths) })
+  if (one?.dir && !inArchive && mappableUnc(one.path)) m.push({ label: 'Map network drive…', icon: 'network', run: () => net.mapDrive(one.path) })
   if (allDirs && one && !inArchive) m.push({ label: 'Pin to Quick access', icon: 'pin', run: () => app.updateSettings({ pinned: [...(app.settings?.pinned ?? []), one.path] }) })
-  if (!virt && !inArchive) m.push({ label: 'Properties', icon: 'info', keys: 'Alt+Enter', run: () => dialogs.properties?.(paths) })
+  if (!virt && !inArchive) {
+    m.push({ label: 'Properties', icon: 'info', keys: 'Alt+Enter', run: () => dialogs.properties?.(paths) })
+    m.push({ separator: true }, { label: 'More options', icon: 'windows', keys: 'Shift+F10', run: () => windowsMenu(pane, paths) })
+  }
   return m
 }
 
@@ -142,7 +151,9 @@ export function backgroundMenu(pane: Pane): MenuItem[] {
   if (!virt && !inArchive) {
     m.push({ label: 'New', icon: 'plus', submenu: [cmd('file.newFolder'), cmd('file.newFile'), ...(app.newTypes.length ? [{ separator: true } as MenuItem, ...app.newMenu()] : []), { separator: true }, cmd('file.template')] })
     m.push({ separator: true }, cmd('sel.all'), cmd('file.terminal'), cmd('file.size'), cmd('tools.pin'))
+    if (mappableUnc(pane.path)) m.push({ label: 'Map network drive…', icon: 'network', run: () => net.mapDrive(pane.path) })
     m.push({ separator: true }, { label: 'Path Copy', icon: 'copyPath', submenu: pathCopyMenu([pane.path]) }, { label: 'Properties', icon: 'info', run: () => dialogs.properties?.([pane.path]) })
+    m.push({ separator: true }, { label: 'More options', icon: 'windows', keys: 'Shift+F10', run: () => windowsMenu(pane, []) })
   }
   return m
 }

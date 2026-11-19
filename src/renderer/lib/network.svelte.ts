@@ -21,6 +21,7 @@ export interface ShareListing {
 
 type RawShares = { server: string; shares?: RawShare[]; error?: { stage: string; code: number }; connected?: boolean; remembered?: string | null; ms?: number }
 type RawConnect = { ok?: boolean; remembered?: boolean; error?: { stage: string; code: number } }
+type RawMap = { ok?: boolean; local?: string; remote?: string; error?: { stage: string; code: number } }
 type RawDisconnect = { closed: number; failed: { remote: string; code: number }[]; forgot: boolean }
 
 /** The native helper's network commands (via main). Replaced only by tests/e2e/network.mjs. */
@@ -28,7 +29,9 @@ export const netApi = {
   computers: (sources: string[]) => host.net.computers(sources) as Promise<{ sources: RawSource[]; ms: number }>,
   shares: (server: string) => host.net.shares(server) as Promise<RawShares>,
   connect: (spec: { remote: string; user: string; password: string; remember: boolean }) => host.net.connect(spec) as Promise<RawConnect>,
-  disconnect: (server: string, forget: boolean) => host.net.disconnect(server, forget) as Promise<RawDisconnect>
+  disconnect: (server: string, forget: boolean) => host.net.disconnect(server, forget) as Promise<RawDisconnect>,
+  mapDrive: (spec: { letter: string; remote: string; reconnect: boolean }) => host.net.mapDrive(spec) as Promise<RawMap>,
+  unmapDrive: (letter: string, force: boolean) => host.net.unmapDrive(letter, force) as Promise<RawMap>
 }
 
 /** Sources are asked in groups: the quick ones first; the old Windows browse list (slow to fail) on its own. */
@@ -134,6 +137,45 @@ class Net {
       app.toast('error', `Couldn't sign out of ${server}`, netCallError(e, server).message)
     }
     void this.loadShares(server, true)
+  }
+
+  // ---- mapped drives -------------------------------------------------------------------------
+
+  /** One "Map network drive" attempt with the current Windows sign-in (or one saved in Credential Manager). */
+  async map(letter: string, remote: string, reconnect: boolean): Promise<{ error?: NetError; local?: string }> {
+    const server = hostOf(remote)
+    try {
+      const r = await netApi.mapDrive({ letter, remote, reconnect })
+      if (r.error) return { error: netError(r.error, server) }
+      return { local: r.local }
+    } catch (e) {
+      return { error: netCallError(e, server) }
+    }
+  }
+
+  /** Hopper's "Map network drive" dialog; `remote` fills in the folder (\\server\share…). */
+  async mapDrive(remote = '') {
+    const { default: C } = await import('../components/dialogs/MapDriveDialog.svelte')
+    const r = await app.dialog<{ local: string; remote: string } | null>(C, { remote })
+    if (!r) return
+    await app.refreshDrives()
+    app.toast('success', `Mapped ${r.local} to ${r.remote}`, undefined, [{ label: 'Open', run: () => void app.active.navigate(r.local + '\\') }])
+  }
+
+  /** Disconnects a mapped drive ("Z:\") and forgets it for the next sign-in. */
+  async unmapDrive(root: string, force = false) {
+    const letter = root.slice(0, 1)
+    const name = `${letter.toUpperCase()}:`
+    try {
+      const r = await netApi.unmapDrive(letter, force)
+      if (r.error) {
+        const e = netError(r.error, name)
+        app.toast('warning', `Couldn't disconnect ${name}`, e.message, e.code === 'busy' && r.error.stage === 'unmap' ? [{ label: 'Disconnect anyway', run: () => void this.unmapDrive(root, true) }] : undefined)
+      } else app.toast('info', `Disconnected ${name}`)
+    } catch (e) {
+      app.toast('error', `Couldn't disconnect ${name}`, netCallError(e, name).message)
+    }
+    await app.refreshDrives()
   }
 
   // ---- saved places -------------------------------------------------------------------------

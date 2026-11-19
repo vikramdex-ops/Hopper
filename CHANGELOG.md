@@ -4,6 +4,23 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- **More options: the Windows right-click menu.** At the bottom of Hopper's right-click menu (or
+  Shift+F10, or Shift+right-click for the extended menu straight away) Hopper shows the real Windows
+  menu for the selected items or the folder, so 7-Zip, TortoiseGit, Bluebeam, Send to, Open with and
+  other shell extensions work. The folder refreshes after a command runs.
+- **Create shortcut** makes "‹name› - Shortcut.lnk" next to the item (numbered if one exists).
+  Opening a shortcut to a folder now opens that folder in Hopper instead of in Explorer.
+- **Run as administrator** for programs, batch files, installers and PowerShell scripts (Windows
+  asks for permission first).
+- **Map network drive** on the Network page, on shared folders and in the sidebar's drive menu:
+  pick a free letter and whether to reconnect at sign-in. Mapped drives can be disconnected from
+  the sidebar or the command palette.
+- **Recent files on Home**: the last files you opened in Hopper, with "Open file location".
+  Files that are gone drop off the list.
+
 ## [2.7.1] — 2026-11-19
 
 ### Added
