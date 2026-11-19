@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import type { Pane, Row } from '../lib/pane.svelte'
+  import type { GroupInfo, Pane, Row } from '../lib/pane.svelte'
   import { isArchivePath, isVirtual } from '../lib/pane.svelte'
   import { app } from '../lib/app.svelte'
   import { fmtDate, fmtSize } from '../lib/format'
@@ -47,21 +47,81 @@
   const cellW = $derived(view === 'grid' ? thumb + 36 : view === 'list' ? 260 : width)
   const cellH = $derived(view === 'grid' ? thumb + 56 : rowH)
   const perRow = $derived(view === 'details' ? 1 : Math.max(1, Math.floor((width - 16) / cellW)))
-  const lines = $derived(Math.ceil(rows.length / perRow))
   const top = $derived(view === 'details' ? HEADER : 8)
-  const totalH = $derived(top + lines * cellH + 16)
-  const first = $derived(Math.max(0, Math.floor((scrollTop - top) / cellH) - 4))
-  const last = $derived(Math.min(lines, Math.ceil((scrollTop + height) / cellH) + 4))
-  const visible = $derived.by(() => {
-    const out: { row: Row; i: number }[] = []
-    for (let line = first; line < last; line++) {
-      for (let c = 0; c < perRow; c++) {
-        const i = line * perRow + c
-        if (i >= rows.length) break
-        out.push({ row: rows[i], i })
+
+  // Group by: each group is a header row followed by its items (wrapped per group in list and
+  // thumbnail views). Without grouping there is one block and no header. Only what is on screen
+  // is rendered, so 50,000 items stay as cheap as before.
+  const GH = 34
+  interface Block {
+    g: GroupInfo | null
+    /** header top */
+    y: number
+    /** first item line top */
+    itemsY: number
+    /** rows[start .. start + count) */
+    start: number
+    count: number
+    lines: number
+  }
+  const layout = $derived.by(() => {
+    const blocks: Block[] = []
+    let y = top
+    if (!pane.groups.length) {
+      const lines = Math.ceil(rows.length / perRow)
+      blocks.push({ g: null, y, itemsY: y, start: 0, count: rows.length, lines })
+      y += lines * cellH
+    } else {
+      for (const g of pane.groups) {
+        const count = g.collapsed ? 0 : g.count
+        const lines = Math.ceil(count / perRow)
+        blocks.push({ g, y, itemsY: y + GH, start: g.start, count, lines })
+        y += GH + lines * cellH + (lines && view !== 'details' ? 8 : 0)
       }
     }
-    return out
+    return { blocks, end: y }
+  })
+  const totalH = $derived(layout.end + 16)
+
+  /** Where row i sits: its block, line and column, and its top-left corner. */
+  function posOf(i: number) {
+    const blocks = layout.blocks
+    let bi = blocks.length - 1
+    while (bi > 0 && !(blocks[bi].count && blocks[bi].start <= i)) bi--
+    const b = blocks[bi]
+    const k = i - b.start
+    const line = Math.floor(k / perRow)
+    const col = k % perRow
+    return { bi, b, line, col, x: view === 'details' ? 0 : 8 + col * cellW, y: b.itemsY + line * cellH }
+  }
+
+  const visible = $derived.by(() => {
+    const items: { row: Row; i: number; x: number; y: number }[] = []
+    const heads: Block[] = []
+    const lo = scrollTop - 4 * cellH
+    const hi = scrollTop + height + 4 * cellH
+    for (const b of layout.blocks) {
+      if (b.itemsY + b.lines * cellH < lo || b.y > hi) continue
+      if (b.g && b.y + GH >= lo) heads.push(b)
+      const first = Math.max(0, Math.floor((lo - b.itemsY) / cellH))
+      const last = Math.min(b.lines, Math.ceil((hi - b.itemsY) / cellH))
+      for (let line = first; line < last; line++) {
+        for (let c = 0; c < perRow; c++) {
+          const k = line * perRow + c
+          if (k >= b.count) break
+          items.push({ row: rows[b.start + k], i: b.start + k, x: view === 'details' ? 0 : 8 + c * cellW, y: b.itemsY + line * cellH })
+        }
+      }
+    }
+    return { items, heads }
+  })
+
+  /** A focused group header (keyboard), or null when an item has the focus. */
+  let headFocus = $state<string | null>(null)
+  $effect(() => {
+    void pane.path
+    void pane.groupBy
+    headFocus = null
   })
 
   let raf = 0
@@ -84,11 +144,13 @@
   // Keep the focused row on screen.
   $effect(() => {
     const f = pane.focus
-    if (f < 0 || !scroller) return
-    const line = Math.floor(f / perRow)
-    const y = top + line * cellH
-    if (y < scroller.scrollTop + top) scroller.scrollTop = y - top
-    else if (y + cellH > scroller.scrollTop + height) scroller.scrollTop = y + cellH - height + 4
+    if (!scroller) return
+    const head = headFocus !== null ? layout.blocks.find((b) => b.g?.key === headFocus) : undefined
+    if (!head && (f < 0 || f >= rows.length)) return
+    const y = head ? head.y : posOf(f).y
+    const h = head ? GH : cellH
+    if (y < scroller.scrollTop + top) scroller.scrollTop = Math.max(0, y - top)
+    else if (y + h > scroller.scrollTop + height) scroller.scrollTop = y + h - height + 4
   })
 
   // New folder => scroll to top.
@@ -117,6 +179,7 @@
     if (e.button !== 0 && e.button !== 2) return
     pane.app.setActive(pane.index)
     const r = rows[i]
+    headFocus = null
     pendingSingle = -1
     if (e.shiftKey) pane.selectIndex(i, e.ctrlKey ? 'rangeAdd' : 'range')
     else if (e.ctrlKey) pane.selectIndex(i, 'toggle')
@@ -184,15 +247,17 @@
       marquee = { x0, y0, x1, y1 }
       const [ya, yb] = [Math.min(y0, y1), Math.max(y0, y1)]
       const [xa, xb] = [Math.min(x0, x1), Math.max(x0, x1)]
-      const la = Math.max(0, Math.floor((ya - top) / cellH))
-      const lb = Math.min(lines - 1, Math.floor((yb - top) / cellH))
       const sel = new Set(base)
-      for (let l = la; l <= lb; l++) {
-        for (let c = 0; c < perRow; c++) {
-          const cx0 = 8 + c * cellW
-          if (view !== 'details' && (cx0 + cellW < xa || cx0 > xb)) continue
-          const i = l * perRow + c
-          if (i < rows.length) sel.add(keyOf(rows[i]))
+      for (const b of layout.blocks) {
+        const la = Math.max(0, Math.floor((ya - b.itemsY) / cellH))
+        const lb = Math.min(b.lines - 1, Math.floor((yb - b.itemsY) / cellH))
+        for (let l = la; l <= lb; l++) {
+          for (let c = 0; c < perRow; c++) {
+            const cx0 = 8 + c * cellW
+            if (view !== 'details' && (cx0 + cellW < xa || cx0 > xb)) continue
+            const k = l * perRow + c
+            if (k < b.count) sel.add(keyOf(rows[b.start + k]))
+          }
         }
       }
       pane.setSelection(sel)
@@ -263,24 +328,103 @@
 
   let typed = ''
   let typedAt = 0
+  /** Keys on a focused group header: Left/Right collapse/expand, Enter/Space toggle, Up/Down move on. */
+  function headKey(e: KeyboardEvent, key: string) {
+    const blocks = layout.blocks
+    const bi = blocks.findIndex((b) => b.g?.key === key)
+    if (bi < 0) {
+      headFocus = null
+      return false
+    }
+    const b = blocks[bi]
+    const done = () => {
+      e.preventDefault()
+      e.stopPropagation()
+      return true
+    }
+    switch (e.key) {
+      case 'ArrowLeft': pane.toggleGroup(key, false); return done()
+      case 'ArrowRight': pane.toggleGroup(key, true); return done()
+      case 'Enter':
+      case ' ': pane.toggleGroup(key); return done()
+      case 'ArrowDown': {
+        if (b.count) {
+          headFocus = null
+          pane.selectIndex(b.start, 'single')
+        } else if (blocks[bi + 1]) headFocus = blocks[bi + 1].g!.key
+        return done()
+      }
+      case 'ArrowUp': {
+        const prev = blocks[bi - 1]
+        if (prev?.count) {
+          headFocus = null
+          pane.selectIndex(prev.start + prev.count - 1, 'single')
+        } else if (prev) headFocus = prev.g!.key
+        return done()
+      }
+    }
+    headFocus = null
+    return false
+  }
+
+  /** Row one line up or down from row f, crossing into the next group; 'head' when a header takes the focus. */
+  function vertical(f: number, d: 1 | -1, plain: boolean): number | 'head' {
+    const blocks = layout.blocks
+    const p = posOf(f)
+    const line = p.line + d
+    if (line >= 0 && line < p.b.lines) return p.b.start + Math.min(line * perRow + p.col, p.b.count - 1)
+    if (d < 0 && plain && p.b.g) {
+      headFocus = p.b.g.key
+      return 'head'
+    }
+    for (let k = p.bi + d; k >= 0 && k < blocks.length; k += d) {
+      const b = blocks[k]
+      if (d > 0 && plain && b.g) {
+        headFocus = b.g.key
+        return 'head'
+      }
+      if (!b.count) continue
+      if (d < 0) return b.start + Math.min((b.lines - 1) * perRow + p.col, b.count - 1)
+      return b.start + Math.min(p.col, b.count - 1)
+    }
+    return f
+  }
+
   function key(e: KeyboardEvent) {
     if (pane.renaming) return
+    if (headFocus !== null && headKey(e, headFocus)) return
     const n = rows.length
+    // every group collapsed: the headers are all there is to move through
+    if (!n && pane.groups.length && (e.key === 'ArrowDown' || e.key === 'Home')) {
+      e.preventDefault()
+      headFocus = pane.groups[0].key
+      return
+    }
     if (!n) return
     const f = Math.max(0, pane.focus)
     const page = Math.max(1, Math.floor(height / cellH) - 1) * perRow
-    const move = (to: number) => {
-      to = Math.max(0, Math.min(n - 1, to))
+    const move = (to: number | 'head') => {
       e.preventDefault()
+      if (to === 'head') return
+      to = Math.max(0, Math.min(n - 1, to))
       if (e.shiftKey) pane.selectIndex(to, 'range')
       else if (e.ctrlKey) pane.focus = to
       else pane.selectIndex(to, 'single')
     }
+    const plain = !e.shiftKey && !e.ctrlKey
     switch (e.key) {
-      case 'ArrowDown': return move(pane.focus < 0 ? 0 : f + perRow)
-      case 'ArrowUp': return move(f - perRow)
+      case 'ArrowDown': return move(pane.focus < 0 ? 0 : vertical(f, 1, plain))
+      case 'ArrowUp': return move(vertical(f, -1, plain))
       case 'ArrowRight': if (perRow > 1) return move(f + 1); break
-      case 'ArrowLeft': if (perRow > 1) return move(f - 1); break
+      case 'ArrowLeft':
+        if (perRow > 1) return move(f - 1)
+        // details view: Left goes to the item's group header, as in Explorer
+        if (plain && pane.groups.length && pane.focus >= 0) {
+          headFocus = posOf(f).b.g?.key ?? null
+          e.preventDefault()
+          return
+        }
+        break
       case 'Home': return move(0)
       case 'End': return move(n - 1)
       case 'PageDown': return move(f + page)
@@ -410,15 +554,41 @@
       </div>
     {/if}
 
-    {#each visible as { row: r, i } (i)}
+    {#each visible.heads as b (b.g!.key)}
+      {@const g = b.g!}
+      <div
+        class="ghead"
+        class:focus={headFocus === g.key}
+        role="button"
+        tabindex="-1"
+        aria-expanded={!g.collapsed}
+        title={g.collapsed ? 'Expand group' : 'Collapse group'}
+        style:transform={`translateY(${b.y}px)`}
+        onmousedown={(e) => {
+          e.stopPropagation()
+          if (e.button !== 0) return
+          pane.app.setActive(pane.index)
+          headFocus = g.key
+          scroller.focus({ preventScroll: true })
+        }}
+        onclick={() => pane.toggleGroup(g.key)}
+        oncontextmenu={(e) => { e.stopPropagation(); ctx(e, null) }}
+        onkeydown={() => {}}
+      >
+        <Icon name={g.collapsed ? 'chevronRight' : 'chevronDown'} size={12} />
+        <span class="glabel">{g.label}</span>
+        <span class="gcount">{g.count.toLocaleString()}</span>
+        <span class="gline"></span>
+      </div>
+    {/each}
+
+    {#each visible.items as { row: r, i, x, y } (i)}
       {@const sel = isSel(r)}
       {@const k = kindOf(r.ext, r.dir)}
-      {@const line = Math.floor(i / perRow)}
-      {@const col = i % perRow}
       <div
         class="row"
         class:sel
-        class:focus={i === pane.focus}
+        class:focus={i === pane.focus && headFocus === null}
         class:cut={app.cutPaths.has(keyOf(r))}
         class:hidden-item={(r.attrs & ATTR.hidden) !== 0}
         class:drop={dropTarget === keyOf(r)}
@@ -426,7 +596,7 @@
         aria-selected={sel}
         tabindex="-1"
         draggable={!pane.renaming}
-        style:transform={`translate(${view === 'details' ? 0 : 8 + col * cellW}px, ${top + line * cellH}px)`}
+        style:transform={`translate(${x}px, ${y}px)`}
         style:width={view === 'details' ? undefined : `${cellW - 4}px`}
         style:height={`${cellH - (view === 'grid' ? 4 : 0)}px`}
         onmousedown={(e) => down(e, i)}
@@ -500,7 +670,7 @@
     {/if}
   </div>
 
-  {#if !rows.length && !pane.loading}
+  {#if !rows.length && !pane.groups.length && !pane.loading}
     <div class="empty">
       {#if pane.error}
         <Icon name="warning" size={28} />
@@ -582,6 +752,43 @@
     cursor: col-resize;
     border-right: 1px solid var(--divider);
     margin-right: 3px;
+  }
+  .ghead {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 0;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 0 6px;
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: default;
+    will-change: transform;
+  }
+  .ghead:hover {
+    background: var(--hover);
+  }
+  .list:focus-within .ghead.focus {
+    box-shadow: inset 0 0 0 1px var(--stroke-strong);
+  }
+  .ghead :global(.icon-svg) {
+    color: var(--text-2);
+    flex: none;
+  }
+  .gcount {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .gline {
+    flex: 1;
+    height: 1px;
+    background: var(--divider);
   }
   .row {
     position: absolute;

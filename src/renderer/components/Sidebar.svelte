@@ -8,6 +8,7 @@
   import Icon from './Icon.svelte'
   import { net } from '../lib/network.svelte'
   import { networkHostOf, networkHostPath, parseAddress, type NetworkPlace } from '@shared/network'
+  import { SMART_SUGGESTIONS, type SmartFolder } from '@shared/listing'
 
   const s = $derived(app.settings!)
   const here = $derived(app.active?.path.toLowerCase() ?? '')
@@ -97,6 +98,27 @@
     ])
   }
 
+  // ---- smart folders: saved searches, reordered by drag or Move up / down
+  const smarts = $derived(s.smartFolders ?? [])
+  const hereSmart = $derived(app.active ? app.smartOf(app.active.path)?.id ?? '' : '')
+  const suggestions = $derived(SMART_SUGGESTIONS.filter((x) => !smarts.some((f) => f.q === x.q)))
+  const SMART_DRAG = 'application/x-hopper-smart'
+  let smartDrop = $state('')
+
+  function smartMenu(e: MouseEvent, f: SmartFolder, i: number) {
+    e.preventDefault()
+    app.openMenu(e.clientX, e.clientY, [
+      { label: 'Open', icon: 'open', run: () => void app.openSmart(f) },
+      { label: 'Open in new tab', icon: 'plus', run: () => void app.openSmart(f, { newTab: true }) },
+      { separator: true },
+      { label: 'Rename…', icon: 'rename', run: () => void app.renameSmart(f.id) },
+      { label: 'Move up', icon: 'chevronUp', disabled: i === 0, run: () => app.moveSmart(f.id, i - 1) },
+      { label: 'Move down', icon: 'chevronDown', disabled: i === smarts.length - 1, run: () => app.moveSmart(f.id, i + 1) },
+      { separator: true },
+      { label: 'Delete smart folder', icon: 'delete', run: () => app.deleteSmart(f.id) }
+    ])
+  }
+
   function driveMenu(e: MouseEvent, d: { root: string; kind: string }) {
     e.preventDefault()
     app.openMenu(e.clientX, e.clientY, [
@@ -175,6 +197,26 @@
         <span class="folder"><Icon name="folder" /></span><span class="ellipsis">{basename(p) || p}</span><Icon name="pin" size={12} cls="pin" />
       </button>
     {/each}
+
+    <div class="head">Smart folders</div>
+    {#each smarts as f, i (f.id)}
+      <button class="row" class:on={hereSmart === f.id} class:dropline={smartDrop === f.id} draggable="true"
+        title={`${f.q}${f.content ? ` · containing “${f.content}”` : ''}\n${f.root ? `in ${f.root}` : 'Everywhere'}`}
+        onclick={(e) => void app.openSmart(f, { newTab: e.ctrlKey })} onauxclick={(e) => e.button === 1 && void app.openSmart(f, { newTab: true })} oncontextmenu={(e) => smartMenu(e, f, i)}
+        ondragstart={(e) => { e.dataTransfer?.setData(SMART_DRAG, f.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move' }}
+        ondragover={(e) => { if (e.dataTransfer?.types.includes(SMART_DRAG)) { e.preventDefault(); smartDrop = f.id } }}
+        ondragleave={() => (smartDrop = '')}
+        ondrop={(e) => { const id = e.dataTransfer?.getData(SMART_DRAG); smartDrop = ''; if (id) { e.preventDefault(); e.stopPropagation(); app.moveSmart(id, i) } }}>
+        <Icon name="search" /><span class="ellipsis">{f.name}</span>
+      </button>
+    {/each}
+    {#if suggestions.length}
+      <div class="chips">
+        {#each suggestions as sg (sg.q)}
+          <button class="chip" title={`Add a smart folder for ${app.active?.searchRoot ? 'this folder' : 'everywhere'}: ${sg.q}`} onclick={() => app.addSmartSuggestion(sg)}><Icon name="plus" size={12} />{sg.name}</button>
+        {/each}
+      </div>
+    {/if}
 
     {#if s.workspaces.length}
       <div class="head">Workspaces</div>
@@ -466,6 +508,31 @@
   }
   .row:hover {
     background: var(--hover);
+  }
+  .row.dropline {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px 8px 4px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px dashed var(--stroke-strong);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .chip:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .row:active {
     background: var(--press);

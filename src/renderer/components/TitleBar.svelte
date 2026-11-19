@@ -4,9 +4,23 @@
   import { dialogs } from '../lib/commands'
   import Icon from './Icon.svelte'
   import { basename } from '../lib/format'
+  import { compileQuery, FILTER_HELP } from '@shared/listing'
 
   let q = $state('')
   let input: HTMLInputElement
+  let help = $state(false)
+  // values the query language did not understand: shown under the box, ignored by the search
+  const hints = $derived(q.trim() ? compileQuery(q).hints : [])
+
+  function insert(example: string) {
+    const token = example.split(/\s+/)[0]
+    q = q.trim() ? `${q.trim()} ${token}` : token
+    input.focus()
+  }
+
+  function focusOut(e: FocusEvent) {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) help = false
+  }
 
   function submit(e: Event) {
     e.preventDefault()
@@ -16,10 +30,15 @@
     const params = new URLSearchParams({ q: text })
     if (root) params.set('root', root)
     void app.active.navigate(`${VIRTUAL.search}?${params}`)
+    help = false
     input.blur()
   }
 
   dialogs.search = () => input?.focus()
+  dialogs.searchHelp = () => {
+    help = true
+    input?.focus()
+  }
 </script>
 
 <header class="titlebar">
@@ -31,16 +50,33 @@
     </svg>
     <span class="name">Hopper</span>
   </div>
-  <form class="search" onsubmit={submit}>
+  <form class="search" onsubmit={submit} onfocusout={focusOut}>
     <Icon name="search" />
     <input
       bind:this={input}
       bind:value={q}
       placeholder={app.ready ? `Search ${app.active?.searchRoot ? basename(app.active.searchRoot) || app.active.searchRoot : 'this PC'}` : 'Search'}
       spellcheck="false"
-      onkeydown={(e) => e.key === 'Escape' && (q = '', input.blur())}
+      onkeydown={(e) => e.key === 'Escape' && (help ? (help = false) : (q = '', input.blur()))}
     />
+    {#if hints.length}<span class="hintdot" title={hints.join('\n')}><Icon name="warning" size={14} /></span>{/if}
+    <button type="button" class="helpbtn" class:on={help} title="Search filters" aria-label="Search filters" aria-expanded={help} onclick={() => (help = !help)}><Icon name="info" size={14} /></button>
     <span class="kbd">Ctrl+E</span>
+    {#if help || hints.length}
+      <div class="pop" role="dialog" aria-label="Search filters">
+        {#each hints as h (h)}<div class="hint"><Icon name="warning" size={12} /> {h} — ignored</div>{/each}
+        {#if help}
+          <div class="ptitle">Search filters</div>
+          <div class="grid">
+            {#each FILTER_HELP as f (f.example)}
+              <button type="button" class="ex" title="Add to the search" onclick={() => insert(f.example)}>{f.example}</button>
+              <span class="meaning">{f.meaning}</span>
+            {/each}
+          </div>
+          <div class="pfoot">Combine them: <code>iso type:pdf date:thisweek</code>. They also work in Filter this folder (Ctrl+F).</div>
+        {/if}
+      </div>
+    {/if}
   </form>
   <div class="drag"></div>
   <div class="layout" role="group" aria-label="Pane layout">
@@ -96,6 +132,84 @@
     background: transparent;
     color: var(--text);
     min-width: 0;
+  }
+  .search {
+    position: relative;
+  }
+  .helpbtn {
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    width: 22px;
+    height: 22px;
+    border-radius: var(--r-sm);
+    display: grid;
+    place-items: center;
+  }
+  .helpbtn:hover,
+  .helpbtn.on {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .hintdot {
+    color: var(--warn);
+    display: flex;
+  }
+  .pop {
+    position: absolute;
+    top: 36px;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    -webkit-app-region: no-drag;
+    padding: 10px 12px;
+    background: var(--card-solid);
+    border: 1px solid var(--stroke);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-flyout, var(--shadow-card));
+    color: var(--text);
+    font-size: 12px;
+  }
+  .hint {
+    color: var(--warn);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+  .ptitle {
+    font-weight: 600;
+    margin: 2px 0 6px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    align-items: center;
+  }
+  .ex {
+    border: 0;
+    background: var(--hover);
+    border-radius: var(--r-sm);
+    padding: 2px 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .ex:hover {
+    background: var(--sel);
+  }
+  .meaning {
+    color: var(--text-2);
+  }
+  .pfoot {
+    margin-top: 8px;
+    color: var(--text-2);
+  }
+  .pfoot code {
+    font-family: var(--mono);
   }
   .search input::placeholder {
     color: var(--text-3);

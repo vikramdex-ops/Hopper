@@ -10,6 +10,7 @@ import { copyPaths, PATH_MODES } from './pathcopy'
 import { createShortcuts, runAsAdmin, windowsMenu } from './winshell'
 import { canRunAsAdmin } from '@shared/shellops'
 import { mappableUnc } from '@shared/network'
+import { GROUP_BY } from '@shared/listing'
 import { net } from './network.svelte'
 
 const pathCopyMenu = (paths: string[]): MenuItem[] => [
@@ -142,9 +143,11 @@ export function backgroundMenu(pane: Pane): MenuItem[] {
   const virt = isVirtual(pane.path)
   const inArchive = isArchivePath(pane.path)
   const m: MenuItem[] = [
-    { label: 'View', icon: 'view', submenu: [cmd('view.details', { checked: pane.view === 'details' }), cmd('view.list', { checked: pane.view === 'list' }), cmd('view.grid', { checked: pane.view === 'grid' }), { separator: true }, cmd('view.hidden', { checked: app.settings?.showHidden }), cmd('view.revisions', { checked: app.settings?.groupRevisions })] },
+    { label: 'View', icon: 'view', submenu: [cmd('view.details', { checked: pane.view === 'details' }), cmd('view.list', { checked: pane.view === 'list' }), cmd('view.grid', { checked: pane.view === 'grid' }), { separator: true }, cmd('view.hidden', { checked: app.settings?.showHidden }), cmd('view.revisions', { checked: pane.revisionsOn }), { separator: true }, cmd('view.resetFolder'), cmd('view.applyAll')] },
+    { label: 'Group by', icon: 'layers', submenu: [...GROUP_BY.map((g) => cmd(`view.group.${g.id}`, { label: g.label, icon: undefined, checked: pane.groupBy === g.id })), { separator: true }, cmd('view.collapseGroups'), cmd('view.expandGroups')] },
     { label: 'Sort by', icon: 'sort', submenu: (['name', 'mtime', 'type', 'size', 'ctime'] as const).map((k) => ({ label: { name: 'Name', mtime: 'Date modified', type: 'Type', size: 'Size', ctime: 'Date created' }[k], checked: pane.sort.key === k, run: () => pane.setSort(k) })) },
     cmd('nav.refresh'),
+    ...(pane.path.startsWith(VIRTUAL.search) ? [cmd('search.save')] : []),
     { separator: true },
     cmd('file.paste', { disabled: virt })
   ]

@@ -3,6 +3,7 @@
   import { VIRTUAL, isVirtual } from '../lib/pane.svelte'
   import { app } from '../lib/app.svelte'
   import { fmtSize, plural } from '../lib/format'
+  import { compileQuery } from '@shared/listing'
   import { dialogs } from '../lib/commands'
   import TabStrip from './TabStrip.svelte'
   import Breadcrumb from './Breadcrumb.svelte'
@@ -18,6 +19,10 @@
   const sel = $derived(pane.selected)
   const selBytes = $derived(sel.reduce((a, e) => a + (e.dir ? 0 : e.size), 0))
   const totalBytes = $derived(pane.rows.reduce((a, e) => a + (e.dir ? 0 : e.size), 0))
+  const searchQ = $derived(pane.path.startsWith(VIRTUAL.search) ? new URLSearchParams(pane.path.split('?')[1] ?? '').get('q') ?? '' : '')
+  const smart = $derived(app.smartOf(pane.path))
+  // filter values that were not understood are ignored; say so instead of silently showing everything
+  const searchHints = $derived(searchQ ? compileQuery(searchQ).hints : [])
   let filterOpen = $state(false)
   let filterInput: HTMLInputElement | undefined = $state()
 
@@ -47,8 +52,9 @@
       {#if filterOpen || pane.filter}
         <div class="filter">
           <Icon name="filter" />
-          <input bind:this={filterInput} bind:value={pane.filter} placeholder="Filter (e.g. *.pdf or iso 07)" spellcheck="false"
+          <input bind:this={filterInput} bind:value={pane.filter} placeholder="Filter (e.g. *.pdf, iso 07, date:today)" spellcheck="false"
             onkeydown={(e) => { if (e.key === 'Escape') { pane.filter = ''; filterOpen = false } if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); (e.currentTarget as HTMLElement).closest('.pane')?.querySelector<HTMLElement>('.list')?.focus(); if (pane.rows.length) pane.selectIndex(0) } }} />
+          {#if pane.filterQuery.hints.length}<span class="fhint" title={`${pane.filterQuery.hints.join('\n')} (ignored)`}><Icon name="warning" size={14} /></span>{/if}
           <button class="x" aria-label="Clear filter" onclick={() => { pane.filter = ''; filterOpen = false }}><Icon name="close" size={12} /></button>
         </div>
       {:else}
@@ -76,14 +82,18 @@
           <span class="caption">{pane.searchInfo.done ? `Searched ${pane.searchInfo.scanned.toLocaleString()} items` : `Searching… ${pane.searchInfo.scanned.toLocaleString()} scanned`}</span>
         {/if}
         {#if pane.entries.length !== pane.rows.length && !pane.filter}
-          <span class="caption" title="Hidden items or older revisions are not shown">{pane.entries.length - pane.rows.length} not shown</span>
+          <span class="caption" title="Hidden items, older revisions or collapsed groups are not shown">{pane.entries.length - pane.rows.length} not shown</span>
         {/if}
+        {#each searchHints as h (h)}<span class="caption warnline" title="This part of the search is ignored"><Icon name="warning" size={12} /> {h}</span>{/each}
       {/if}
       <span class="spacer"></span>
+      {#if searchQ && !smart}
+        <button class="btn subtle sm savesearch" title="Save this search as a smart folder in the sidebar" onclick={() => app.saveSearch(pane)}><Icon name="star" /> Save search</button>
+      {/if}
       <div class="views">
-        <button class="btn subtle icon sm" class:on={pane.view === 'details'} title="Details" onclick={() => (pane.view = 'details', app.persistSoon())}><Icon name="details" /></button>
-        <button class="btn subtle icon sm" class:on={pane.view === 'list'} title="List" onclick={() => (pane.view = 'list', app.persistSoon())}><Icon name="list" /></button>
-        <button class="btn subtle icon sm" class:on={pane.view === 'grid'} title="Thumbnails" onclick={() => (pane.view = 'grid', app.persistSoon())}><Icon name="grid" /></button>
+        <button class="btn subtle icon sm" class:on={pane.view === 'details'} title="Details" onclick={() => pane.setView('details')}><Icon name="details" /></button>
+        <button class="btn subtle icon sm" class:on={pane.view === 'list'} title="List" onclick={() => pane.setView('list')}><Icon name="list" /></button>
+        <button class="btn subtle icon sm" class:on={pane.view === 'grid'} title="Thumbnails" onclick={() => pane.setView('grid')}><Icon name="grid" /></button>
         {#if pane.view === 'grid'}
           <input class="zoom" type="range" min="48" max="256" step="8" value={app.settings?.thumbSize ?? 96} oninput={(e) => app.updateSettings({ thumbSize: Number((e.currentTarget as HTMLInputElement).value) })} title="Thumbnail size" />
         {/if}
@@ -179,6 +189,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+  }
+  .fhint {
+    color: var(--warn);
+    display: flex;
+  }
+  .warnline {
+    color: var(--warn);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .savesearch {
+    gap: 6px;
   }
   .selinfo {
     color: var(--text);

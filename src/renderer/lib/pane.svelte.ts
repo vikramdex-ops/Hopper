@@ -2,8 +2,9 @@
 // Listings and selection use $state.raw (no deep proxies) so 100k-entry folders stay cheap.
 import { engine } from './api'
 import { collator, basename, dirname } from './format'
-import { kindOf } from './filetypes'
+import { kindOf, typeLabel } from './filetypes'
 import { groupRevisions } from '@shared/revisions'
+import { compileQuery, folderKey, groupItems, localWeekStart, passesFilters, rememberView, type FolderView, type GroupBy } from '@shared/listing'
 import { ATTR, type ColumnSpec, type Entry, type PaneState, type TabState, type ViewMode } from '@shared/types'
 import type { App } from './app.svelte'
 import { networkHostOf, networkHostPath, serverOnlyUnc, shareRootHost } from '@shared/network'
@@ -32,7 +33,10 @@ export function titleFor(p: string) {
   if (p === VIRTUAL.recycle) return 'Recycle Bin'
   if (p === VIRTUAL.network) return 'Network'
   if (networkHostOf(p)) return networkHostOf(p)!
-  if (p.startsWith(VIRTUAL.search)) return `Search: ${new URLSearchParams(p.split('?')[1] ?? '').get('q') ?? ''}`
+  if (p.startsWith(VIRTUAL.search)) {
+    const sp = new URLSearchParams(p.split('?')[1] ?? '')
+    return sp.get('name') || `Search: ${sp.get('q') ?? ''}`
+  }
   if (isArchivePath(p)) {
     const { file, inner } = splitArchive(p)
     return inner ? basename(inner) : basename(file)
@@ -43,6 +47,18 @@ export function titleFor(p: string) {
 
 let tabSeq = 0
 const newTabId = () => `t${Date.now().toString(36)}${++tabSeq}`
+
+/** First day of the week for date filters and the "Earlier this week" group (from the locale). */
+export const WEEK_START = localWeekStart()
+
+/** A group header in the file list; its items are rows[start .. start + count) unless collapsed. */
+export interface GroupInfo {
+  key: string
+  label: string
+  count: number
+  collapsed: boolean
+  start: number
+}
 
 export interface Row extends Entry {
   /** revision grouping */
@@ -57,6 +73,11 @@ export class Pane {
   view = $state<ViewMode>('details')
   sort = $state<{ key: ColumnSpec['id']; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   filter = $state('')
+  groupBy = $state<GroupBy>('none')
+  /** group drawing revisions in this folder; null = follow the global setting */
+  revisions = $state<boolean | null>(null)
+  /** keys of collapsed groups (reset when the folder changes) */
+  collapsed = $state.raw<Set<string>>(new Set())
 
   entries = $state.raw<Entry[]>([])
   loading = $state(false)
@@ -77,6 +98,7 @@ export class Pane {
     this.active = Math.min(init.active, this.tabs.length - 1)
     this.view = init.view
     this.sort = init.sort
+    this.groupBy = init.groupBy ?? 'none'
   }
 
   get tab() {
@@ -99,36 +121,36 @@ export class Pane {
     return dirname(p) !== p || /^[a-zA-Z]:\\?$/.test(p)
   }
 
-  /** Sorted, filtered, hidden-aware rows (revision-grouped when enabled). */
-  rows = $derived.by<Row[]>(() => {
+  get revisionsOn() {
+    return this.revisions ?? this.app.settings?.groupRevisions ?? false
+  }
+
+  /** The in-folder filter, compiled with the search query language (words, *, ext:, date:, size:, type:). */
+  filterQuery = $derived(compileQuery(this.filter, { weekStart: WEEK_START }))
+
+  /** Sorted, filtered, hidden-aware rows (revision-grouped when enabled), before grouping. */
+  private sorted = $derived.by<Row[]>(() => {
     const s = this.app.settings
     const showHidden = s?.showHidden ?? false
     const showSystem = s?.showSystem ?? false
-    const f = this.filter.trim().toLowerCase()
+    const f = this.filter.trim()
     let list: Row[] = this.entries.filter((e) => {
       if (!showHidden && (e.attrs & ATTR.hidden || (e.name.startsWith('.') && e.name !== '..'))) return false
       if (!showSystem && e.attrs & ATTR.system && e.attrs & ATTR.hidden) return false
       return true
     })
     if (f) {
-      if (/[*?]/.test(f)) {
-        const re = new RegExp('^' + f.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i')
-        list = list.filter((e) => re.test(e.name))
-      } else {
-        const words = f.split(/\s+/)
-        list = list.filter((e) => {
-          const n = e.name.toLowerCase()
-          return words.every((w) => n.includes(w))
-        })
-      }
+      const q = this.filterQuery
+      list = list.filter((e) => q.test(e.name.toLowerCase()) && (!q.filtered || passesFilters(e, q.filters)))
     }
     const rules = this.app.office?.revisions
-    if (rules && (s?.groupRevisions || s?.columns.find((c) => c.id === 'rev')?.visible)) {
+    const groupRevs = this.revisionsOn
+    if (rules && (groupRevs || s?.columns.find((c) => c.id === 'rev')?.visible)) {
       const groups = groupRevisions(list.filter((e) => !e.dir).map((e) => ({ name: e.name, path: e.path, mtime: e.mtime })), rules)
       const info = new Map<string, { rev: string | null; hide: boolean; older: number; unknown: boolean }>()
       for (const g of groups) {
         for (const it of g.items) {
-          const hide = !!s.groupRevisions && g.items.length > 1 && g.latest !== null && it.path !== g.latest
+          const hide = groupRevs && g.items.length > 1 && g.latest !== null && it.path !== g.latest
           info.set(it.path, { rev: it.rev, hide, older: it.path === g.latest ? g.items.length - 1 : 0, unknown: !g.orderKnown && g.items.length > 1 })
         }
       }
@@ -136,7 +158,7 @@ export class Pane {
         const i = info.get(e.path)
         if (!i) return [e]
         if (i.hide) return []
-        return [{ ...e, rev: i.rev, olderRevs: s.groupRevisions ? i.older : 0, revUnknown: i.unknown }]
+        return [{ ...e, rev: i.rev, olderRevs: groupRevs ? i.older : 0, revUnknown: i.unknown }]
       })
     }
     const { key, dir } = this.sort
@@ -156,6 +178,24 @@ export class Pane {
     return list.slice().sort(cmp)
   })
 
+  /** Rows split into the Group by groups; collapsed groups' rows are left out (so Ctrl+A skips them). */
+  private grouped = $derived.by(() => {
+    const list = this.sorted
+    if (this.groupBy === 'none') return { rows: list, groups: [] as GroupInfo[] }
+    const rows: Row[] = []
+    const groups: GroupInfo[] = []
+    for (const g of groupItems(list, this.groupBy, { now: Date.now(), weekStart: WEEK_START, typeLabel })) {
+      const collapsed = this.collapsed.has(g.key)
+      groups.push({ key: g.key, label: g.label, count: g.items.length, collapsed, start: rows.length })
+      if (!collapsed) for (const r of g.items) rows.push(r)
+    }
+    return { rows, groups }
+  })
+
+  /** What the list shows, in order (revision grouping applies inside each group). */
+  rows = $derived(this.grouped.rows)
+  groups = $derived(this.grouped.groups)
+
   selected = $derived.by(() => {
     if (!this.selection.size) return [] as Row[]
     return this.rows.filter((r) => this.selection.has(r.path.toLowerCase()))
@@ -170,7 +210,7 @@ export class Pane {
   }
 
   state(): PaneState {
-    return { tabs: $state.snapshot(this.tabs) as TabState[], active: this.active, view: this.view, sort: $state.snapshot(this.sort) as PaneState['sort'] }
+    return { tabs: $state.snapshot(this.tabs) as TabState[], active: this.active, view: this.view, sort: $state.snapshot(this.sort) as PaneState['sort'], groupBy: this.groupBy }
   }
 
   // ---- navigation ---------------------------------------------------------
@@ -279,6 +319,8 @@ export class Pane {
     if (!opts.keepSelection) {
       this.filter = ''
       this.searchInfo = null
+      this.collapsed = new Set()
+      this.applyFolderView()
     }
     try {
       let entries: Entry[]
@@ -288,8 +330,9 @@ export class Pane {
         const list = await window.hopper.shell.recycleList()
         entries = (list as any[]).map((r) => ({ name: basename(r.path), path: r.path, dir: false, size: r.size, mtime: r.deleted, ctime: r.deleted, atime: 0, attrs: 0, ext: (r.path.split('.').pop() ?? '').toLowerCase() }))
       } else if (path.startsWith(VIRTUAL.search)) {
-        entries = []
-        this.startSearch(path, token)
+        // a refresh keeps the results on screen until the new run has finished
+        entries = opts.keepSelection ? this.entries : []
+        this.startSearch(path, token, !!opts.keepSelection)
       } else if (isArchivePath(path)) {
         const { file, inner } = splitArchive(path)
         entries = await engine.call('archive.listDir', file, inner)
@@ -338,7 +381,7 @@ export class Pane {
     return isVirtual(this.path) || isArchivePath(this.path) ? '' : this.path
   }
 
-  private startSearch(path: string, token: number) {
+  private startSearch(path: string, token: number, replace = false) {
     const params = new URLSearchParams(path.split('?')[1] ?? '')
     const q = params.get('q') ?? ''
     const root = params.get('root') ?? ''
@@ -347,23 +390,28 @@ export class Pane {
     this.searchToken = st
     this.searchInfo = { scanned: 0, hits: 0, done: false }
     const seen = new Set<string>()
+    const fresh: Entry[] = []
     const push = (list: Entry[]) => {
       if (token !== this.token) return
       const add = list.filter((e) => !seen.has(e.path.toLowerCase()))
       for (const e of add) seen.add(e.path.toLowerCase())
-      if (add.length) this.entries = this.entries.concat(add)
+      if (replace) fresh.push(...add)
+      else if (add.length) this.entries = this.entries.concat(add)
     }
-    // Instant results from the index first (names only); the live walk then fills in the rest.
-    if (!content) void engine.call<{ entries: Entry[] }>('index.query', q, { limit: 2000, under: root || undefined }).then((r) => push(r.entries))
+    // Instant results from the index first (names, sizes, dates); the live walk then fills in the rest.
+    if (!content) void engine.call<{ entries: Entry[] }>('index.query', q, { limit: 2000, under: root || undefined, weekStart: WEEK_START }).then((r) => push(r.entries))
     const off = engine.on('search-hit', (d: { token: string; entries: Entry[]; scanned: number; hits: number; done: boolean }) => {
       if (d.token !== st) return
       if (token !== this.token) return off()
       push(d.entries)
       this.searchInfo = { scanned: d.scanned, hits: Math.max(d.hits, seen.size), done: d.done }
-      if (d.done) off()
+      if (d.done) {
+        off()
+        if (replace) this.entries = fresh
+      }
     })
     const roots = root ? [root] : this.app.searchEverywhereRoots()
-    void engine.call('search.run', st, { roots, name: q, content: content || undefined, limit: 20000 })
+    void engine.call('search.run', st, { roots, name: q, content: content || undefined, limit: 20000, weekStart: WEEK_START })
   }
 
   // ---- selection ------------------------------------------------------------
@@ -417,6 +465,104 @@ export class Pane {
 
   setSort(key: ColumnSpec['id']) {
     this.sort = this.sort.key === key ? { key, dir: (this.sort.dir * -1) as 1 | -1 } : { key, dir: key === 'mtime' || key === 'size' ? -1 : 1 }
+    this.rememberView()
+  }
+
+  setSortDir(dir: 1 | -1) {
+    this.sort = { ...this.sort, dir }
+    this.rememberView()
+  }
+
+  // ---- view, grouping and per-folder view memory --------------------------------
+
+  setView(v: ViewMode) {
+    this.view = v
+    this.rememberView()
+  }
+
+  setGroupBy(g: GroupBy) {
+    this.groupBy = g
+    this.collapsed = new Set()
+    this.rememberView()
+  }
+
+  setRevisions(on: boolean) {
+    this.revisions = on
+    this.rememberView()
+  }
+
+  /** Collapse or expand one group (open undefined = toggle), keeping focus on the same item. */
+  toggleGroup(key: string, open?: boolean) {
+    const isOpen = !this.collapsed.has(key)
+    const want = open ?? !isOpen
+    if (want === isOpen) return
+    const focusPath = this.focused?.path
+    const anchorPath = this.rows[this.anchor]?.path
+    const s = new Set(this.collapsed)
+    if (want) s.delete(key)
+    else s.add(key)
+    this.collapsed = s
+    const rows = this.rows
+    this.focus = focusPath ? rows.findIndex((r) => r.path === focusPath) : -1
+    this.anchor = anchorPath ? rows.findIndex((r) => r.path === anchorPath) : -1
+  }
+
+  setAllGroups(open: boolean) {
+    const focusPath = this.focused?.path
+    this.collapsed = open ? new Set() : new Set(this.groups.map((g) => g.key))
+    this.focus = focusPath ? this.rows.findIndex((r) => r.path === focusPath) : -1
+  }
+
+  /** The key this folder's view is remembered under, or null (Home, search results, archives). */
+  get viewKey() {
+    return folderKey(this.path, this.app.drives)
+  }
+
+  /** Show the folder's remembered view, or the default; places that are not folders keep the current view. */
+  applyFolderView() {
+    const s = this.app.settings
+    const key = this.viewKey
+    if (!s || !key) return
+    const m = s.folderViews?.[key]
+    const v = m ?? s.defaultView ?? { view: 'details', sort: { key: 'name', dir: 1 }, groupBy: 'none' }
+    this.view = v.view
+    this.sort = { key: v.sort.key, dir: v.sort.dir }
+    this.groupBy = v.groupBy ?? 'none'
+    this.revisions = m?.revisions ?? null
+    // least recently used: note the visit now and then, not on every navigation
+    if (m && Date.now() - m.at > 3600000) this.app.updateSettings({ folderViews: rememberView($state.snapshot(s.folderViews), key, m, Date.now()) })
+  }
+
+  private rememberView() {
+    this.app.persistSoon()
+    const s = this.app.settings
+    const key = this.viewKey
+    if (!s || !key) return
+    const v: FolderView = { view: this.view, sort: { key: this.sort.key, dir: this.sort.dir }, groupBy: this.groupBy, ...(this.revisions !== null ? { revisions: this.revisions } : {}) }
+    this.app.updateSettings({ folderViews: rememberView($state.snapshot(s.folderViews ?? {}), key, v, Date.now()) })
+  }
+
+  /** "Reset view for this folder": forget it and show the default. */
+  resetFolderView() {
+    const s = this.app.settings
+    const key = this.viewKey
+    if (!s || !key) return
+    const next = { ...$state.snapshot(s.folderViews ?? {}) }
+    delete next[key]
+    this.app.updateSettings({ folderViews: next })
+    this.collapsed = new Set()
+    this.applyFolderView()
+    this.app.persistSoon()
+  }
+
+  /** "Apply this view to all folders": it becomes the default and every folder's own view is forgotten. */
+  applyViewToAll() {
+    this.app.updateSettings({
+      defaultView: { view: this.view, sort: { key: this.sort.key, dir: this.sort.dir }, groupBy: this.groupBy },
+      groupRevisions: this.revisionsOn,
+      folderViews: {}
+    })
+    for (const p of this.app.panes) p.applyFolderView()
     this.app.persistSoon()
   }
 }

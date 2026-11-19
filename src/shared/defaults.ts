@@ -67,7 +67,10 @@ export function defaultSettings(home: string, docs: string): Settings {
     recentFolders: [],
     recentFiles: [],
     pathCopy: { quote: 'never', defaultMode: 'path' },
-    tagColors: {}
+    tagColors: {},
+    defaultView: { view: 'details', sort: { key: 'name', dir: 1 }, groupBy: 'none' },
+    folderViews: {},
+    smartFolders: []
   }
 }
 

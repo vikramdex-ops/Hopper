@@ -379,6 +379,16 @@ export class NameIndex {
     for (let i = 0; i < this.n; i++) if (!each(i)) return
   }
 
+  /** size and mtime (ms) without decoding the name: search filters read these */
+  sizeOf(i: number) {
+    const s = this.size[i]
+    return s === NO_SIZE ? this.bigSize.get(i) ?? 0 : s
+  }
+
+  mtimeOf(i: number) {
+    return this.mtime[i] * 1000
+  }
+
   isDirEntry(i: number) {
     return (this.flags[i] & F_DIR) !== 0
   }

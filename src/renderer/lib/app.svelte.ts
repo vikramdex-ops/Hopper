@@ -10,6 +10,7 @@ import { pushRecent } from '@shared/shellops'
 import type {
   Conflict, DriveInfo, Entry, InboxItem, JobInfo, OfficeConfig, Peer, PeerGroup, QuickDest, Settings, ShareSpec, TabState, UndoRecord, Workspace
 } from '@shared/types'
+import type { SmartFolder } from '@shared/listing'
 
 export interface Toast {
   id: number
@@ -162,7 +163,15 @@ export class App {
     engine.on('undo', (l: UndoRecord[]) => (this.undoList = l))
     engine.on('dir-changed', ({ path }: { path: string }) => {
       for (const p of this.panes) if (p.path.toLowerCase() === path.toLowerCase()) void p.refresh()
+      this.smartChanged([path])
     })
+    engine.on('index-changed', ({ dirs }: { dirs: string[] }) => this.smartChanged(dirs))
+    // Change notifications from network shares are unreliable on Windows: an open smart folder that
+    // looks at a network location also re-runs every 20 s (only when idle, see smartChanged).
+    setInterval(() => {
+      const roots = this.panes.map((p) => this.smartOf(p.path)?.root).filter((r): r is string => !!r && this.isNetworkPath(r))
+      if (roots.length) this.smartChanged(roots)
+    }, 20000)
     engine.on('index', (s) => (this.indexStatus = s))
     lan.on('peers', (p: Peer[]) => (this.peers = p))
     lan.on('lan-status', (s) => (this.lanStatus = s))
@@ -266,7 +275,11 @@ export class App {
   async refreshDrives() {
     if (this.freezeDrives) return
     try {
+      const first = !this.drives.length
       this.drives = await host.shell.drives()
+      // views are remembered under UNC paths: a mapped-drive folder opened before the drive list
+      // arrived gets its remembered view now
+      if (first && this.drives.some((d) => d.remote)) for (const p of this.panes) if (/^[a-z]:/i.test(p.path)) p.applyFolderView()
     } catch {
       /* helper busy */
     }
@@ -287,8 +300,102 @@ export class App {
     this.persistSoon()
   }
 
+  // ---- smart folders (saved searches) -------------------------------------------
+
+  /** The smart folder a search path belongs to, with its folder ('' = everywhere). */
+  smartOf(path: string) {
+    if (!path.startsWith(VIRTUAL.search)) return null
+    const sp = new URLSearchParams(path.split('?')[1] ?? '')
+    const id = sp.get('smart')
+    return id ? { id, root: sp.get('root') ?? '' } : null
+  }
+
+  smartPath(f: SmartFolder) {
+    const params = new URLSearchParams({ q: f.q })
+    if (f.root) params.set('root', f.root)
+    if (f.content) params.set('content', f.content)
+    params.set('smart', f.id)
+    params.set('name', f.name)
+    return `${VIRTUAL.search}?${params}`
+  }
+
+  openSmart(f: SmartFolder, opts: { newTab?: boolean } = {}) {
+    return this.active.navigate(this.smartPath(f), opts)
+  }
+
+  /** Save the search shown in a pane under a name; returns the new smart folder, or null when cancelled. */
+  async saveSearch(pane: Pane = this.active) {
+    if (!pane.path.startsWith(VIRTUAL.search) || !this.settings) return null
+    const sp = new URLSearchParams(pane.path.split('?')[1] ?? '')
+    const q = sp.get('q') ?? ''
+    const name = (await this.prompt('Save search', sp.get('name') || q, 'Name'))?.trim()
+    if (!name) return null
+    const f: SmartFolder = { id: `sf${Date.now().toString(36)}`, name, q, root: sp.get('root') ?? '', ...(sp.get('content') ? { content: sp.get('content')! } : {}) }
+    this.updateSettings({ smartFolders: [...(this.settings.smartFolders ?? []), f] })
+    // the open results become that smart folder, so they stay live
+    const path = this.smartPath(f)
+    pane.tab.history = pane.tab.history.map((h, i) => (i === pane.tab.index ? path : h))
+    pane.tab.path = path
+    this.onPaneNavigated(pane)
+    this.toast('success', `Saved to Smart folders: ${name}`)
+    return f
+  }
+
+  /** One-click suggestion, scoped to the folder in the active pane (everywhere from Home). */
+  addSmartSuggestion(s: { name: string; q: string }) {
+    if (!this.settings) return
+    const root = this.active.searchRoot
+    const name = root ? `${s.name} in ${basename(root) || root}` : s.name
+    this.updateSettings({ smartFolders: [...(this.settings.smartFolders ?? []), { id: `sf${Date.now().toString(36)}`, name, q: s.q, root }] })
+  }
+
+  async renameSmart(id: string) {
+    const list = this.settings?.smartFolders ?? []
+    const f = list.find((x) => x.id === id)
+    if (!f) return
+    const name = (await this.prompt('Rename smart folder', f.name, 'Name'))?.trim()
+    if (name) this.updateSettings({ smartFolders: list.map((x) => (x.id === id ? { ...x, name } : x)) })
+  }
+
+  deleteSmart(id: string) {
+    this.updateSettings({ smartFolders: (this.settings?.smartFolders ?? []).filter((x) => x.id !== id) })
+  }
+
+  /** Move a smart folder to position `to` (drag) or by one step (Move up / down). */
+  moveSmart(id: string, to: number) {
+    const list = (this.settings?.smartFolders ?? []).slice()
+    const from = list.findIndex((x) => x.id === id)
+    if (from < 0 || to < 0 || to >= list.length || to === from) return
+    const [f] = list.splice(from, 1)
+    list.splice(to, 0, f)
+    this.updateSettings({ smartFolders: list })
+  }
+
+  private smartTimers = new Map<Pane, ReturnType<typeof setTimeout>>()
+
+  /** Files changed under these folders: re-run the smart folders on screen that look there. */
+  smartChanged(dirs: string[]) {
+    const lower = dirs.map((d) => (d.endsWith('\\') ? d : d + '\\').toLowerCase())
+    for (const p of this.panes) {
+      const sf = this.smartOf(p.path)
+      if (!sf) continue
+      const root = sf.root ? (sf.root.endsWith('\\') ? sf.root : sf.root + '\\').toLowerCase() : ''
+      if (root && !lower.some((d) => d.startsWith(root))) continue
+      clearTimeout(this.smartTimers.get(p))
+      const path = p.path
+      const run = () => {
+        if (p.path !== path) return
+        // one run at a time: wait for the current one to finish
+        if (p.searchInfo && !p.searchInfo.done) return void this.smartTimers.set(p, setTimeout(run, 2000))
+        void p.refresh()
+      }
+      this.smartTimers.set(p, setTimeout(run, 1500))
+    }
+  }
+
   onPaneNavigated(_p: Pane) {
-    const dirs = this.panes.filter((p, i) => i === 0 || this.dual).map((p) => p.path).filter((p) => !isVirtual(p) && !isArchivePath(p))
+    // a smart folder's own folder is watched too, so it refreshes when files change there
+    const dirs = this.panes.filter((p, i) => i === 0 || this.dual).map((p) => this.smartOf(p.path)?.root || p.path).filter((p) => !isVirtual(p) && !isArchivePath(p))
     void engine.call('watch.set', dirs)
     this.persistSoon()
     const p = _p.path

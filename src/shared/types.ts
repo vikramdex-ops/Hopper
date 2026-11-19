@@ -170,6 +170,8 @@ export interface SearchQuery {
   before?: number
   kinds?: ('file' | 'dir')[]
   limit?: number
+  /** first day of the week for date:thisweek (0 = Sunday); the renderer sends its locale's */
+  weekStart?: number
 }
 
 export interface IndexStatus {
@@ -466,6 +468,7 @@ export interface PaneState {
   active: number
   view: ViewMode
   sort: { key: ColumnSpec['id']; dir: 1 | -1 }
+  groupBy?: import('./listing').GroupBy
 }
 
 export interface Workspace {
@@ -532,5 +535,11 @@ export interface Settings {
   officeJoined?: OfficeJoined
   /** Network node: saved network places (this PC only) and view options */
   network?: import('./network').NetworkSettings
+  /** view of folders that have none of their own (revision grouping follows groupRevisions) */
+  defaultView: Omit<import('./listing').FolderView, 'revisions'>
+  /** view, sort and grouping remembered per folder (key: see folderKey), at most 2,000 folders */
+  folderViews: Record<string, import('./listing').RememberedView>
+  /** saved searches, shown under Smart folders in the sidebar, in this order */
+  smartFolders: import('./listing').SmartFolder[]
 }
 

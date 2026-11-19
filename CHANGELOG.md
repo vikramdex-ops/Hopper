@@ -20,6 +20,25 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
   the sidebar or the command palette.
 - **Recent files on Home**: the last files you opened in Hopper, with "Open file location".
   Files that are gone drop off the list.
+- **Group by** type, date modified (Today, Yesterday, Earlier this week … A long time ago), size
+  (Empty, Tiny, Small, Medium, Large, Huge) or name (A–H, I–P, Q–Z, 0–9 and other), from the View
+  and Sort menus or the right-click menu. Click a group header, or press Left / Right on it, to
+  collapse or expand it; Ctrl+A selects only what is shown. Folders stay first in each group, and
+  "Group drawing revisions" still hides older revisions inside each group.
+- **Search filters** in the search box and in Filter this folder: `date:` / `modified:` (today,
+  yesterday, thisweek, lastweek, thismonth, thisyear, <7d, >2w, 2026-11-01, >2026-11-01,
+  2026-11-01..2026-11-15), `size:` (>10mb, <500kb, 1mb..5mb, empty) and `type:` / `kind:` (folder,
+  file, pdf, drawing, document, sheet, image, archive). The ⓘ button in the search box lists them.
+  A value Hopper does not understand is ignored and shown with a warning. Instant results use the
+  sizes and dates already in the search index, so filtering reads no files.
+- **Each folder remembers its view**: details, list or thumbnails, the sort, the grouping and
+  "Group drawing revisions" (up to 2,000 folders; a mapped drive and its \\server\share path count
+  as the same folder). View → "Reset view for this folder" and "Apply this view to all folders".
+- **Smart folders**: "Save search" in search results keeps the search (text, filters and folder)
+  in the sidebar under Smart folders. Opening one runs it again, and it refreshes by itself when
+  files change in its folder. Rename, delete, or reorder them by dragging or with Move up / down.
+  Two suggestions, "PDFs changed this week" and "Large files", are one click away for the current
+  folder.
 
 ### Fixed
 - **Updating never stops at "Failed to uninstall old application files".** The installer now closes

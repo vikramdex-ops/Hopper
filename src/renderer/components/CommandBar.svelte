@@ -3,6 +3,7 @@
   import { byId, run, keyLabel, dialogs } from '../lib/commands'
   import { isArchivePath, isVirtual } from '../lib/pane.svelte'
   import { kindOf } from '../lib/filetypes'
+  import { GROUP_BY } from '@shared/listing'
   import Icon from './Icon.svelte'
 
   const pane = $derived(app.active)
@@ -59,22 +60,39 @@
     const opt = (key: any, label: string) => ({ label, checked: s.key === key, run: () => pane.setSort(key) })
     at(e, [opt('name', 'Name'), opt('mtime', 'Date modified'), opt('ctime', 'Date created'), opt('type', 'Type'), opt('size', 'Size'), opt('rev', 'Revision'),
       { separator: true },
-      { label: 'Ascending', checked: s.dir === 1, run: () => (pane.sort = { ...s, dir: 1 }) },
-      { label: 'Descending', checked: s.dir === -1, run: () => (pane.sort = { ...s, dir: -1 }) }])
+      { label: 'Ascending', checked: s.dir === 1, run: () => pane.setSortDir(1) },
+      { label: 'Descending', checked: s.dir === -1, run: () => pane.setSortDir(-1) },
+      { separator: true },
+      groupMenu()])
   }
+
+  const groupMenu = (): MenuItem => ({
+    label: 'Group by',
+    icon: 'layers',
+    submenu: [
+      ...GROUP_BY.map((g) => ({ ...item(`view.group.${g.id}`), label: g.label, icon: undefined, checked: pane.groupBy === g.id })),
+      { separator: true },
+      item('view.collapseGroups'),
+      item('view.expandGroups')
+    ]
+  })
 
   function viewMenu(e: MouseEvent) {
     at(e, [
       item('view.details', { checked: pane.view === 'details' }),
       item('view.list', { checked: pane.view === 'list' }),
       item('view.grid', { checked: pane.view === 'grid' }),
+      groupMenu(),
+      { separator: true },
+      item('view.resetFolder'),
+      item('view.applyAll'),
       { separator: true },
       item('view.dual', { checked: app.dual }),
       item('view.sidebar', { checked: !app.settings?.sidebarCollapsed, label: 'Sidebar' }),
       item('view.inspector', { checked: app.settings?.inspector }),
       { separator: true },
       item('view.hidden', { checked: app.settings?.showHidden }),
-      item('view.revisions', { checked: app.settings?.groupRevisions }),
+      item('view.revisions', { checked: pane.revisionsOn }),
       { label: 'Compact rows', checked: document.documentElement.dataset.density === 'compact', run: () => { const c = document.documentElement.dataset.density === 'compact'; document.documentElement.dataset.density = c ? '' : 'compact'; localStorage.setItem('density', c ? '' : 'compact') } },
       { separator: true },
       item('view.theme')

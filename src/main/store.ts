@@ -54,7 +54,12 @@ export class SettingsStore {
       ? join(dirname(app.getPath('exe')), 'hopper-settings.json')
       : join(app.getPath('userData'), 'settings.json')
     const home = app.getPath('home')
-    this.data = merge(defaultSettings(home, app.getPath('documents')), readJson<Settings>(this.file))
+    const saved = readJson<Settings>(this.file)
+    this.data = merge(defaultSettings(home, app.getPath('documents')), saved)
+    // 2.8.0 moved view and sort from the pane to per-folder memory. Upgraders keep the view they
+    // were using as the default for folders that have no view of their own yet.
+    const p = saved?.panes?.[0]
+    if (saved && !saved.defaultView && p?.view) this.data.defaultView = { view: p.view, sort: p.sort ?? this.data.defaultView.sort, groupBy: 'none' }
     if (!this.data.inboxDir) this.data.inboxDir = defaultInbox(home)
   }
 

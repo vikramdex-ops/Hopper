@@ -9,59 +9,14 @@ import type { EngineCtx } from './index'
 import { listRaw, walk } from './fsops'
 import { extOf } from './fsutil'
 import { NameIndex, type IndexMatcher } from './nameindex'
+import { compileQuery, passesFilters, type CompiledQuery } from '@shared/listing'
 
 // ---------------------------------------------------------------------------
-// Query parsing: words are AND-ed, * and ? are wildcards, ext:pdf, /regex/
+// Query parsing lives in src/shared/listing.ts (words AND-ed, * ?, ext:pdf, /regex/, and the
+// date: / size: / type: filters) so the in-folder filter understands exactly the same language.
 
-interface Matcher extends IndexMatcher {
-  ext?: Set<string>
-}
-
-export function parseQuery(q: string, caseSensitive = false): Matcher {
-  const exts = new Set<string>()
-  const tests: ((n: string) => boolean)[] = []
-  const re = /^\/(.+)\/([a-z]*)$/.exec(q.trim())
-  if (re) {
-    const r = new RegExp(re[1], re[2].includes('i') || !caseSensitive ? 'i' : '')
-    return { test: (n) => r.test(n) }
-  }
-  // The longest literal that every match must contain lets the index jump straight to hits.
-  let anchor = ''
-  const words: string[] = []
-  let wild = false
-  const literal = (t: string) => {
-    if (t.length > anchor.length) anchor = t
-  }
-  for (const raw of q.trim().split(/\s+/).filter(Boolean)) {
-    const m = /^ext:(.+)$/i.exec(raw)
-    if (m) {
-      for (const e of m[1].split(/[,;]/)) exts.add(e.replace(/^\./, '').toLowerCase())
-      continue
-    }
-    const w = raw.toLowerCase()
-    if (/[*?]/.test(w)) {
-      wild = true
-      for (const part of w.split(/[*?]/)) literal(part)
-      const r = new RegExp('^' + w.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
-      tests.push((n) => r.test(n))
-    } else {
-      literal(w)
-      words.push(w)
-      tests.push((n) => n.includes(w))
-    }
-  }
-  if (!anchor && exts.size === 1) anchor = '.' + [...exts][0]
-  return {
-    anchor: anchor || undefined,
-    // extOf() never returns '' for a name with an extension or anything containing a dot
-    plain: wild || [...exts].some((e) => !e || e.includes('.')) ? undefined : { words, exts: [...exts] },
-    ext: exts.size ? exts : undefined,
-    test: (n) => {
-      if (exts.size && !exts.has(extOf(n))) return false
-      for (const t of tests) if (!t(n)) return false
-      return true
-    }
-  }
+export function parseQuery(q: string, caseSensitive = false, weekStart?: number): CompiledQuery & IndexMatcher {
+  return compileQuery(q, { caseSensitive, weekStart })
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +132,8 @@ export function searchHandlers(ctx: EngineCtx) {
           pending.clear()
           await rescanDirs(r, dirs)
           dirtySave(r)
+          // live views of saved searches (smart folders) refresh when their folders change
+          ctx.emit('index-changed', { dirs })
         }, 1500)
       })
       r.watcher.on('error', () => {
@@ -263,12 +220,19 @@ export function searchHandlers(ctx: EngineCtx) {
     if (gen === generation) await dropUnused(want) // a newer configure decides instead
   }
 
-  const query = (q: string, opts: { limit?: number; dirsOnly?: boolean; under?: string } = {}) => {
+  const query = (q: string, opts: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number } = {}) => {
     const t = Date.now()
-    const m = parseQuery(q)
+    const m = parseQuery(q, false, opts.weekStart)
     const limit = opts.limit ?? 500
     const out: Entry[] = []
     const under = opts.under ? norm(opts.under) : undefined
+    // folder, size and date filters read the index's own columns: no file is touched
+    const f = m.filters
+    const pre = (ix: NameIndex) =>
+      opts.dirsOnly || m.filtered
+        ? (i: number) => (!opts.dirsOnly || ix.isDirEntry(i)) && (!m.filtered || passesFilters({ dir: ix.isDirEntry(i), size: ix.sizeOf(i), mtime: ix.mtimeOf(i) }, f))
+        : undefined
+    if (f.never) return { entries: out, total: 0, ms: 0 }
     for (const { ix } of roots.values()) {
       if (out.length >= limit) break
       // a search inside one folder never needs the other drives' indexes
@@ -287,7 +251,7 @@ export function searchHandlers(ctx: EngineCtx) {
         // stop at the limit: callers only show the entries, and counting every hit of a
         // one-letter query over millions of names costs seconds
         return out.length < limit
-      }, opts.dirsOnly ? (i) => ix.isDirEntry(i) : undefined)
+      }, pre(ix))
     }
     // total is a lower bound once the limit is reached
     const total = out.length
@@ -324,12 +288,12 @@ export function searchHandlers(ctx: EngineCtx) {
       for (const r of root ? [root] : [...roots.values()].map((x) => x.ix.root)) await build(r)
       return status()
     },
-    'index.query': (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string }) => query(q, opts),
+    'index.query': (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number }) => query(q, opts),
 
     'search.run': (token: string, q: SearchQuery) => {
       const ac = new AbortController()
       searches.set(token, ac)
-      const m = parseQuery(q.name || '')
+      const m = parseQuery(q.name || '', false, q.weekStart)
       const needle = q.content ? (q.contentRegex ? new RegExp(q.content, q.caseSensitive ? '' : 'i') : q.content) : null
       const limit = q.limit ?? 5000
       let hits = 0
@@ -349,6 +313,7 @@ export function searchHandlers(ctx: EngineCtx) {
             scanned++
             if (ac.signal.aborted || hits >= limit) return false
             if (!m.test(e.name.toLowerCase())) return
+            if (m.filtered && !passesFilters(e, m.filters)) return
             if (q.kinds && !q.kinds.includes(e.dir ? 'dir' : 'file')) return
             if (!e.dir) {
               if (q.minSize !== undefined && e.size < q.minSize) return

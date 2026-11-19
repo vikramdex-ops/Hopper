@@ -1,6 +1,6 @@
 // End-to-end smoke suite: drives the real app and checks the core flows actually work.
 // Usage: npm run build && npm run e2e
-import { existsSync, mkdirSync, rmSync, statSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, readdirSync, writeFileSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { launch, makeDemo, WORK } from './harness.mjs'
 
@@ -404,6 +404,120 @@ await step('Home lists recent files and drops missing ones', async () => {
   await card.locator('.line', { hasText: 'recent-keep.txt' }).locator('button[aria-label="Open file location"]').click()
   await until((p) => window.__hopper.panes[0].path.toLowerCase() === p.toLowerCase() && window.__hopper.panes[0].focused?.name === 'recent-keep.txt', demo, 15000)
   rmSync(keep, { force: true })
+})
+
+await step('group by type: headers, collapse with click and arrow keys, Ctrl+A skips collapsed', async () => {
+  const lot = join(demo, 'P10001 Refinery Revamp', '02_Working', 'Lot 07')
+  await ev(() => window.__hopper.setActive(0))
+  await ev((p) => window.__hopper.panes[0].navigate(p), lot)
+  await until(() => window.__hopper.panes[0].rows.length >= 10)
+  await ev(() => window.__hopper.panes[0].setGroupBy('type'))
+  const pane = win.locator('section[aria-label="Pane 1"]')
+  const pdfHead = pane.locator('.ghead', { hasText: 'PDF' })
+  await pdfHead.waitFor({ timeout: 15000 })
+  const labels = await pane.locator('.ghead .glabel').allTextContents()
+  if (labels.length < 3) throw new Error('expected several type groups, got ' + labels.join(', '))
+  await win.screenshot({ path: join(shots, '13-group-by-type.png') })
+  const pdfCollapsed = () => ev(() => !!window.__hopper.panes[0].groups.find((g) => /PDF/.test(g.label))?.collapsed)
+  await pdfHead.click()
+  if (!(await pdfCollapsed())) throw new Error('clicking the header did not collapse the group')
+  // the clicked header has the keyboard focus: Right expands, Left collapses
+  await win.keyboard.press('ArrowRight')
+  if (await pdfCollapsed()) throw new Error('Right arrow did not expand the group')
+  await win.keyboard.press('ArrowLeft')
+  if (!(await pdfCollapsed())) throw new Error('Left arrow did not collapse the group')
+  const names = await ev(() => window.__hopper.panes[0].rows.map((r) => r.name))
+  if (names.some((n) => n.toLowerCase().endsWith('.pdf'))) throw new Error('collapsed PDFs still listed')
+  await win.keyboard.press('Control+A')
+  const sel = await ev(() => [...window.__hopper.panes[0].selection])
+  if (!sel.length || sel.some((k) => k.endsWith('.pdf'))) throw new Error('Ctrl+A selection wrong: ' + sel.join(','))
+  await ev(() => { window.__hopper.panes[0].clearSelection(); window.__hopper.panes[0].setGroupBy('none') })
+})
+
+await step('search filters: size: and date: in the folder filter and the search box', async () => {
+  const dir = join(demo, 'Filter test')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'big.bin'), Buffer.alloc(2 * 1024 * 1024))
+  writeFileSync(join(dir, 'small.txt'), 'x')
+  writeFileSync(join(dir, 'old.txt'), 'old')
+  utimesSync(join(dir, 'old.txt'), new Date(2020, 0, 1), new Date(2020, 0, 1))
+  await ev(() => window.__hopper.setActive(0))
+  await ev((p) => window.__hopper.panes[0].navigate(p), dir)
+  await until(() => window.__hopper.panes[0].rows.length === 3)
+  const shown = () => ev(() => window.__hopper.panes[0].rows.map((r) => r.name).sort().join(','))
+  await ev(() => { window.__hopper.panes[0].filter = 'size:>1mb' })
+  if ((await shown()) !== 'big.bin') throw new Error('size:>1mb showed ' + (await shown()))
+  await ev(() => { window.__hopper.panes[0].filter = 'date:<7d type:file' })
+  if ((await shown()) !== 'big.bin,small.txt') throw new Error('date:<7d showed ' + (await shown()))
+  await ev(() => { window.__hopper.panes[0].filter = 'txt date:<2021-01-01' })
+  if ((await shown()) !== 'old.txt') throw new Error('date:<2021-01-01 showed ' + (await shown()))
+  // a value that is not understood is ignored, with a warning in the filter box
+  await ev(() => { window.__hopper.panes[0].filter = 'size:lots' })
+  if ((await shown()) !== 'big.bin,old.txt,small.txt') throw new Error('invalid filter changed the list')
+  await win.locator('section[aria-label="Pane 1"] .fhint').waitFor({ timeout: 5000 })
+  await ev(() => { window.__hopper.panes[0].filter = '' })
+  const box = win.locator('.titlebar .search input')
+  await box.fill('size:>1mb')
+  await box.press('Enter')
+  await until(() => window.__hopper.panes[0].path.startsWith('hopper:search') && window.__hopper.panes[0].searchInfo?.done, null, 60000)
+  if ((await shown()) !== 'big.bin') throw new Error('search size:>1mb found ' + (await shown()))
+  // the filters help opens from the search box
+  await win.locator('.titlebar .helpbtn').click()
+  await win.locator('.titlebar .pop', { hasText: 'Search filters' }).waitFor({ timeout: 5000 })
+  await win.screenshot({ path: join(shots, '14-search-filters.png') })
+  await box.press('Escape')
+})
+
+await step('per-folder view is remembered after navigating away and back', async () => {
+  const photos = join(demo, 'Site photos')
+  const other = join(demo, 'Transmittals')
+  await ev(() => window.__hopper.setActive(0))
+  await ev((p) => window.__hopper.panes[0].navigate(p), photos)
+  await win.locator('section[aria-label="Pane 1"] .views button[title="Thumbnails"]').click()
+  await ev(() => { window.__hopper.panes[0].setSort('size'); window.__hopper.panes[0].setGroupBy('name') })
+  await ev((p) => window.__hopper.panes[0].navigate(p), other)
+  const now = () => ev(() => ({ view: window.__hopper.panes[0].view, sort: window.__hopper.panes[0].sort.key, g: window.__hopper.panes[0].groupBy }))
+  const v1 = await now()
+  if (v1.view !== 'details' || v1.sort !== 'name' || v1.g !== 'none') throw new Error('another folder did not get the default view: ' + JSON.stringify(v1))
+  // the same folder spelled in other letter case
+  await ev((p) => window.__hopper.panes[0].navigate(p), photos.toUpperCase())
+  const v2 = await now()
+  if (v2.view !== 'grid' || v2.sort !== 'size' || v2.g !== 'name') throw new Error('view not remembered: ' + JSON.stringify(v2))
+  await ev(() => window.__hopper.panes[0].resetFolderView())
+  if ((await now()).view !== 'details') throw new Error('reset did not restore the default view')
+})
+
+await step('save a search as a smart folder and reopen it from the sidebar', async () => {
+  const dir = join(demo, 'Filter test')
+  await ev(() => window.__hopper.setActive(0))
+  await ev((p) => window.__hopper.panes[0].navigate(p), dir)
+  await until((p) => window.__hopper.panes[0].path === p, dir)
+  const box = win.locator('.titlebar .search input')
+  await box.fill('size:>1mb')
+  await box.press('Enter')
+  await until(() => window.__hopper.panes[0].path.startsWith('hopper:search') && window.__hopper.panes[0].searchInfo?.done, null, 60000)
+  await win.locator('section[aria-label="Pane 1"] .savesearch').click()
+  await win.locator('.dlg input').fill('Big files here')
+  await win.locator('.dlg button:has-text("OK")').click()
+  await until(() => (window.__hopper.settings.smartFolders ?? []).some((f) => f.name === 'Big files here'))
+  await ev(() => window.__hopper.panes[0].navigate('hopper:home'))
+  await win.locator('aside.sidebar button.row', { hasText: 'Big files here' }).click()
+  await until(() => window.__hopper.panes[0].path.includes('smart=') && window.__hopper.panes[0].searchInfo?.done, null, 60000)
+  const names = await ev(() => window.__hopper.panes[0].rows.map((r) => r.name).join(','))
+  if (names !== 'big.bin') throw new Error('smart folder showed ' + names)
+  // live: a new matching file appears without a manual refresh
+  writeFileSync(join(dir, 'bigger.bin'), Buffer.alloc(3 * 1024 * 1024))
+  // on a network share change events may never come; the 20 s re-run of network smart folders covers it
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'bigger.bin'), null, 60000)
+  await win.screenshot({ path: join(shots, '15-smart-folder.png') })
+  // one-click suggestion, scoped to the folder in the active pane
+  await ev((p) => window.__hopper.panes[0].navigate(p), dir)
+  await win.locator('aside.sidebar .chip', { hasText: 'Large files' }).click()
+  const added = await ev(() => window.__hopper.settings.smartFolders.find((f) => f.q === 'size:>100mb'))
+  if (!added || added.root.toLowerCase() !== dir.toLowerCase()) throw new Error('suggestion not scoped to the folder: ' + JSON.stringify(added))
+  await ev(() => window.__hopper.updateSettings({ smartFolders: [] }))
+  await ev(() => window.__hopper.panes[0].navigate('hopper:home'))
+  rmSync(dir, { recursive: true, force: true })
 })
 
 await step('memory stays reasonable', async () => {

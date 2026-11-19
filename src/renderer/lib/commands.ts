@@ -10,6 +10,7 @@ import { net } from './network.svelte'
 import { canWindowsMenu, createShortcuts, runAsAdmin, windowsMenu } from './winshell'
 import { canRunAsAdmin } from '@shared/shellops'
 import { mappableUnc } from '@shared/network'
+import { GROUP_BY } from '@shared/listing'
 
 export interface Command {
   id: string
@@ -28,6 +29,8 @@ const writable = () => real() && !isArchivePath(app.active.path)
 const hasTargets = () => T().length > 0
 const isArchiveSel = () => T().some((e) => kindOf(e.ext) === 'archive')
 const realTargets = () => hasTargets() && T().every((e) => !isVirtual(e.path) && !isArchivePath(e.path))
+/** a file list is on screen (not Home, Inbox, Activity or Network) */
+const listing = () => !isVirtual(app.active.path) || app.active.path.startsWith(VIRTUAL.search) || app.active.path === VIRTUAL.recycle
 const isPdfSel = () => T().length > 0 && T().every((e) => e.ext === 'pdf')
 
 /** Dialog openers are registered by components at startup (avoids import cycles). */
@@ -113,14 +116,19 @@ export const commands: Command[] = [
   { id: 'share.people', label: 'People on the network', group: 'Share', icon: 'people', run: open('people') },
 
   // view
-  { id: 'view.details', label: 'Details view', group: 'View', icon: 'details', keys: ['Ctrl+Shift+6'], run: () => { app.active.view = 'details'; app.persistSoon() } },
-  { id: 'view.list', label: 'List view', group: 'View', icon: 'list', keys: ['Ctrl+Shift+5'], run: () => { app.active.view = 'list'; app.persistSoon() } },
-  { id: 'view.grid', label: 'Thumbnails view', group: 'View', icon: 'grid', keys: ['Ctrl+Shift+2'], run: () => { app.active.view = 'grid'; app.persistSoon() } },
+  { id: 'view.details', label: 'Details view', group: 'View', icon: 'details', keys: ['Ctrl+Shift+6'], run: () => app.active.setView('details') },
+  { id: 'view.list', label: 'List view', group: 'View', icon: 'list', keys: ['Ctrl+Shift+5'], run: () => app.active.setView('list') },
+  { id: 'view.grid', label: 'Thumbnails view', group: 'View', icon: 'grid', keys: ['Ctrl+Shift+2'], run: () => app.active.setView('grid') },
+  ...GROUP_BY.map((g) => ({ id: `view.group.${g.id}`, label: g.id === 'none' ? 'No grouping' : `Group by ${g.label.toLowerCase()}`, group: 'View', icon: 'layers', when: listing, run: () => app.active.setGroupBy(g.id) })),
+  { id: 'view.collapseGroups', label: 'Collapse all groups', group: 'View', icon: 'chevronUp', when: () => app.active.groupBy !== 'none', run: () => app.active.setAllGroups(false) },
+  { id: 'view.expandGroups', label: 'Expand all groups', group: 'View', icon: 'chevronDown', when: () => app.active.groupBy !== 'none', run: () => app.active.setAllGroups(true) },
+  { id: 'view.resetFolder', label: 'Reset view for this folder', group: 'View', icon: 'undo', when: () => !!app.active.viewKey && !!app.settings?.folderViews?.[app.active.viewKey], run: () => app.active.resetFolderView() },
+  { id: 'view.applyAll', label: 'Apply this view to all folders', group: 'View', icon: 'view', when: () => !!app.active.viewKey, run: async () => { if (await app.confirm('Apply this view to all folders?', 'Folders that remember their own view, sort or grouping go back to this one.', 'Apply')) app.active.applyViewToAll() } },
   { id: 'view.dual', label: 'Dual pane', group: 'View', icon: 'dualPane', keys: ['F10', 'Ctrl+Shift+D'], run: () => app.toggleDual() },
   { id: 'view.sidebar', label: 'Show / hide sidebar', group: 'View', icon: 'sidebar', keys: ['Ctrl+Shift+B'], run: () => app.updateSettings({ sidebarCollapsed: !app.settings?.sidebarCollapsed }) },
   { id: 'view.inspector', label: 'Preview & details pane', group: 'View', icon: 'inspector', keys: ['Alt+P'], run: () => app.updateSettings({ inspector: !app.settings?.inspector }) },
   { id: 'view.hidden', label: 'Show hidden items', group: 'View', icon: 'hidden', keys: ['Ctrl+H'], run: () => app.updateSettings({ showHidden: !app.settings?.showHidden }) },
-  { id: 'view.revisions', label: 'Group drawing revisions', group: 'View', icon: 'layers', keys: ['Ctrl+Shift+V'], run: () => app.updateSettings({ groupRevisions: !app.settings?.groupRevisions }) },
+  { id: 'view.revisions', label: 'Group drawing revisions', group: 'View', icon: 'layers', keys: ['Ctrl+Shift+V'], run: () => app.active.setRevisions(!app.active.revisionsOn) },
   { id: 'view.filter', label: 'Filter this folder', group: 'View', icon: 'filter', keys: ['Ctrl+F', 'F3'], run: open('filter') },
   { id: 'view.quicklook', label: 'Quick Look', group: 'View', icon: 'eye', keys: ['Space'], when: () => !!app.active.focused, run: () => (app.quickLook = app.quickLook ? null : app.active.focused ?? null) },
   { id: 'view.theme', label: 'Toggle light / dark', group: 'View', icon: 'moon', keys: ['Ctrl+Shift+L'], run: () => app.updateSettings({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }) },
@@ -136,6 +144,8 @@ export const commands: Command[] = [
 
   // search & tools
   { id: 'search.focus', label: 'Search', group: 'Tools', icon: 'search', keys: ['Ctrl+E', 'Ctrl+Shift+F'], run: open('search') },
+  { id: 'search.help', label: 'Search filters', group: 'Tools', icon: 'info', run: open('searchHelp') },
+  { id: 'search.save', label: 'Save search…', group: 'Tools', icon: 'star', when: () => app.active.path.startsWith(VIRTUAL.search), run: () => app.saveSearch() },
   { id: 'tools.dupes', label: 'Find duplicates…', group: 'Tools', icon: 'duplicate', run: open('dupes') },
   { id: 'tools.compare', label: 'Compare panes', group: 'Tools', icon: 'compare', keys: ['F9'], when: () => app.dual, run: open('compare') },
   { id: 'tools.package', label: 'Package a lot / transmittal…', group: 'Office', icon: 'package', keys: ['Ctrl+Shift+P'], run: open('packager') },
