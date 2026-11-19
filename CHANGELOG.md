@@ -21,6 +21,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - **Recent files on Home**: the last files you opened in Hopper, with "Open file location".
   Files that are gone drop off the list.
 
+### Fixed
+- **Updating never stops at "Failed to uninstall old application files".** The installer now closes
+  everything running from the Hopper folder (Hopper and its helpers) before it replaces files, and
+  it installs over the old version even if the old uninstaller reports an error.
+- **Print** works for every file name. The file path was read as part of a PowerShell command, so
+  printing failed and an unusual file name could run as code.
+
 ## [2.7.1] — 2026-11-19
 
 ### Added
