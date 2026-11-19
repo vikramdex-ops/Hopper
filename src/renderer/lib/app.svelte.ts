@@ -448,6 +448,7 @@ export class App {
     // Network shares (UNC or mapped drives) have no Recycle Bin, and Electron's trashItem refuses to
     // fall back to a permanent delete ("Failed to perform delete operation"). Like Explorer, those
     // items are deleted permanently, always after an explicit confirmation.
+    if (!permanent && !this.drives.length) await this.refreshDrives() // mapped drives must be known
     const net = permanent ? [] : t.filter((e) => this.isNetworkPath(e.path))
     const local = permanent ? t : t.filter((e) => !this.isNetworkPath(e.path))
     const what = (items: typeof t) => (items.length === 1 ? `"${items[0].name}"` : plural(items.length, 'item'))

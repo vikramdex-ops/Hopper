@@ -4,12 +4,21 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [2.7.1] — 2026-11-19
 
+### Added
 - Notices can go to **Dexterity Connect** instead of Zoho Cliq: files, folder links and requests sent
   with Hopper, and Dexterity Share first-download and closing reminders, arrive as Direct messages from
   the Hopper integration. Set up with a token from Connect's Control room (docs/CONNECT-SETUP.md).
   The hub is trusted by certificate fingerprint; Cliq stays as it was when Connect is not configured.
+
+### Fixed
+- **Delete works on network folders.** A shared folder (`\\server\...` or a mapped drive such as
+  U:) has no Recycle Bin, so Delete failed with "Failed to perform delete operation". Like
+  Explorer, Hopper now asks once and deletes those items permanently; files on this PC still go
+  to the Recycle Bin. The duplicate finder does the same.
+- **Settings → Office no longer cuts off text.** On the long Office page the cards were squeezed
+  below their text, clipping the "Set up on …" line and the captions; the page now scrolls instead.
 
 ## [2.7.0] — 2026-11-13
 

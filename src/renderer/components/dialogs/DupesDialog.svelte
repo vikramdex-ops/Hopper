@@ -89,11 +89,27 @@
     const paths = groups.flat().filter((e) => checked.has(key(e.path))).map((e) => e.path)
     if (!paths.length || busy) return
     const warn = wiped ? `${plural(wiped, 'group')} would lose every copy. ` : ''
-    const ok = await app.confirm(`Move ${plural(paths.length, 'file')} (${fmtSize(chosenBytes)}) to the Recycle Bin?`, `${warn}You can restore them with Undo or from the Recycle Bin.`, 'Move to Recycle Bin')
+    // network shares have no Recycle Bin: those files are deleted permanently (see app.deleteTargets)
+    const net = paths.filter((p) => app.isNetworkPath(p))
+    const ok = net.length
+      ? await app.confirm(`Permanently delete ${plural(paths.length, 'file')} (${fmtSize(chosenBytes)})?`, `${warn}${net.length === paths.length ? 'These files are' : `${plural(net.length, 'file')} of them are`} on a network location with no Recycle Bin, so ${net.length === paths.length ? 'this' : 'that part'} cannot be undone.`, 'Delete permanently')
+      : await app.confirm(`Move ${plural(paths.length, 'file')} (${fmtSize(chosenBytes)}) to the Recycle Bin?`, `${warn}You can restore them with Undo or from the Recycle Bin.`, 'Move to Recycle Bin')
     if (!ok) return
     busy = true
     try {
-      const r = await host.shell.trash(paths)
+      if (net.length) {
+        const h = await engine.call('fs.deletePermanent', net)
+        const bad = new Set(h.failed.map((f: { path: string }) => key(f.path)))
+        const gone = new Set(net.map(key).filter((k) => !bad.has(k)))
+        groups = groups.map((g) => g.filter((e) => !gone.has(key(e.path)))).filter((g) => g.length > 1)
+        checked = new Set([...checked].filter((k) => !gone.has(k)))
+        if (gone.size) app.toast('info', `Deleted ${plural(gone.size, 'file')} permanently`)
+        if (h.failed.length) app.toast('error', `${plural(h.failed.length, 'file')} could not be deleted`, h.failed[0].message)
+        for (const p of app.panes) void p.refresh()
+      }
+      const local = paths.filter((p) => !app.isNetworkPath(p))
+      if (!local.length) return
+      const r = await host.shell.trash(local)
       if (r.done.length) {
         void engine.call('fs.recordRecycle', r.done)
         const gone = new Set(r.done.map(key))

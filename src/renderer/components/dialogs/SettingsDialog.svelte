@@ -1423,6 +1423,10 @@
     padding-right: 6px;
     min-width: 0;
   }
+  /* a long page (Office) must scroll, not squeeze cards below their text height */
+  .panel > :global(*) {
+    flex-shrink: 0;
+  }
   h3 {
     margin: 10px 0 0;
   }
