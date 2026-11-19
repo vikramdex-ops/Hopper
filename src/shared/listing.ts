@@ -59,14 +59,15 @@ export function localWeekStart(): number {
 // ---------------------------------------------------------------------------
 // Group by
 
-export type GroupBy = 'none' | 'type' | 'mtime' | 'size' | 'name'
+export type GroupBy = 'none' | 'type' | 'mtime' | 'size' | 'name' | 'label'
 
 export const GROUP_BY: { id: GroupBy; label: string }[] = [
   { id: 'none', label: 'None' },
   { id: 'name', label: 'Name' },
   { id: 'mtime', label: 'Date modified' },
   { id: 'type', label: 'Type' },
-  { id: 'size', label: 'Size' }
+  { id: 'size', label: 'Size' },
+  { id: 'label', label: 'Label' }
 ]
 
 export interface Groupable {
@@ -75,7 +76,17 @@ export interface Groupable {
   ext: string
   size: number
   mtime: number
+  /** status label id (see shared/labels.ts) */
+  label?: string
 }
+
+/** A label as group by and label: filters need it (id and display name). */
+export interface LabelName {
+  id: string
+  name: string
+}
+
+export const NO_LABEL = 'No label'
 
 export interface Group<T> {
   key: string
@@ -134,9 +145,22 @@ const defaultTypeLabel = (ext: string, dir: boolean) => (dir ? 'File folder' : e
 export function groupItems<T extends Groupable>(
   items: readonly T[],
   by: GroupBy,
-  opts: { now?: number; weekStart?: number; typeLabel?: (ext: string, dir: boolean) => string } = {}
+  opts: { now?: number; weekStart?: number; typeLabel?: (ext: string, dir: boolean) => string; labels?: readonly LabelName[] } = {}
 ): Group<T>[] {
   if (by === 'none') return [{ key: '', label: '', items: items.slice() }]
+  if (by === 'label') {
+    // the office's labels in their own order, labels no longer defined after them, "No label" last
+    const defs = opts.labels ?? []
+    const map = new Map<string, T[]>()
+    for (const e of items) {
+      const k = e.label ?? ''
+      let list = map.get(k)
+      if (!list) map.set(k, (list = []))
+      list.push(e)
+    }
+    const order = [...defs.map((d) => d.id), ...[...map.keys()].filter((k) => k && !defs.some((d) => d.id === k)).sort(), '']
+    return order.filter((k) => map.get(k)?.length).map((k) => ({ key: `label:${k}`, label: k ? defs.find((d) => d.id === k)?.name ?? k : NO_LABEL, items: map.get(k)! }))
+  }
   if (by === 'type') {
     const label = opts.typeLabel ?? defaultTypeLabel
     const labels = new Map<string, string>()
@@ -189,6 +213,8 @@ export interface QueryFilters {
   dirs?: boolean
   /** lower-case extensions (no dot) a file must have */
   exts?: string[]
+  /** label ids an item must have one of; '' = no label, '*' = any label */
+  labels?: string[]
   /** the filters contradict each other: nothing can match */
   never?: boolean
 }
@@ -224,6 +250,7 @@ export const FILTER_HELP: { filter: string; example: string; meaning: string }[]
   { filter: 'date:', example: 'date:2026-11-01..2026-11-15', meaning: 'A day, a range, or >date / <date' },
   { filter: 'size:', example: 'size:>10mb  size:1mb..5mb', meaning: 'Bigger, smaller, between (kb, mb, gb)' },
   { filter: 'size:', example: 'size:empty', meaning: 'Also tiny, small, medium, large, huge' },
+  { filter: 'label:', example: 'label:checked  label:none', meaning: 'Status label (any, none, or a label name)' },
   { filter: '/regex/', example: '/^ISO-\\d+_Rev[A-C]/', meaning: 'Regular expression (the whole query)' }
 ]
 
@@ -373,10 +400,41 @@ export interface ParsedFilters {
   hints: string[]
 }
 
-const FILTER_KEY = /^(date|modified|size|type|kind):(.*)$/i
+const FILTER_KEY = /^(date|modified|size|type|kind|label):(.*)$/i
 
-/** Take date:, size: and type: tokens out of a query. Anything not understood is ignored and named in `hints`. */
-export function parseFilters(q: string, opts: { now?: number; weekStart?: number } = {}): ParsedFilters {
+/** A label: value as label ids ('' = none, '*' = any), or null when a part is not a known label. */
+export function parseLabelFilter(v: string, labels?: readonly LabelName[]): string[] | null {
+  const out: string[] = []
+  const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '')
+  for (const raw of v.split(/[,;]/).filter(Boolean)) {
+    const t = norm(raw.replace(/^"|"$/g, ''))
+    if (t === 'none') out.push('')
+    else if (t === 'any') out.push('*')
+    else if (!labels) {
+      if (!/^[a-z0-9]{1,24}$/.test(t)) return null
+      out.push(t)
+    } else {
+      const d = labels.find((x) => norm(x.id) === t) ?? labels.find((x) => norm(x.name) === t)
+      if (!d) return null
+      out.push(d.id)
+    }
+  }
+  return out.length ? out : null
+}
+
+/** Both label: filters at once ('*' = any label meets every named label). */
+function meetLabels(a: string[], b: string[]): string[] {
+  const out = new Set<string>()
+  for (const x of a) for (const y of b) {
+    if (x === y) out.add(x)
+    else if (x === '*' && y) out.add(y)
+    else if (y === '*' && x) out.add(x)
+  }
+  return [...out]
+}
+
+/** Take date:, size:, type: and label: tokens out of a query. Anything not understood is ignored and named in `hints`. */
+export function parseFilters(q: string, opts: { now?: number; weekStart?: number; labels?: readonly LabelName[] } = {}): ParsedFilters {
   const marks = dateMarks(opts.now ?? Date.now(), opts.weekStart ?? 1)
   const filters: QueryFilters = {}
   const used: string[] = []
@@ -409,6 +467,14 @@ export function parseFilters(q: string, opts: { now?: number; weekStart?: number
         filters.size = intersect(filters.size, r)
         used.push(tok)
       }
+    } else if (key === 'label') {
+      const l = parseLabelFilter(val, opts.labels)
+      if (!l) hints.push(`${tok} not understood (try ${opts.labels?.length ? opts.labels.map((x) => x.id).slice(0, 3).join(', ') : 'checked'}, any or none)`)
+      else {
+        used.push(tok)
+        filters.labels = filters.labels ? meetLabels(filters.labels, l) : l
+        if (!filters.labels.length) filters.never = true
+      }
     } else {
       const t = parseTypeFilter(val)
       if (!t) hints.push(`${tok} not understood (try folder, file, pdf, drawing, document, sheet, image or archive)`)
@@ -430,14 +496,18 @@ export function parseFilters(q: string, opts: { now?: number; weekStart?: number
   return { text: rest.join(' '), filters, used, hints }
 }
 
-export const hasFilters = (f: QueryFilters) => !!(f.mtime || f.size || f.dirs !== undefined || f.exts || f.never)
+export const hasFilters = (f: QueryFilters) => !!(f.mtime || f.size || f.dirs !== undefined || f.exts || f.labels || f.never)
 
 /**
  * Whether an entry passes the folder/size/date filters (not the extension: that is a name check).
  * Folders have no size of their own, so a size filter shows files only.
  */
-export function passesFilters(e: { dir: boolean; size: number; mtime: number }, f: QueryFilters): boolean {
+export function passesFilters(e: { dir: boolean; size: number; mtime: number; label?: string }, f: QueryFilters): boolean {
   if (f.never) return false
+  if (f.labels) {
+    const l = e.label ?? ''
+    if (!f.labels.some((x) => (x === '*' ? !!l : x === l))) return false
+  }
   if (f.dirs !== undefined && e.dir !== f.dirs) return false
   if (f.size) {
     if (e.dir) return false
@@ -473,11 +543,11 @@ export interface CompiledQuery {
 }
 
 /** The whole query language compiled once: the name part for the index, the rest as filters. */
-export function compileQuery(q: string, opts: { caseSensitive?: boolean; now?: number; weekStart?: number } = {}): CompiledQuery {
+export function compileQuery(q: string, opts: { caseSensitive?: boolean; now?: number; weekStart?: number; labels?: readonly LabelName[] } = {}): CompiledQuery {
   const whole = /^\/(.+)\/([a-z]*)$/.exec(q.trim())
   const p: ParsedFilters = whole ? { text: q.trim(), filters: {}, used: [], hints: [] } : parseFilters(q, opts)
   const { filters, used, hints } = p
-  const filtered = !!(filters.mtime || filters.size || filters.dirs !== undefined || filters.never)
+  const filtered = !!(filters.mtime || filters.size || filters.dirs !== undefined || filters.labels || filters.never)
   const re = /^\/(.+)\/([a-z]*)$/.exec(p.text.trim())
   if (re) {
     try {

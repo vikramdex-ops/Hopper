@@ -68,6 +68,8 @@ export type JobKind =
   | 'package'
   | 'hash'
   | 'size'
+  /** a move, rename, delete or copy waiting for a file to be closed (see shared/unlock.ts) */
+  | 'wait'
 
 export type JobState = 'queued' | 'running' | 'paused' | 'waiting' | 'done' | 'failed' | 'cancelled'
 
@@ -103,6 +105,8 @@ export interface JobInfo {
   /** where the result landed (archive path, destination folder) */
   output?: string
   dest?: string
+  /** what is left of the job because files were open in another program (offered "Who has it open?") */
+  blocked?: import('./unlock').UnlockOp
 }
 
 export interface Conflict {
@@ -431,6 +435,8 @@ export interface OfficeConfig {
   templates: FolderTemplate[]
   revisions: RevisionRules
   conventions: NamingConvention[]
+  /** status labels shown to the whole office (see shared/labels.ts); absent = the default set */
+  labels?: import('./labels').LabelDef[]
   /** Legacy (before 2.5): who could edit this config. Access now follows office-access.ts. */
   admins: string[]
   /** Legacy (before 2.5): who could post announcements. Everyone can post now. */
@@ -541,5 +547,7 @@ export interface Settings {
   folderViews: Record<string, import('./listing').RememberedView>
   /** saved searches, shown under Smart folders in the sidebar, in this order */
   smartFolders: import('./listing').SmartFolder[]
+  /** "Who has it open": how close requests reach people, and how long a blocked operation waits */
+  unlock?: { via: 'hopper' | 'connect' | 'both'; waitMinutes: number }
 }
 

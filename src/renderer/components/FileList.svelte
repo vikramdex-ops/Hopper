@@ -518,6 +518,15 @@
   const attrText = (a: number) => (a & ATTR.readonly ? 'R' : '') + (a & ATTR.hidden ? 'H' : '') + (a & ATTR.system ? 'S' : '') + (a & ATTR.archive ? 'A' : '') + (a & ATTR.compressed ? 'C' : '') + (a & ATTR.encrypted ? 'E' : '')
   const cloudState = (a: number) => (a & (ATTR.recallOnAccess | ATTR.offline) ? 'cloud' : '')
   const gridTemplate = $derived(cols.map((c) => (c.id === 'name' ? `minmax(${NAME_MIN}px, 1fr)` : `${c.width}px`)).join(' '))
+
+  // shared status labels (shared/labels.ts)
+  const labelColor = (id: string) => pane.labelDefs.find((d) => d.id === id)?.color ?? '#8a8a8a'
+  const labelName = (id: string) => pane.labelDefs.find((d) => d.id === id)?.name ?? id
+  const labelTip = (r: Row) => {
+    const i = pane.labelOf(r.path)
+    const by = i ? ` — ${i.byName || i.by}, ${new Date(i.at).toLocaleDateString()}` : ''
+    return `${r.label ? labelName(r.label) : 'Note'}${by}${r.note ? `\n${r.note}` : ''}`
+  }
 </script>
 
 <div
@@ -624,7 +633,7 @@
           {#if pane.renaming === keyOf(r)}
             <input class="rename" use:renameMount={r} />
           {:else}
-            <div class="gname" title={r.name}>{r.name}</div>
+            <div class="gname" title={r.name}>{#if r.locked}<span class="lockb" title={pane.lockText(r.path)}><Icon name="lock" size={11} /></span>{/if}{#if r.label}<span class="ldot" style:background={labelColor(r.label)} title={labelTip(r)}></span>{/if}{r.name}</div>
           {/if}
         {:else}
           {#each view === 'list' ? cols.filter((c) => c.id === 'name') : cols as c (c.id)}
@@ -645,6 +654,8 @@
                   {#if r.olderRevs}<span class="revs" title={`${r.olderRevs} older revision(s) hidden — turn off "Group drawing revisions" to see them`}>+{r.olderRevs}</span>{/if}
                   {#if r.revUnknown}<span class="revq" title="Revision order can't be decided from the office rules — check manually"><Icon name="warning" size={12} /></span>{/if}
                   {#if cloudState(r.attrs)}<span class="cloud" title="Online-only (cloud) file"><Icon name="cloud" size={12} /></span>{/if}
+                  {#if r.label}<span class="lpill" style:--lc={labelColor(r.label)} title={labelTip(r)}><span class="ldot"></span>{labelName(r.label)}</span>{:else if r.note}<span class="notei" title={r.note}><Icon name="edit" size={11} /></span>{/if}
+                  {#if r.locked}<span class="lockb" title={pane.lockText(r.path)}><Icon name="lock" size={12} /></span>{/if}
                 {/if}
               </div>
             {:else if c.id === 'size'}
@@ -1021,5 +1032,50 @@
     to {
       left: 100%;
     }
+  }
+  .lpill {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 0 7px 0 5px;
+    height: 16px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--lc) 16%, transparent);
+    max-width: 120px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .lpill .ldot {
+    background: var(--lc);
+    margin: 0;
+  }
+  .ldot {
+    flex: none;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .lockb,
+  .notei {
+    flex: none;
+    display: inline-flex;
+    margin-left: 4px;
+    color: var(--text-2);
+  }
+  .lockb {
+    color: #d9822b;
+  }
+  .gname .lockb {
+    margin: 0 3px 0 0;
+    vertical-align: middle;
   }
 </style>

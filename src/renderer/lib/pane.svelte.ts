@@ -8,6 +8,8 @@ import { compileQuery, folderKey, groupItems, localWeekStart, passesFilters, rem
 import { ATTR, type ColumnSpec, type Entry, type PaneState, type TabState, type ViewMode } from '@shared/types'
 import type { App } from './app.svelte'
 import { networkHostOf, networkHostPath, serverOnlyUnc, shareRootHost } from '@shared/network'
+import { cleanLabelDefs, type LabelItem } from '@shared/labels'
+import { isLockFile, lockSummary, matchLocks, type LockOwner } from '@shared/locks'
 
 export const VIRTUAL = {
   home: 'hopper:home',
@@ -65,6 +67,11 @@ export interface Row extends Entry {
   rev?: string | null
   olderRevs?: number
   revUnknown?: boolean
+  /** shared status label id and note (shared/labels.ts) */
+  label?: string
+  note?: string
+  /** a lock file next to it says it is open (shared/locks.ts) */
+  locked?: boolean
 }
 
 export class Pane {
@@ -90,6 +97,12 @@ export class Pane {
   renaming = $state<string | null>(null)
   /** search pane extras */
   searchInfo = $state<{ scanned: number; hits: number; done: boolean } | null>(null)
+  /** shared labels and notes of what is listed, keyed by lower-case path */
+  labelItems = $state.raw<Record<string, LabelItem>>({})
+  /** who the lock files in this folder name, keyed by lower-case lock-file path (null: unreadable) */
+  lockOwners = $state.raw<Record<string, LockOwner | null>>({})
+  private labelToken = 0
+  private lockToken = 0
   private token = 0
   private searchToken = ''
 
@@ -125,8 +138,38 @@ export class Pane {
     return this.revisions ?? this.app.settings?.groupRevisions ?? false
   }
 
-  /** The in-folder filter, compiled with the search query language (words, *, ext:, date:, size:, type:). */
-  filterQuery = $derived(compileQuery(this.filter, { weekStart: WEEK_START }))
+  /** The office's status labels (or the default set). */
+  get labelDefs() {
+    return cleanLabelDefs(this.app.office?.labels)
+  }
+
+  /** The in-folder filter, compiled with the search query language (words, *, ext:, date:, size:, type:, label:). */
+  filterQuery = $derived(compileQuery(this.filter, { weekStart: WEEK_START, labels: this.labelDefs }))
+
+  /** Lock files in this folder: lower-case path of the file they belong to -> lock-file paths. */
+  lockMap = $derived.by(() => {
+    const m = new Map<string, string[]>()
+    const p = this.path
+    if (isVirtual(p) || isArchivePath(p) || !this.entries.some((e) => !e.dir && isLockFile(e.name))) return m
+    const byName = new Map(this.entries.map((e) => [e.name.toLowerCase(), e.path]))
+    for (const [target, locks] of matchLocks(this.entries.filter((e) => !e.dir).map((e) => e.name))) {
+      const tp = byName.get(target)
+      if (tp) m.set(tp.toLowerCase(), locks.map((l) => byName.get(l.toLowerCase()) ?? l))
+    }
+    return m
+  })
+
+  /** "Open by ‹name› on ‹PC›" for a file with a lock file, else ''. */
+  lockText(path: string) {
+    const locks = this.lockMap.get(path.toLowerCase())
+    if (!locks) return ''
+    return lockSummary(locks.map((l) => this.lockOwners[l.toLowerCase()] ?? { kind: 'office', lock: l }))
+  }
+
+  /** The label item of a listed path (or of this folder). */
+  labelOf(path: string): LabelItem | undefined {
+    return this.labelItems[path.toLowerCase()]
+  }
 
   /** Sorted, filtered, hidden-aware rows (revision-grouped when enabled), before grouping. */
   private sorted = $derived.by<Row[]>(() => {
@@ -134,11 +177,23 @@ export class Pane {
     const showHidden = s?.showHidden ?? false
     const showSystem = s?.showSystem ?? false
     const f = this.filter.trim()
+    const labels = this.labelItems
+    const locks = this.lockMap
+    const decorate = Object.keys(labels).length > 0 || locks.size > 0
     let list: Row[] = this.entries.filter((e) => {
-      if (!showHidden && (e.attrs & ATTR.hidden || (e.name.startsWith('.') && e.name !== '..'))) return false
+      // lock files (~$x.docx, x.dwl, .~lock.x#) count as hidden: their file gets a lock badge instead
+      if (!showHidden && (e.attrs & ATTR.hidden || (e.name.startsWith('.') && e.name !== '..') || (!e.dir && isLockFile(e.name)))) return false
       if (!showSystem && e.attrs & ATTR.system && e.attrs & ATTR.hidden) return false
       return true
     })
+    if (decorate) {
+      list = list.map((e) => {
+        const k = e.path.toLowerCase()
+        const l = labels[k]
+        const locked = locks.has(k)
+        return l || locked ? { ...e, label: l?.label || undefined, note: l?.note || undefined, locked: locked || undefined } : e
+      })
+    }
     if (f) {
       const q = this.filterQuery
       list = list.filter((e) => q.test(e.name.toLowerCase()) && (!q.filtered || passesFilters(e, q.filters)))
@@ -184,7 +239,7 @@ export class Pane {
     if (this.groupBy === 'none') return { rows: list, groups: [] as GroupInfo[] }
     const rows: Row[] = []
     const groups: GroupInfo[] = []
-    for (const g of groupItems(list, this.groupBy, { now: Date.now(), weekStart: WEEK_START, typeLabel })) {
+    for (const g of groupItems(list, this.groupBy, { now: Date.now(), weekStart: WEEK_START, typeLabel, labels: this.labelDefs })) {
       const collapsed = this.collapsed.has(g.key)
       groups.push({ key: g.key, label: g.label, count: g.items.length, collapsed, start: rows.length })
       if (!collapsed) for (const r of g.items) rows.push(r)
@@ -343,6 +398,8 @@ export class Pane {
       if (token !== this.token) return
       this.listMs = Math.round(performance.now() - t0)
       this.entries = entries
+      void this.loadLabels()
+      void this.loadLocks()
       if (prevSel) {
         const keep = new Set<string>()
         const have = new Set(entries.map((e) => e.path.toLowerCase()))
@@ -408,10 +465,48 @@ export class Pane {
       if (d.done) {
         off()
         if (replace) this.entries = fresh
+        void this.loadLabels()
       }
     })
     const roots = root ? [root] : this.app.searchEverywhereRoots()
     void engine.call('search.run', st, { roots, name: q, content: content || undefined, limit: 20000, weekStart: WEEK_START })
+  }
+
+  // ---- shared labels and lock files ---------------------------------------------
+
+  /** Shared status labels and notes for what is listed (and for this folder itself). */
+  async loadLabels() {
+    const path = this.path
+    const search = path.startsWith(VIRTUAL.search)
+    if (isArchivePath(path) || (isVirtual(path) && !search)) {
+      if (Object.keys(this.labelItems).length) this.labelItems = {}
+      return
+    }
+    const paths = this.entries.map((e) => e.path)
+    if (!search) paths.push(path)
+    const t = ++this.labelToken
+    try {
+      const r = await engine.call<Record<string, LabelItem>>('labels.get', paths)
+      if (t === this.labelToken && this.path === path) this.labelItems = r
+    } catch {
+      /* labels are a nicety: the listing stays as it is */
+    }
+  }
+
+  /** Read who the lock files in this folder name (they are never changed). */
+  async loadLocks() {
+    const locks = [...this.lockMap.values()].flat()
+    const t = ++this.lockToken
+    if (!locks.length) {
+      if (Object.keys(this.lockOwners).length) this.lockOwners = {}
+      return
+    }
+    try {
+      const r = await engine.call<Record<string, LockOwner | null>>('locks.read', locks)
+      if (t === this.lockToken) this.lockOwners = r
+    } catch {
+      /* the badge still shows; the owner stays unknown */
+    }
   }
 
   // ---- selection ------------------------------------------------------------

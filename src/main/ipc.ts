@@ -80,7 +80,7 @@ export function registerIpc() {
   h('settings:get', () => ctx.settings.data)
   h('settings:set', (patch: Partial<Settings>) => {
     const themeChanged = patch.theme && patch.theme !== ctx.settings.data.theme
-    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset'].some((k) => k in patch)
+    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset', 'recentFiles'].some((k) => k in patch)
     ctx.settings.set(patch)
     if (themeChanged) applyTheme()
     if (lanChanged) pushOfficeToUtilities()
@@ -204,7 +204,7 @@ export function registerIpc() {
   h('shell:props', (paths: string[]) => ctx.shell.call('props', { paths }, 60000))
   h('shell:setAttrs', (paths: string[], set: number, clear: number) => ctx.shell.call('setAttrs', { paths, set, clear }, 60000))
   h('shell:cluster', (p: string) => ctx.shell.call('cluster', { path: p }, 8000))
-  h('shell:shares', () => ctx.shell.call('shares', {}, 8000))
+  h('shell:shares', () => ctx.shell.call('shares', { all: true }, 8000)) // Path Copy also maps to C$ and the like
   h('shell:print', (paths: string[]) =>
     Promise.all(
       paths.map(

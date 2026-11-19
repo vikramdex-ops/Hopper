@@ -158,6 +158,7 @@ export function fsHandlers(ctx: EngineCtx) {
       if (from.toLowerCase() !== to.toLowerCase() && (await exists(to))) throw new Error(`"${to}" already exists`)
       await moveOne(from, to)
       ctx.undo.record({ kind: 'rename', label: `Rename ${from.split('\\').pop()}`, pairs: [[from, to]] })
+      void ctx.labels.moved([[from, to]]) // status labels go with the item
       return to
     },
     'fs.renameMany': async (pairs: [string, string][]) => {
@@ -193,6 +194,7 @@ export function fsHandlers(ctx: EngineCtx) {
         }
       }
       if (done.length) ctx.undo.record({ kind: 'rename', label: `Rename ${done.length} items`, pairs: done })
+      void ctx.labels.moved(done)
       return { done: done.length, failed }
     },
     'fs.readText': async (p: string, maxBytes = 1024 * 1024) => {

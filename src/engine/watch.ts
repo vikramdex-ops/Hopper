@@ -55,6 +55,18 @@ export function watchHandlers(ctx: EngineCtx) {
       for (const key of [...watchers.keys()]) if (!want.has(key)) remove(key)
       for (const d of dirs) if (!d.includes('::')) add(d)
       return watchers.size
+    },
+    /** "Who has it open": stop holding handles on these folders (or inside them); they are polled by time stamp instead. */
+    'watch.release': (paths: string[]) => {
+      const roots = (Array.isArray(paths) ? paths : []).map((p) => p.toLowerCase().replace(/[\\/]+$/, ''))
+      let n = 0
+      for (const [key, rec] of [...watchers]) {
+        if (!rec.w || !roots.some((r) => key === r || key.startsWith(r + '\\'))) continue
+        remove(key)
+        poll(key, key)
+        n++
+      }
+      return n
     }
   }
 }

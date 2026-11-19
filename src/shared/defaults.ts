@@ -70,7 +70,8 @@ export function defaultSettings(home: string, docs: string): Settings {
     tagColors: {},
     defaultView: { view: 'details', sort: { key: 'name', dir: 1 }, groupBy: 'none' },
     folderViews: {},
-    smartFolders: []
+    smartFolders: [],
+    unlock: { via: 'both', waitMinutes: 10 }
   }
 }
 

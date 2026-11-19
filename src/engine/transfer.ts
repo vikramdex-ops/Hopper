@@ -8,6 +8,7 @@ import { createReadStream, promises as fsp } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, relative } from 'node:path'
 import type { ConflictPolicy, TransferSpec } from '@shared/types'
+import { isBusyError, type UnlockOp } from '@shared/unlock'
 import type { EngineCtx } from './index'
 import { Cancelled, type JobCtl } from './jobs'
 import { listRaw, walk } from './fsops'
@@ -143,6 +144,7 @@ export async function runTransfer(ctx: EngineCtx, ctl: JobCtl, spec: TransferSpe
       }
     }
     if (undoPairs.length) ctx.undo.record({ kind: 'move', label: `Move ${undoPairs.length} item${undoPairs.length > 1 ? 's' : ''}`, pairs: undoPairs })
+    void ctx.labels.moved(undoPairs) // status labels go with the items
     return spec.dest
   }
   return copyPath(ctx, ctl, spec, policy, undoPairs)
@@ -278,6 +280,7 @@ async function copyPath(ctx: EngineCtx, ctl: JobCtl, spec: TransferSpec, startPo
   }
   const label = `${spec.op === 'move' ? 'Move' : 'Copy'} ${spec.sources.length} item${spec.sources.length > 1 ? 's' : ''} to ${basename(spec.dest) || spec.dest}`
   if (undoPairs.length && undoPairs.length < 20000) ctx.undo.record({ kind: spec.op === 'move' ? 'move' : 'copy', label, pairs: undoPairs })
+  if (spec.op === 'move') void ctx.labels.moved(undoPairs)
   return spec.dest
 }
 
@@ -286,7 +289,14 @@ export function transferHandlers(ctx: EngineCtx) {
     'transfer.start': (spec: TransferSpec) => {
       const n = spec.sources.length
       const title = `${spec.op === 'move' ? 'Moving' : 'Copying'} ${n === 1 ? basename(spec.sources[0]) : `${n} items`} to ${basename(spec.dest) || spec.dest}`
-      return ctx.jobs.create(spec.op, title, (ctl) => runTransfer(ctx, ctl, spec), {
+      return ctx.jobs.create(spec.op, title, async (ctl) => {
+        try {
+          return await runTransfer(ctx, ctl, spec)
+        } finally {
+          // files open in another program: keep what is left so "Who has it open?" can wait and retry it
+          ctl.info.blocked = blockedTransfer(spec, ctl.info.errors)
+        }
+      }, {
         lane: `vol:${volumeOf(spec.dest)}`,
         dest: spec.dest
       })
@@ -297,4 +307,17 @@ export function transferHandlers(ctx: EngineCtx) {
       return ctx.jobs.create('copy', `Duplicating ${paths.length} item${paths.length > 1 ? 's' : ''}`, (ctl) => runTransfer(ctx, ctl, { op: 'copy', sources: paths, dest, policy: 'rename' }), { lane: `vol:${volumeOf(dest)}`, dest })
     }
   }
+}
+
+/** What is left of a transfer whose files were open somewhere (busy errors only), for "Wait and retry". */
+export function blockedTransfer(spec: TransferSpec, errors: { path: string; message: string }[]): UnlockOp | undefined {
+  const items: { src: string; destDir: string }[] = []
+  for (const e of errors) {
+    if (!isBusyError(e.message)) continue
+    const top = spec.sources.find((s) => e.path.toLowerCase() === s.toLowerCase() || e.path.toLowerCase().startsWith(s.toLowerCase() + '\\'))
+    if (!top) continue
+    const rel = e.path.slice(dirname(top).length).replace(/^\\+/, '')
+    items.push({ src: e.path, destDir: dirname(join(spec.dest, rel)) })
+  }
+  return items.length ? { kind: 'transfer', op: spec.op, items: items.slice(0, 500) } : undefined
 }

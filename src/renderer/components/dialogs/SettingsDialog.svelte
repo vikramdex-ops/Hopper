@@ -17,6 +17,7 @@
   import { BUILTIN_TEMPLATES } from '@shared/project-template'
   import { expandTree, inputsOf, isTree, validateTemplate } from '@shared/template-model'
   import type { ArchivePreset, IndexStatus, OfficeConfig, Peer, QuickDest, Settings } from '@shared/types'
+  import { cleanLabelDefs, DEFAULT_LABELS, MAX_LABELS } from '@shared/labels'
 
   let { section, close }: { section?: string; close: (v?: unknown) => void } = $props()
 
@@ -286,7 +287,40 @@
       groups: c.groups.map((g) => ({ ...g, name: g.name.trim(), members: [...new Set(lines(g.members))] })),
       templates: c.templates.map((t) => ({ ...t, name: t.name.trim(), folders: lines(t.folders) })),
       conventions: c.conventions.map((n) => ({ ...n, name: n.name.trim() })),
-      revisions: { patterns: lines(c.revisions.patterns), order: lines(c.revisions.order) }
+      revisions: { patterns: lines(c.revisions.patterns), order: lines(c.revisions.order) },
+      ...(c.labels ? { labels: cleanLabelDefs(c.labels.map((d) => ({ ...d, name: d.name.trim() }))) } : {})
+    }
+  }
+
+  // ---- Who has it open: status labels (office) and the server agent (this PC) ----------
+
+  function addLabel() {
+    if (!draft) return
+    const labels = (draft.labels ??= DEFAULT_LABELS.map((d) => ({ ...d })))
+    if (labels.length >= MAX_LABELS) return
+    let n = labels.length + 1
+    while (labels.some((d) => d.id === `label-${n}`)) n++
+    labels.push({ id: `label-${n}`, name: 'New label', color: '#5b6b7c' })
+  }
+
+  const editLabels = () => (draft!.labels ??= DEFAULT_LABELS.map((x) => ({ ...x })))
+
+  let agent = $state<{ shares: string[]; elevated: boolean; task: boolean; deployed: boolean; upToDate: boolean; ready: boolean } | null>(null)
+  let agentBusy = $state(false)
+  async function loadAgent() {
+    agent = await lan.call('unlock.agentStatus').catch(() => null)
+  }
+  async function setupAgent(remove = false) {
+    if (!remove && !(await app.confirm('Allow file unlock on this server?', 'Windows asks once for administrator permission. Hopper then copies its helper to Program Files (where only administrators can change it), checks it, and adds a scheduled task ("Hopper file unlock") that starts that copy with admin rights when another PC asks who has a file open, so it can list the files open on this server and, for office admins, close one. No password is stored. You can remove it here later.', 'Continue'))) return
+    agentBusy = true
+    try {
+      agent = await lan.call('unlock.agentSetup', remove)
+      const ok = !!agent?.ready
+      app.toast(remove ? 'info' : ok ? 'success' : 'warning', remove ? 'File unlock removed from this server' : ok ? 'File unlock is on for this server' : 'The task was added, but the helper did not start with admin rights', remove || ok ? undefined : 'The Windows account that runs Hopper here must be an administrator.')
+    } catch (e) {
+      app.toast('error', remove ? "Couldn't remove file unlock" : "Couldn't turn on file unlock", msg(e))
+    } finally {
+      agentBusy = false
     }
   }
 
@@ -954,6 +988,23 @@
           </div>
         {/each}
 
+        <h3 class="subtitle">Who has it open</h3>
+        <div class="caption">When a file you want to move, rename or delete is open on another PC, Hopper can ask that person to close it.</div>
+        <div class="item">
+          <span class="txt"><span>Send close requests via</span><span class="caption">Hopper shows a prompt on their PC; Dexterity Connect also reaches them when they are away from it</span></span>
+          <select class="input narrow2" value={s.unlock?.via ?? 'both'} onchange={(e) => set({ unlock: { waitMinutes: s.unlock?.waitMinutes ?? 10, via: e.currentTarget.value as 'hopper' | 'connect' | 'both' } })}>
+            <option value="both">Hopper and Connect</option>
+            <option value="hopper">Hopper only</option>
+            <option value="connect">Dexterity Connect only</option>
+          </select>
+        </div>
+        <div class="item">
+          <span class="txt"><span>Wait and retry for up to</span><span class="caption">A blocked move, rename or delete tries again every 10 seconds, and as soon as someone closes the file</span></span>
+          <select class="input narrow2" value={String(s.unlock?.waitMinutes ?? 10)} onchange={(e) => set({ unlock: { via: s.unlock?.via ?? 'both', waitMinutes: Number(e.currentTarget.value) } })}>
+            {#each [5, 10, 15, 30, 60, 120] as m (m)}<option value={String(m)}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? 's' : ''}`}</option>{/each}
+          </select>
+        </div>
+
         <h3 class="subtitle">Client links (Dexterity Share)</h3>
         <div class="caption">Download links for clients. Every link you made is listed in My client links: copy it again, see downloads, extend or switch it off.</div>
         <div class="row">
@@ -1148,6 +1199,41 @@
             <button type="button" class="btn" disabled={testBusy || dirty || !testEmail.trim()} onclick={testCliq} title={dirty ? 'Save first: the test uses the saved config' : ''}><Icon name="send" /> {testBusy ? 'Sending…' : 'Send test DM'}</button>
           </div>
           {#if dirty}<div class="caption">The test uses the saved config, so save your changes first.</div>{/if}
+
+          <h3 class="subtitle">Status labels</h3>
+          <div class="caption">Colour labels everyone in the office can put on files and folders (right-click → Label, Alt+L, Ctrl+Alt+1 to 5). Renaming a label keeps it on the files; removing one hides it.</div>
+          {#each draft.labels ?? DEFAULT_LABELS as d, li (d.id)}
+            <div class="row">
+              <input type="color" class="swatch" value={d.color} aria-label={`Colour of ${d.name}`} oninput={(e) => (editLabels()[li].color = e.currentTarget.value)} />
+              <input class="input" value={d.name} maxlength="32" spellcheck="false" aria-label="Label name" oninput={(e) => (editLabels()[li].name = e.currentTarget.value)} />
+              <span class="caption mono">label:{d.id}</span>
+              <button type="button" class="btn subtle icon sm" aria-label="Remove label" title="Remove label" onclick={() => editLabels().splice(li, 1)}><Icon name="delete" /></button>
+            </div>
+          {/each}
+          <div class="row">
+            <button type="button" class="btn" disabled={(draft.labels ?? DEFAULT_LABELS).length >= MAX_LABELS} onclick={addLabel}><Icon name="plus" /> Add label</button>
+            {#if draft.labels}<button type="button" class="btn subtle" onclick={() => (draft!.labels = undefined)}>Use the default labels</button>{/if}
+          </div>
+
+          <h3 class="subtitle">File unlock on this server</h3>
+          <div class="caption">On the PC that is the office file server: lets this Hopper tell others which files the server has open (including PCs without Hopper and files left open by a crashed PC), and lets office admins force a file closed after a warning. Every force close is logged on this server in %ProgramData%\Hopper\unlock-log.jsonl.</div>
+          {#if !agent}
+            <div class="row"><button type="button" class="btn" onclick={loadAgent}><Icon name="refresh" /> Check this PC</button></div>
+          {:else if !agent.shares.length}
+            <div class="caption">This PC shares no folders, so it is not a file server.</div>
+          {:else}
+            <div class="status" class:ok={agent.ready}>
+              <span class="dot" class:on={agent.ready}></span>
+              <span class="grow">{agent.ready ? `On · shares ${agent.shares.join(', ')}` : agent.task && !agent.upToDate ? 'Needs an update: Hopper was updated since file unlock was set up' : agent.task ? 'Set up, but the helper did not get admin rights' : `Off · shares ${agent.shares.join(', ')}`}</span>
+              <button type="button" class="btn sm" onclick={loadAgent} aria-label="Check again"><Icon name="refresh" /></button>
+            </div>
+            <div class="row">
+              {#if !agent.elevated}
+                <button type="button" class="btn primary" disabled={agentBusy} onclick={() => setupAgent(false)}><Icon name="shield" /> {agent.task && !agent.upToDate ? 'Update file unlock on this server' : agent.task ? 'Set up again' : 'Allow file unlock on this server'}</button>
+              {/if}
+              {#if agent.task}<button type="button" class="btn" disabled={agentBusy} onclick={() => setupAgent(true)}>Remove</button>{/if}
+            </div>
+          {/if}
 
           <h3 class="subtitle">Groups</h3>
           <div class="caption">Share with a whole team by typing @ and the group name.</div>
@@ -1819,5 +1905,14 @@
   .passes li > span {
     flex: 1;
     min-width: 0;
+  }
+  .swatch {
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--stroke);
+    border-radius: 6px;
+    background: none;
+    flex: none;
   }
 </style>

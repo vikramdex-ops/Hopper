@@ -23,7 +23,7 @@ import {
   TRANSFER_PORT,
   TRANSFER_PORT_LAST
 } from './protocol'
-import type { Admit, LanCtx, OnReceived, OnSmall } from './types'
+import type { Admit, LanCtx, OnAsk, OnReceived, OnSmall } from './types'
 import { CHUNK, freeName, hashFile, makeFreshDir, readJson, saver, writeJsonAtomic } from './util'
 
 const HELLO_MS = 10_000
@@ -90,13 +90,19 @@ export class TransferServer {
   private partialFile: string
   private partialSaver
   port = 0
+  // plain fields (not parameter properties) so node:test can load this file with type stripping
+  private ctx: LanCtx
+  private admit: Admit
+  private onReceived: OnReceived
+  private onSmall: OnSmall
+  private onAsk?: OnAsk
 
-  constructor(
-    private ctx: LanCtx,
-    private admit: Admit,
-    private onReceived: OnReceived,
-    private onSmall: OnSmall
-  ) {
+  constructor(ctx: LanCtx, admit: Admit, onReceived: OnReceived, onSmall: OnSmall, onAsk?: OnAsk) {
+    this.ctx = ctx
+    this.admit = admit
+    this.onReceived = onReceived
+    this.onSmall = onSmall
+    this.onAsk = onAsk
     this.partialFile = join(ctx.dataDir, 'lan-partial.json')
     this.partialSaver = saver(2000, () => writeJsonAtomic(this.partialFile, this.persisted))
   }
@@ -183,6 +189,7 @@ export class TransferServer {
       if (hello.role === 'control') await this.control(conn, identity, hello)
       else if (hello.role === 'data') await this.data(conn, identity, hello)
       else if (hello.role === 'small') await this.small(conn, identity, hello)
+      else if (hello.role === 'ask' && this.onAsk) await this.ask(conn, identity, hello)
       else sock.destroy()
     } catch (e: any) {
       if (!/closed|ended|ECONNRESET/.test(String(e?.message))) this.ctx.log('recv', e?.message ?? e)
@@ -200,6 +207,21 @@ export class TransferServer {
       verdict = String(e?.message ?? e)
     }
     conn.send(verdict === true ? { t: 'ok' } : { t: 'err', code: verdict })
+    conn.sock.end()
+  }
+
+  /** A question that needs an answer ("who has this file open?"): one frame in, one frame out. */
+  private async ask(conn: FrameConn, identity: string, hello: any) {
+    const frame = await conn.readFrame(HELLO_MS)
+    let reply: unknown
+    try {
+      // the address comes from the socket, not from anything the peer says
+      const address = String((conn.sock as TLSSocket).remoteAddress ?? '').replace(/^::ffff:/i, '')
+      reply = await this.onAsk!(identity, frame, { fromName: String(hello.fromName || identity).slice(0, 80), host: String(hello.host ?? '').slice(0, 64), address })
+    } catch (e: any) {
+      reply = { t: 'err', code: String(e?.message ?? e).slice(0, 200) }
+    }
+    conn.send(reply ?? { t: 'err', code: 'no-answer' })
     conn.sock.end()
   }
 

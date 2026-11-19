@@ -1,6 +1,7 @@
 // End-to-end smoke suite: drives the real app and checks the core flows actually work.
 // Usage: npm run build && npm run e2e
-import { existsSync, mkdirSync, rmSync, statSync, readdirSync, writeFileSync, utimesSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, readdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { launch, makeDemo, WORK } from './harness.mjs'
 
@@ -517,6 +518,96 @@ await step('save a search as a smart folder and reopen it from the sidebar', asy
   if (!added || added.root.toLowerCase() !== dir.toLowerCase()) throw new Error('suggestion not scoped to the folder: ' + JSON.stringify(added))
   await ev(() => window.__hopper.updateSettings({ smartFolders: [] }))
   await ev(() => window.__hopper.panes[0].navigate('hopper:home'))
+  rmSync(dir, { recursive: true, force: true })
+})
+
+await step('lock badge for an Office owner file, lock file hidden', async () => {
+  const dir = join(demo, 'Lock test')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'Report.docx'), 'not really a document')
+  // an owner file as Word writes it: length + ANSI name, then a UTF-16 copy at offset 54
+  const owner = Buffer.alloc(162, 0)
+  const name = 'Test User'
+  owner[0] = name.length
+  Buffer.from(name, 'latin1').copy(owner, 1)
+  owner.writeUInt16LE(name.length, 54)
+  Buffer.from(name, 'utf16le').copy(owner, 56)
+  writeFileSync(join(dir, '~$Report.docx'), owner)
+  await ev(() => window.__hopper.setActive(0))
+  await ev((p) => window.__hopper.panes[0].navigate(p), dir)
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'Report.docx' && r.locked))
+  const names = await ev(() => window.__hopper.panes[0].rows.map((r) => r.name))
+  if (names.includes('~$Report.docx')) throw new Error('lock file shown although hidden items are off')
+  await until(() => window.__hopper.panes[0].lockText(window.__hopper.panes[0].rows.find((r) => r.name === 'Report.docx').path) === 'Open by Test User')
+  const tip = await win.locator('section[aria-label="Pane 1"] .row:has-text("Report.docx") .lockb').first().getAttribute('title')
+  if (tip !== 'Open by Test User') throw new Error('badge tooltip: ' + tip)
+  await win.screenshot({ path: join(shots, '16-lock-badge.png') })
+  // the lock file is left exactly as it was
+  if (!readFileSync(join(dir, '~$Report.docx')).equals(owner)) throw new Error('lock file changed')
+})
+
+await step('labels: set with the keyboard, filter label:, group by label', async () => {
+  const dir = join(demo, 'Lock test')
+  writeFileSync(join(dir, 'a.pdf'), 'a')
+  writeFileSync(join(dir, 'b.pdf'), 'b')
+  await ev(() => window.__hopper.panes[0].refresh())
+  await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'a.pdf'))
+  await ev(() => {
+    const p = window.__hopper.panes[0]
+    p.selectIndex(p.rows.findIndex((r) => r.name === 'a.pdf'))
+  })
+  await win.locator('section[aria-label="Pane 1"] .row:has-text("a.pdf")').first().click()
+  await win.keyboard.press('Control+Alt+1')
+  await until(() => window.__hopper.panes[0].rows.find((r) => r.name === 'a.pdf')?.label === 'checked', null, 20000)
+  const pill = await win.locator('section[aria-label="Pane 1"] .row:has-text("a.pdf") .lpill').first().textContent()
+  if (pill?.trim() !== 'Checked') throw new Error('pill shows ' + pill)
+  await ev(() => (window.__hopper.panes[0].filter = 'label:checked'))
+  const filtered = await ev(() => window.__hopper.panes[0].rows.map((r) => r.name).join(','))
+  if (filtered !== 'a.pdf') throw new Error('label:checked showed ' + filtered)
+  await ev(() => (window.__hopper.panes[0].filter = ''))
+  await ev(() => window.__hopper.panes[0].setGroupBy('label'))
+  const groups = await ev(() => window.__hopper.panes[0].groups.map((g) => `${g.label}:${g.count}`).join(','))
+  if (groups !== 'Checked:1,No label:2') throw new Error('groups ' + groups)
+  await win.screenshot({ path: join(shots, '17-labels.png') })
+  // a rename through Hopper keeps the label
+  await ev(() => { const p = window.__hopper.panes[0]; return window.__hopper.rename(p.rows.find((r) => r.name === 'a.pdf'), 'a2.pdf') })
+  await until(() => window.__hopper.panes[0].rows.find((r) => r.name === 'a2.pdf')?.label === 'checked', null, 20000)
+  await ev(() => window.__hopper.panes[0].setGroupBy('none'))
+  await ev(() => window.__hopper.panes[0].resetFolderView())
+})
+
+await step('who has it open: a file held by a test process, wait and retry', async () => {
+  const dir = join(demo, 'Lock test')
+  const file = join(dir, 'held.txt')
+  writeFileSync(file, 'held')
+  // a test process that opens the file with no sharing, like a program that locks it
+  const holder = spawn('powershell.exe', ['-NoProfile', '-Command', `$f=[IO.File]::Open('${file}','Open','ReadWrite','None'); Start-Sleep 120; $f.Close()`], { stdio: 'ignore', windowsHide: true })
+  try {
+    await new Promise((r) => setTimeout(r, 3000))
+    await ev(() => window.__hopper.panes[0].refresh())
+    await until(() => window.__hopper.panes[0].rows.some((r) => r.name === 'held.txt'))
+    await ev(() => {
+      const p = window.__hopper.panes[0]
+      p.selectIndex(p.rows.findIndex((r) => r.name === 'held.txt'))
+    })
+    await ev(() => void window.__hopper.deleteTargets(true))
+    await win.locator('.dlg button:has-text("Delete permanently")').click()
+    await win.locator('.toast button:has-text("Who has it open?")').click()
+    const dlg = win.locator('.dlg:has-text("Who has held.txt open")')
+    await dlg.waitFor()
+    await dlg.locator('.holder:has-text("PowerShell")').first().waitFor({ timeout: 60000 })
+    const status = await dlg.locator('.holder:has-text("PowerShell") .chip').first().textContent()
+    if (status?.trim() !== 'Open') throw new Error('status ' + status)
+    await win.screenshot({ path: join(shots, '18-who-has-it-open.png') })
+    await dlg.locator('button:has-text("Wait and retry")').click()
+    await until(() => window.__hopper.jobs.some((j) => j.kind === 'wait' && ['running', 'queued'].includes(j.state)))
+    holder.kill()
+    await until(() => window.__hopper.jobs.some((j) => j.kind === 'wait' && j.state === 'done'), null, 60000)
+    if (existsSync(file)) throw new Error('the delete did not go through after the file was closed')
+    await dlg.locator('button:has-text("Close")').last().click()
+  } finally {
+    holder.kill()
+  }
   rmSync(dir, { recursive: true, force: true })
 })
 

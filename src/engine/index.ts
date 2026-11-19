@@ -15,6 +15,8 @@ import { searchHandlers } from './search'
 import { officeHandlers } from './office'
 import { pubshareHandlers } from './pubshare'
 import { previewHandlers } from './preview'
+import { Labels, labelHandlers } from './labels'
+import { unlockHandlers } from './unlock'
 
 export interface EngineCtx {
   emit: (event: string, data: unknown) => void
@@ -28,6 +30,9 @@ export interface EngineCtx {
   dataDir: string
   office: OfficeConfig | null
   settings: Settings | null
+  /** where office.json was loaded from ('' = none): shared labels live next to it */
+  officePath: string
+  labels: Labels
 }
 
 const servers: ReturnType<typeof serve>[] = []
@@ -46,8 +51,11 @@ const ctx: EngineCtx = {
   sevenZip: process.env.HOPPER_7Z!,
   dataDir: process.env.HOPPER_DATA!,
   office: null,
-  settings: null
+  settings: null,
+  officePath: '',
+  labels: null as unknown as Labels
 }
+ctx.labels = new Labels(ctx)
 
 const handlers: Handlers = {
   ping: () => 'pong',
@@ -65,7 +73,9 @@ const handlers: Handlers = {
   ...searchHandlers(ctx),
   ...officeHandlers(ctx),
   ...pubshareHandlers(ctx),
-  ...previewHandlers(ctx)
+  ...previewHandlers(ctx),
+  ...labelHandlers(ctx),
+  ...unlockHandlers(ctx)
 }
 
 process.parentPort.on('message', (e) => {
@@ -84,6 +94,7 @@ process.parentPort.on('message', (e) => {
   } else if (data?.type === 'office') {
     ctx.office = data.office
     ctx.settings = data.settings
+    ctx.officePath = String(data.officePath || '')
     emit('office', null)
   }
 })

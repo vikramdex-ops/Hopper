@@ -27,6 +27,8 @@ namespace Hopper
         [STAThread]
         static int Main(string[] argv)
         {
+            // elevated server agent for file unlock (native/Unlock.cs), started by a scheduled task
+            if (argv.Length > 0 && argv[0] == "--agent") return Agent.Run();
             var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
             stdout.AutoFlush = false;
             Console.SetOut(stdout);
@@ -84,6 +86,7 @@ namespace Hopper
         static string Dispatch(string cmd, Dictionary<string, object> a)
         {
             if (cmd.StartsWith("net", StringComparison.Ordinal)) return Network.Dispatch(cmd, a); // native/Network.cs
+            if (Unlock.Handles(cmd)) return Unlock.Dispatch(cmd, a, ui); // native/Unlock.cs
             switch (cmd)
             {
                 case "ping": return "\"pong\"";
@@ -100,7 +103,7 @@ namespace Hopper
                 case "props": return Json.Serialize(Props.Get(StrList(a, "paths")));
                 case "setAttrs": return Json.Serialize(Props.SetAttrs(StrList(a, "paths"), Int(a, "set"), Int(a, "clear")));
                 case "cluster": return Props.Cluster(Str(a, "path")).ToString();
-                case "shares": return Json.Serialize(Props.Shares());
+                case "shares": return Json.Serialize(Props.Shares(Bool(a, "all")));
                 case "shellNew": return Json.Serialize(ShellNew.List());
                 case "openWithList": return Json.Serialize(OpenWith.List(Str(a, "path")));
                 case "openWithInvoke":
@@ -642,12 +645,15 @@ namespace Hopper
         [DllImport("netapi32.dll")]
         static extern int NetApiBufferFree(IntPtr buf);
 
-        /// <summary>Folders this PC shares (name + local path); empty when the account may not list them.</summary>
-        public static List<Dictionary<string, object>> Shares()
+        /// <summary>
+        /// Folders this PC shares (name + local path). Special shares (C$, ADMIN$, IPC$ ...) only with `all`.
+        /// When the account may not use level 2, the list is read from the registry, which needs no rights.
+        /// </summary>
+        public static List<Dictionary<string, object>> Shares(bool all)
         {
             var list = new List<Dictionary<string, object>>();
             IntPtr buf; int read, total, resume = 0;
-            if (NetShareEnum(null, 2, out buf, -1, out read, out total, ref resume) != 0) return list;
+            if (NetShareEnum(null, 2, out buf, -1, out read, out total, ref resume) != 0) return RegistryShares(all);
             try
             {
                 int size = Marshal.SizeOf(typeof(SHARE_INFO_2));
@@ -655,12 +661,42 @@ namespace Hopper
                 {
                     var si = (SHARE_INFO_2)Marshal.PtrToStructure(new IntPtr(buf.ToInt64() + (long)i * size), typeof(SHARE_INFO_2));
                     if ((si.type & 0xFF) != 0 || string.IsNullOrEmpty(si.path)) continue; // disk shares only
+                    if (!all && ((si.type & 0x80000000) != 0 || si.netname.EndsWith("$"))) continue; // STYPE_SPECIAL
                     var d = new Dictionary<string, object>();
                     d["name"] = si.netname; d["path"] = si.path;
                     list.Add(d);
                 }
             }
             finally { NetApiBufferFree(buf); }
+            return list;
+        }
+
+        static List<Dictionary<string, object>> RegistryShares(bool all)
+        {
+            var list = new List<Dictionary<string, object>>();
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\LanmanServer\Shares"))
+                {
+                    if (key == null) return list;
+                    foreach (var name in key.GetValueNames())
+                    {
+                        var parts = key.GetValue(name) as string[];
+                        if (parts == null || (!all && name.EndsWith("$"))) continue;
+                        string path = null, type = null;
+                        foreach (var p in parts)
+                        {
+                            if (p.StartsWith("Path=", StringComparison.OrdinalIgnoreCase)) path = p.Substring(5);
+                            else if (p.StartsWith("Type=", StringComparison.OrdinalIgnoreCase)) type = p.Substring(5);
+                        }
+                        if (string.IsNullOrEmpty(path) || (type != null && type != "0")) continue;
+                        var d = new Dictionary<string, object>();
+                        d["name"] = name; d["path"] = path;
+                        list.Add(d);
+                    }
+                }
+            }
+            catch { /* no shares we can see */ }
             return list;
         }
     }

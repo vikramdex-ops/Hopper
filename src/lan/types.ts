@@ -112,6 +112,10 @@ export interface Manifest {
   replyTo?: string
 }
 
+/** An authenticated question from `identity` (role 'ask'); the reply is one frame. */
+/** `from.address` is the connection's remote IP (IPv4-mapped IPv6 already unwrapped). */
+export type OnAsk = (identity: string, frame: any, from: { fromName: string; host: string; address: string }) => Promise<unknown>
+
 /** A small authenticated frame (announcement or acknowledgement) from `identity`; true = accepted. */
 export type OnSmall = (identity: string, frame: any, fromName: string) => true | string
 

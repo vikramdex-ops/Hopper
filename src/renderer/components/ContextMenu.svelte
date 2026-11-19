@@ -89,7 +89,7 @@
         <button class="mi" class:hot={hot === i || sub?.parent === i} class:danger={it.danger} disabled={it.disabled} role="menuitem"
           onmouseenter={(e) => { hot = i; void openSub(it, i, e.currentTarget) }}
           onclick={(e) => (it.submenu ? openSub(it, i, e.currentTarget as HTMLElement) : choose(it))}>
-          <span class="ic">{#if it.checked}<Icon name="check" />{:else if it.icon}<Icon name={it.icon} />{/if}</span>
+          <span class="ic">{#if it.checked}<Icon name="check" />{:else if it.color}<span class="dot" style:background={it.color}></span>{:else if it.icon}<Icon name={it.icon} />{/if}</span>
           <span class="lbl ellipsis">{it.label}</span>
           {#if it.keys}<span class="kbd">{it.keys}</span>{/if}
           {#if it.submenu}<Icon name="chevronRight" size={12} />{/if}
@@ -104,7 +104,7 @@
           <div class="sep"></div>
         {:else}
           <button class="mi" class:danger={it.danger} disabled={it.disabled} role="menuitem" onclick={() => choose(it)}>
-            <span class="ic">{#if it.checked}<Icon name="check" />{:else if it.icon}<Icon name={it.icon} />{/if}</span>
+            <span class="ic">{#if it.checked}<Icon name="check" />{:else if it.color}<span class="dot" style:background={it.color}></span>{:else if it.icon}<Icon name={it.icon} />{/if}</span>
             <span class="lbl ellipsis">{it.label}</span>
             {#if it.keys}<span class="kbd">{it.keys}</span>{/if}
           </button>
@@ -177,5 +177,12 @@
     height: 1px;
     background: var(--divider);
     margin: 4px -4px;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
   }
 </style>

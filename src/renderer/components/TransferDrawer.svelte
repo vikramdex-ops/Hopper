@@ -13,7 +13,7 @@
   let applyAll = $state(true)
 
   const pct = (j: { done: number; total: number }) => (j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0)
-  const icon = (j: JobInfo) => ({ copy: 'copy', move: 'cut', zip: 'zip', extract: 'extract', delete: 'delete', share: 'send', receive: 'inbox', pdf: 'pdf', package: 'package', hash: 'duplicate', size: 'size' })[j.kind] ?? 'activity'
+  const icon = (j: JobInfo) => ({ copy: 'copy', move: 'cut', zip: 'zip', extract: 'extract', delete: 'delete', share: 'send', receive: 'inbox', pdf: 'pdf', package: 'package', hash: 'duplicate', size: 'size', wait: 'clock' })[j.kind] ?? 'activity'
 
   $effect(() => {
     // a conflict question shows in the progress window; without that window it shows here

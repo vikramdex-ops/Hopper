@@ -15,10 +15,12 @@ const RETRY_MS = [1_000, 2_000, 5_000, 10_000, 20_000, 30_000]
 
 /** The recipient (or their settings) said no; never fall back to the server for this. */
 export class Declined extends Error {
-  constructor(public reason: string) {
+  reason: string
+  constructor(reason: string) {
     super(
       reason === 'blocked' ? 'recipient has blocked you' : reason === 'declined' || reason === 'timeout' ? 'recipient declined' : reason === 'no-space' ? 'recipient is out of disk space' : `refused (${reason})`
     )
+    this.reason = reason
   }
 }
 
@@ -269,6 +271,21 @@ export async function sendSmall(ctx: LanCtx, peer: Peer, frame: unknown, signal:
     conn.send(frame)
     const r = await conn.readFrame(SMALL_MS)
     if (r?.t !== 'ok') throw new Fatal(`refused (${r?.code ?? r?.t})`)
+  } finally {
+    conn.close()
+  }
+}
+
+/**
+ * One authenticated question to a peer (role 'ask'): hello, the frame, then its answer. A Hopper
+ * from before 2.8 does not know the role and closes the connection: that rejects like a timeout.
+ */
+export async function sendAsk(ctx: LanCtx, peer: Peer, frame: unknown, signal: AbortSignal, timeoutMs = SMALL_MS): Promise<any> {
+  const conn = await open(ctx, peer, signal)
+  try {
+    conn.send({ t: 'hello', v: PROTOCOL_VERSION, role: 'ask', from: ctx.me.user, fromName: ctx.me.displayName, host: ctx.me.host, version: ctx.version })
+    conn.send(frame)
+    return await conn.readFrame(timeoutMs)
   } finally {
     conn.close()
   }

@@ -16,7 +16,16 @@ function standingAdmins(): string[] {
   if (!fromEnv && existsSync(local)) list = JSON.parse(readFileSync(local, 'utf8').replace(/^﻿/, '')).standingAdmins ?? []
   return (Array.isArray(list) ? list : []).map((u) => String(u).trim().toLowerCase()).filter(Boolean)
 }
-const define = { __HOPPER_STANDING_ADMINS__: JSON.stringify(standingAdmins()) }
+/** SHA-256 of the helper this build ships (written by tools/build-native.mjs), for the file-unlock agent. */
+function helperSha256() {
+  try {
+    return readFileSync(resolve(__dirname, 'native', 'bin', 'HopperShell.exe.sha256'), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+const define = { __HOPPER_STANDING_ADMINS__: JSON.stringify(standingAdmins()), __HOPPER_HELPER_SHA256__: JSON.stringify(helperSha256()) }
 
 const shared = { '@shared': resolve(__dirname, 'src/shared') }
 const res = { alias: shared, preserveSymlinks: true }

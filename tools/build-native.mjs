@@ -1,6 +1,7 @@
 // Compiles native/HopperShell.cs with the .NET Framework 4.8 compiler that ships with Windows.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -20,4 +21,8 @@ execFileSync(
   ['/nologo', '/optimize+', '/platform:x64', '/target:winexe', `/out:${join(out, 'HopperShell.exe')}`, ...refs, ...readdirSync(join(root, 'native')).filter((f) => f.endsWith('.cs')).map((f) => join(root, 'native', f))],
   { stdio: 'inherit' }
 )
-console.log('built native/bin/HopperShell.exe')
+// The build bakes this hash into the app (electron.vite.config.ts): "File unlock on this server"
+// copies the helper to Program Files and checks the copy against it before the elevated task uses it.
+const sha = createHash('sha256').update(readFileSync(join(out, 'HopperShell.exe'))).digest('hex')
+writeFileSync(join(out, 'HopperShell.exe.sha256'), `${sha}\n`)
+console.log(`built native/bin/HopperShell.exe (sha256 ${sha.slice(0, 12)}…)`)

@@ -9,14 +9,15 @@ import type { EngineCtx } from './index'
 import { listRaw, walk } from './fsops'
 import { extOf } from './fsutil'
 import { NameIndex, type IndexMatcher } from './nameindex'
-import { compileQuery, passesFilters, type CompiledQuery } from '@shared/listing'
+import { compileQuery, passesFilters, type CompiledQuery, type LabelName } from '@shared/listing'
+import { cleanLabelDefs } from '@shared/labels'
 
 // ---------------------------------------------------------------------------
 // Query parsing lives in src/shared/listing.ts (words AND-ed, * ?, ext:pdf, /regex/, and the
 // date: / size: / type: filters) so the in-folder filter understands exactly the same language.
 
-export function parseQuery(q: string, caseSensitive = false, weekStart?: number): CompiledQuery & IndexMatcher {
-  return compileQuery(q, { caseSensitive, weekStart })
+export function parseQuery(q: string, caseSensitive = false, weekStart?: number, labels?: readonly LabelName[]): CompiledQuery & IndexMatcher {
+  return compileQuery(q, { caseSensitive, weekStart, labels })
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +223,7 @@ export function searchHandlers(ctx: EngineCtx) {
 
   const query = (q: string, opts: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number } = {}) => {
     const t = Date.now()
-    const m = parseQuery(q, false, opts.weekStart)
+    const m = parseQuery(q, false, opts.weekStart, cleanLabelDefs(ctx.office?.labels))
     const limit = opts.limit ?? 500
     const out: Entry[] = []
     const under = opts.under ? norm(opts.under) : undefined
@@ -230,9 +231,14 @@ export function searchHandlers(ctx: EngineCtx) {
     const f = m.filters
     const pre = (ix: NameIndex) =>
       opts.dirsOnly || m.filtered
-        ? (i: number) => (!opts.dirsOnly || ix.isDirEntry(i)) && (!m.filtered || passesFilters({ dir: ix.isDirEntry(i), size: ix.sizeOf(i), mtime: ix.mtimeOf(i) }, f))
+        ? (i: number) => (!opts.dirsOnly || ix.isDirEntry(i)) && (!m.filtered || passesFilters({ dir: ix.isDirEntry(i), size: ix.sizeOf(i), mtime: ix.mtimeOf(i), label: f.labels ? labelAt(ix, i) : undefined }, f))
         : undefined
     if (f.never) return { entries: out, total: 0, ms: 0 }
+    // label: filters read the labels already loaded (search.run loads them first)
+    const labelAt = (ix: NameIndex, i: number) => {
+      const h = ix.hit(i)
+      return ctx.labels.labelOf(join(h.dir, h.name))
+    }
     for (const { ix } of roots.values()) {
       if (out.length >= limit) break
       // a search inside one folder never needs the other drives' indexes
@@ -293,7 +299,7 @@ export function searchHandlers(ctx: EngineCtx) {
     'search.run': (token: string, q: SearchQuery) => {
       const ac = new AbortController()
       searches.set(token, ac)
-      const m = parseQuery(q.name || '', false, q.weekStart)
+      const m = parseQuery(q.name || '', false, q.weekStart, cleanLabelDefs(ctx.office?.labels))
       const needle = q.content ? (q.contentRegex ? new RegExp(q.content, q.caseSensitive ? '' : 'i') : q.content) : null
       const limit = q.limit ?? 5000
       let hits = 0
@@ -308,12 +314,13 @@ export function searchHandlers(ctx: EngineCtx) {
       const checks: Promise<void>[] = []
       let active = 0
       const run = async () => {
+        if (m.filters.labels) await ctx.labels.preload(q.roots).catch(() => {})
         for (const root of q.roots) {
           await walk(ctx, root, (e) => {
             scanned++
             if (ac.signal.aborted || hits >= limit) return false
             if (!m.test(e.name.toLowerCase())) return
-            if (m.filtered && !passesFilters(e, m.filters)) return
+            if (m.filtered && !passesFilters(m.filters.labels ? { ...e, label: ctx.labels.labelOf(e.path) } : e, m.filters)) return
             if (q.kinds && !q.kinds.includes(e.dir ? 'dir' : 'file')) return
             if (!e.dir) {
               if (q.minSize !== undefined && e.size < q.minSize) return

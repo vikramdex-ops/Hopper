@@ -12,6 +12,7 @@ import { canRunAsAdmin } from '@shared/shellops'
 import { mappableUnc } from '@shared/network'
 import { GROUP_BY } from '@shared/listing'
 import { net } from './network.svelte'
+import { labelMenu, unlockUi } from './unlock.svelte'
 
 const pathCopyMenu = (paths: string[]): MenuItem[] => [
   { label: 'Name', run: () => copyPaths('name', paths) },
@@ -110,6 +111,7 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
     m.push({ label: 'Compress to zip', icon: 'zip', submenu: zipMenu(paths) })
     if (one?.dir && app.lanStatus?.canAnnounce) m.push({ label: 'Announce about this folder…', icon: 'bell', run: () => dialogs.announce?.(one.path) })
   }
+  if (!virt && !inArchive) m.push({ label: 'Label', icon: 'tag', submenu: labelMenu(paths, one?.label) })
   m.push({ separator: true })
   if (!virt) m.push(cmd('file.rename'))
   if (targets.length > 1 && !inArchive) m.push(cmd('file.massRename'))
@@ -133,6 +135,7 @@ export function fileMenu(pane: Pane, targets: Row[]): MenuItem[] {
   if (one?.dir && !inArchive && mappableUnc(one.path)) m.push({ label: 'Map network drive…', icon: 'network', run: () => net.mapDrive(one.path) })
   if (allDirs && one && !inArchive) m.push({ label: 'Pin to Quick access', icon: 'pin', run: () => app.updateSettings({ pinned: [...(app.settings?.pinned ?? []), one.path] }) })
   if (!virt && !inArchive) {
+    m.push({ label: 'Who has this open?', icon: 'lock', run: () => unlockUi.open(paths) })
     m.push({ label: 'Properties', icon: 'info', keys: 'Alt+Enter', run: () => dialogs.properties?.(paths) })
     m.push({ separator: true }, { label: 'More options', icon: 'windows', keys: 'Shift+F10', run: () => windowsMenu(pane, paths) })
   }

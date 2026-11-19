@@ -39,6 +39,34 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
   files change in its folder. Rename, delete, or reorder them by dragging or with Move up / down.
   Two suggestions, "PDFs changed this week" and "Large files", are one click away for the current
   folder.
+- **Lock badges**: a file that Word, Excel, PowerPoint, AutoCAD or LibreOffice has open shows a lock,
+  with "Open by ‹person› on ‹PC›" read from the program's lock file (in the tooltip and the details
+  pane). The lock files (`~$…`, `.dwl`, `.dwl2`, `.~lock…#`) are hidden unless "Show hidden items" is
+  on, and Hopper never changes them.
+- **Who has this open?** (right-click, command palette, details pane, and offered automatically when
+  a move, rename, delete or copy fails because a file is in use) asks every Hopper on the network
+  which programs, File Explorer windows or recent openers hold the file or anything in the folder, and
+  shows each holder live: person, PC, program, status. **Ask to close** shows a prompt on their PC
+  ([Close it] asks the program to close as at sign-out, so it can ask to save; never forced) and/or
+  sends a Dexterity Connect message (Settings → Sharing → Send close requests via). **Wait and
+  retry** finishes the blocked operation when the file is closed (tries every 10 seconds, up to 10
+  minutes by default; cancel it from the panel or Transfers). Hopper's own watchers and previews let
+  go at once. See docs/UNLOCK.md.
+- **Server agent**: the Hopper running on the file server answers with the server's own list of open
+  files, so files held by PCs without Hopper, or left open by a crashed PC, are found too ("Unknown —
+  the server still has it open" when the server cannot name the holder). Turned on once on the server
+  in Settings → Office → File unlock on this server (one Windows permission prompt; the helper is
+  copied to Program Files and checked against this build's checksum; a scheduled task; no stored
+  password). Office admins can then **force close** a file there, after a warning about unsaved work.
+  The server only accepts an admin it sees connected to its shares from the asking PC (its own SMB
+  session list, not the name a Hopper gives). The person is told, and every force close is logged
+  on the server in %ProgramData%\Hopper\unlock-log.jsonl. Other PCs may only ask about shared
+  folders on servers they know (never drive letters, localhost or admin shares).
+- **Status labels and notes**: colour labels (Checked, Sent to client, Hold, Revise, Final; office
+  admins can change them in Settings → Office) and a short note on any file or folder, shared with
+  the whole office. Set them with right-click → Label, Alt+L, Ctrl+Alt+1 to 5, or in the details
+  pane; filter with `label:checked`, `label:any` or `label:none`, and Group by → Label. Labels are
+  kept next to office.json (never in project folders) and follow renames and moves made in Hopper.
 
 ### Fixed
 - **Updating never stops at "Failed to uninstall old application files".** The installer now closes

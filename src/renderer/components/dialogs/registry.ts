@@ -43,6 +43,7 @@ export function registerDialogs(d: Record<string, (...args: any[]) => unknown>) 
     shareServer: lazy('ShareServerDialog'),
     properties: lazy('PropertiesDialog', (paths: string[]) => ({ paths })),
     openWith: lazy('OpenWithDialog', (entry) => ({ entry })),
-    pickFolder: lazy('FolderPickerDialog', (opts) => ({ ...(opts ?? {}) }))
+    pickFolder: lazy('FolderPickerDialog', (opts) => ({ ...(opts ?? {}) })),
+    unlock: lazy('UnlockDialog', (paths: string[], op?: unknown) => ({ paths, op }))
   })
 }

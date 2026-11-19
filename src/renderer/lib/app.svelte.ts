@@ -6,6 +6,7 @@ import { Pane, VIRTUAL, isArchivePath, isVirtual, splitArchive, titleFor } from 
 import { basename, collator, dirname, fmtSize, join, plural } from './format'
 import { kindOf } from './filetypes'
 import { lanx, receivedBody, receivedTitle } from './lan2.svelte'
+import { unlockUi } from './unlock.svelte'
 import { pushRecent } from '@shared/shellops'
 import type {
   Conflict, DriveInfo, Entry, InboxItem, JobInfo, OfficeConfig, Peer, PeerGroup, QuickDest, Settings, ShareSpec, TabState, UndoRecord, Workspace
@@ -29,6 +30,8 @@ export interface MenuItem {
   keys?: string
   disabled?: boolean
   checked?: boolean
+  /** a colour dot instead of the icon (status labels) */
+  color?: string
   danger?: boolean
   separator?: boolean
   submenu?: MenuItem[]
@@ -129,6 +132,7 @@ export class App {
     this.activeIndex = settings.activePane ?? 0
     this.wireEvents()
     lanx.init()
+    unlockUi.init()
     this.ready = true
     await Promise.all(this.panes.map((p) => p.load()))
     void this.refreshDrives()
@@ -586,7 +590,9 @@ export class App {
     const hard = permanent ? local : net
     if (hard.length) {
       const r = await engine.call('fs.deletePermanent', hard.map((e) => e.path))
-      if (r.failed.length) this.toast('error', `${plural(r.failed.length, 'item')} could not be deleted`, r.failed[0].message)
+      const busy = r.failed.filter((f: { message: string }) => unlockUi.busy(f.message))
+      if (busy.length) unlockUi.offer(`${plural(busy.length, 'item')} could not be deleted: open in another program`, busy[0].message, { kind: 'delete', paths: busy.map((f: { path: string }) => f.path) })
+      else if (r.failed.length) this.toast('error', `${plural(r.failed.length, 'item')} could not be deleted`, r.failed[0].message)
     }
     if (!permanent && local.length) {
       const r = await host.shell.trash(local.map((e) => e.path))
@@ -594,7 +600,8 @@ export class App {
         void engine.call('fs.recordRecycle', r.done)
         this.toast('info', `Deleted ${plural(r.done.length, 'item')}`, undefined, [{ label: 'Undo', run: () => void this.undo() }])
       }
-      if (r.failed.length) this.toast('error', `${plural(r.failed.length, 'item')} could not be deleted`, r.failed[0].message)
+      // the Recycle Bin does not say why; an open file is the usual reason, so offer to find out
+      if (r.failed.length) unlockUi.offer(`${plural(r.failed.length, 'item')} could not be deleted`, r.failed[0].message, { kind: 'recycle', paths: r.failed.map((f: { path: string }) => f.path) })
     }
     await pane.refresh()
     pane.clearSelection()
@@ -665,7 +672,9 @@ export class App {
       const to = await engine.call<string>('fs.rename', e.path, join(dirname(e.path), newName))
       await this.active.load({ select: to })
     } catch (err: any) {
-      this.toast('error', 'Rename failed', err.message.replace(/^Error:\s*/, ''))
+      const m = String(err?.message ?? err).replace(/^Error:\s*/, '')
+      if (unlockUi.busy(m)) unlockUi.offer(`Couldn't rename ${e.name}: it is open in another program`, m, { kind: 'rename', from: e.path, to: join(dirname(e.path), newName) })
+      else this.toast('error', 'Rename failed', m)
     }
   }
 
@@ -699,14 +708,20 @@ export class App {
   // ---- jobs -----------------------------------------------------------------
 
   private onJobFinished(j: JobInfo) {
-    const where = j.output ?? j.dest
+    if (j.kind === 'wait') unlockUi.jobFinished(j)
+    const where = j.kind === 'wait' ? undefined : j.output ?? j.dest
     for (const p of this.panes) {
       const pp = p.path.toLowerCase()
       if (where && (pp === where.toLowerCase() || pp === dirname(where).toLowerCase())) void p.refresh()
       else if (j.kind === 'move') void p.refresh()
     }
+    if (j.blocked && (j.state === 'done' || j.state === 'failed')) {
+      unlockUi.offer(`${j.title}: ${plural(j.blocked.kind === 'transfer' ? j.blocked.items.length : 1, 'file')} open in another program`, j.errors[0]?.message ?? '', j.blocked)
+      return
+    }
     if (j.state === 'done') {
       const actions = where ? [{ label: 'Show', run: () => void this.reveal(where) }] : undefined
+      if (j.kind === 'wait' && j.output === 'recycle-ready') return
       if (j.errors.length) this.toast('warning', `${j.title.replace(/^(\w+)ing/, (m) => m)} finished with ${plural(j.errors.length, 'problem')}`, j.errors[0]?.message, actions)
       else if (j.kind !== 'hash' && j.kind !== 'size') this.toast('success', doneTitle(j), undefined, actions)
     } else if (j.state === 'failed') {
@@ -748,6 +763,7 @@ function doneTitle(j: JobInfo) {
     case 'extract': return `Extracted to ${basename(j.output ?? '')}`
     case 'package': return 'Lot package ready'
     case 'pdf': return 'PDF ready'
+    case 'wait': return `Done: ${j.title.replace(/^Waiting to /, '')}`
     default: return `${j.title} — done`
   }
 }

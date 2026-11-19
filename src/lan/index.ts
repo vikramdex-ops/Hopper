@@ -20,6 +20,8 @@ import { ServerPickup } from './server-inbox'
 import { Shares } from './shares'
 import { TransferServer } from './transfer-server'
 import type { LanCtx } from './types'
+import { Unlock } from './unlock'
+import type { Holder } from '@shared/unlock'
 import { sleep } from './util'
 
 interface Status {
@@ -73,7 +75,14 @@ const discovery = new Discovery(ctx, () => {
 const announcements = new Announcements(ctx, discovery)
 const invites = new Invites(ctx, discovery)
 const sent = new Sent(ctx)
-const transfer = new TransferServer(ctx, admit, onReceived, (identity, frame, fromName) => announcements.onFrame(identity, frame, fromName))
+const unlock = new Unlock(ctx, discovery, shell)
+const transfer = new TransferServer(
+  ctx,
+  admit,
+  onReceived,
+  (identity, frame, fromName) => (frame?.t === 'unlock-status' ? unlock.onStatus(identity, frame) : announcements.onFrame(identity, frame, fromName)),
+  (identity, frame, from) => unlock.onAsk(identity, frame, from)
+)
 const pickup = new ServerPickup(ctx, admit, onReceived, (id) => inbox.has(id))
 const shares = new Shares(ctx, discovery, sent)
 const linkNotices = new LinkNotices(ctx, discovery)
@@ -258,6 +267,16 @@ const handlers: Handlers = {
   'invite.list': () => invites.list(),
   'invite.accept': (id: string) => invites.accept(String(id)),
   'invite.ignore': (id: string) => invites.ignore(String(id)),
+  // Who has it open / Unlock (lan/unlock.ts)
+  'unlock.find': (paths: string[]) => unlock.find(paths),
+  'unlock.ask': (lookupId: string, h: Holder, via: 'hopper' | 'connect' | 'both') => unlock.ask(lookupId, h, via),
+  'unlock.notify': (lookupId: string, users: string[], path: string, via: 'hopper' | 'connect' | 'both') => unlock.notify(lookupId, users, path, via),
+  'unlock.force': (lookupId: string, h: Holder, fileId: number) => unlock.force(lookupId, h, Number(fileId)),
+  'unlock.answer': (promptId: string, choice: 'close' | 'self' | 'later') => unlock.answer(promptId, choice === 'close' || choice === 'self' ? choice : 'later'),
+  'unlock.pending': () => unlock.pending(),
+  'unlock.isAdmin': () => unlock.isAdmin(ctx.me.user),
+  'unlock.agentStatus': () => unlock.agentStatus(),
+  'unlock.agentSetup': (remove?: boolean) => unlock.agentSetup(remove === true),
   'cliq.test': (email: string) =>
     postCliq(
       ctx.office?.cliq,

@@ -11,6 +11,7 @@ import { canWindowsMenu, createShortcuts, runAsAdmin, windowsMenu } from './wins
 import { canRunAsAdmin } from '@shared/shellops'
 import { mappableUnc } from '@shared/network'
 import { GROUP_BY } from '@shared/listing'
+import { editNote, labelDefs, labelMenu, unlockUi } from './unlock.svelte'
 
 export interface Command {
   id: string
@@ -32,6 +33,20 @@ const realTargets = () => hasTargets() && T().every((e) => !isVirtual(e.path) &&
 /** a file list is on screen (not Home, Inbox, Activity or Network) */
 const listing = () => !isVirtual(app.active.path) || app.active.path.startsWith(VIRTUAL.search) || app.active.path === VIRTUAL.recycle
 const isPdfSel = () => T().length > 0 && T().every((e) => e.ext === 'pdf')
+const paths = () => T().map((e) => e.path)
+/** a label shortcut: the n-th office label (1-based) */
+const labelCmd = (n: number): Command => ({
+  id: `label.${n}`,
+  get label() {
+    const d = labelDefs()[n - 1]
+    return d ? `Label: ${d.name}` : `Label ${n}`
+  },
+  group: 'Label',
+  icon: 'tag',
+  keys: [`Ctrl+Alt+${n}`],
+  when: () => realTargets() && !!labelDefs()[n - 1],
+  run: () => unlockUi.setLabel(paths(), labelDefs()[n - 1]?.id ?? null)
+})
 
 /** Dialog openers are registered by components at startup (avoids import cycles). */
 export const dialogs: Record<string, (...args: any[]) => unknown> = {}
@@ -89,6 +104,7 @@ export const commands: Command[] = [
   { id: 'file.moreOptions', label: 'More options', group: 'File', icon: 'windows', keys: ['Shift+F10'], when: () => canWindowsMenu(app.active, T().map((e) => e.path)), run: () => windowsMenu(app.active, T().map((e) => e.path)) },
   { id: 'file.createShortcut', label: 'Create shortcut', group: 'New', icon: 'link', when: realTargets, run: () => createShortcuts(T().map((e) => e.path)) },
   { id: 'file.runAsAdmin', label: 'Run as administrator', group: 'File', icon: 'shield', when: () => realTargets() && T().length === 1 && !T()[0].dir && canRunAsAdmin(T()[0].ext), run: () => runAsAdmin(T()[0].path) },
+  { id: 'file.whoHasOpen', label: 'Who has this open?', group: 'File', icon: 'lock', when: realTargets, run: () => unlockUi.open(paths()) },
   { id: 'file.properties', label: 'Properties', group: 'File', icon: 'info', keys: ['Alt+Enter'], when: real, run: () => dialogs.properties?.(T().length ? T().map((e) => e.path) : [app.active.path]) },
   { id: 'file.terminal', label: 'Open terminal here', group: 'File', icon: 'terminal', keys: ['Ctrl+`'], when: writable, run: () => host.shell.terminal(app.active.path) },
   { id: 'file.copyPath', label: 'Copy path', group: 'Path Copy', icon: 'copyPath', keys: ['Ctrl+Shift+C'], run: () => copyPaths((app.settings?.pathCopy?.defaultMode as PathMode) || 'path') },
@@ -96,6 +112,12 @@ export const commands: Command[] = [
   { id: 'file.print', label: 'Print', group: 'File', icon: 'print', keys: ['Ctrl+P'], when: () => hasTargets() && T().every((e) => !e.dir), run: () => host.shell.print(T().map((e) => e.path)) },
   { id: 'file.checksum', label: 'Checksum (SHA-256)…', group: 'File', icon: 'checksum', when: () => T().length === 1 && !T()[0].dir, run: open('checksum') },
   { id: 'file.size', label: 'Calculate folder sizes', group: 'File', icon: 'size', keys: ['Ctrl+Shift+S'], when: real, run: open('folderSize') },
+
+  // shared status labels and notes
+  { id: 'label.menu', label: 'Label…', group: 'Label', icon: 'tag', keys: ['Alt+L'], when: realTargets, run: () => app.openMenu(window.innerWidth / 2 - 110, 120, labelMenu(paths(), T().length === 1 ? T()[0].label : undefined)) },
+  ...[1, 2, 3, 4, 5].map(labelCmd),
+  { id: 'label.clear', label: 'Clear label', group: 'Label', icon: 'tag', keys: ['Ctrl+Alt+0'], when: () => realTargets() && T().some((e) => !!e.label), run: () => unlockUi.setLabel(paths(), null) },
+  { id: 'label.note', label: 'Edit note…', group: 'Label', icon: 'edit', when: () => realTargets() && T().length === 1, run: () => editNote(T()[0].path) },
 
   // archives
   { id: 'zip.here', label: 'Zip here (one key)', group: 'Archive', icon: 'zip', keys: ['Ctrl+Alt+Z'], when: () => writable() && hasTargets(), run: () => app.zip(app.settings?.defaultPreset) },

@@ -10,6 +10,7 @@
   import Preview from './Preview.svelte'
   import Splitter from './Splitter.svelte'
   import Icon from './Icon.svelte'
+  import { unlockUi } from '../lib/unlock.svelte'
 
   const pane = $derived(app.active)
   const sel = $derived(pane?.selected ?? [])
@@ -61,6 +62,26 @@
     app.toast('info', 'Copied', t.length > 80 ? `${t.slice(0, 80)}…` : t)
   }
 
+  // shared status label and note of the shown item
+  const item = $derived(shown ? pane?.labelOf(shown.path) : undefined)
+  const lockText = $derived(shown ? pane?.lockText(shown.path) ?? '' : '')
+  let noteDraft = $state('')
+  let notePath = ''
+  let editingNote = false
+  $effect(() => {
+    const p = shown?.path ?? ''
+    const n = item?.note ?? ''
+    if (p !== notePath || !editingNote) {
+      noteDraft = n
+      notePath = p
+    }
+  })
+  async function saveNote() {
+    editingNote = false
+    if (!shown || noteDraft.trim() === (item?.note ?? '')) return
+    await unlockUi.setNote(shown.path, noteDraft)
+  }
+
   // px is measured from the left edge of the body row; the inspector takes what's right of it.
   function resize(_f: number, px: number) {
     const body = document.querySelector('.body')?.clientWidth ?? window.innerWidth
@@ -98,6 +119,20 @@
           <button class="btn subtle icon sm" title="Properties" onclick={() => dialogs.properties?.([e.path])}><Icon name="info" /></button>
         {/if}
       </div>
+      {#if !isVirtual(e.path) && !isArchivePath(e.path)}
+        {#if lockText}
+          <div class="lockline"><Icon name="lock" size={14} /><span>{lockText}</span><button class="link" onclick={() => unlockUi.open([e.path])}>Who has it open?</button></div>
+        {/if}
+        <div class="labels" aria-label="Status label and note">
+          <div class="lrow">
+            {#each pane.labelDefs as d (d.id)}
+              <button class="lchip" class:on={item?.label === d.id} style:--lc={d.color} aria-pressed={item?.label === d.id} title={item?.label === d.id ? 'Click to clear' : `Label: ${d.name}`} onclick={() => unlockUi.setLabel([e.path], item?.label === d.id ? null : d.id)}><span class="ldot"></span>{d.name}</button>
+            {/each}
+          </div>
+          <textarea class="input note" rows="2" maxlength="500" placeholder="Add a note for the office…" bind:value={noteDraft} onfocus={() => (editingNote = true)} onblur={saveNote}></textarea>
+          {#if item}<div class="caption">{item.label ? 'Label' : 'Note'} by {item.byName || item.by}, {fmtDateFull(item.at)}</div>{/if}
+        </div>
+      {/if}
       <dl class="meta">
         <dt>Location</dt>
         <dd><button class="link ellipsis" title={dirname(e.path)} onclick={() => app.reveal(e.path)}>{dirname(e.path)}</button></dd>
@@ -224,5 +259,60 @@
   .multi .actions {
     justify-content: center;
     margin-top: 8px;
+  }
+  .lockline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    color: #d9822b;
+    font-size: 12px;
+  }
+  .lockline .link {
+    display: inline;
+    width: auto;
+    margin-left: auto;
+    flex: none;
+  }
+  .labels {
+    margin: 0 0 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .lrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .lchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--stroke);
+    background: transparent;
+    color: var(--text);
+    border-radius: 999px;
+    padding: 1px 8px 1px 6px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .lchip.on {
+    background: color-mix(in srgb, var(--lc) 20%, transparent);
+    border-color: var(--lc);
+  }
+  .ldot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--lc);
+  }
+  .note {
+    width: 100%;
+    resize: vertical;
+    font: inherit;
+    font-size: 12px;
+    box-sizing: border-box;
   }
 </style>
