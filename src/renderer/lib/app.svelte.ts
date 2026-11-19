@@ -429,6 +429,12 @@ export class App {
     this.updateSettings({ quickDests: [...pinned, ...recent] })
   }
 
+  isNetworkPath(p: string) {
+    if (p.startsWith('\\\\')) return true
+    const up = p.toUpperCase()
+    return this.drives.some((d) => d.kind === 'network' && up.startsWith(d.root.toUpperCase()))
+  }
+
   async deleteTargets(permanent = false) {
     const pane = this.active
     const t = pane.targets().filter((e) => !isVirtual(e.path))
@@ -439,18 +445,29 @@ export class App {
       await engine.call('archive.delete', file, t.map((e) => splitArchive(e.path).inner))
       return pane.refresh()
     }
+    // Network shares (UNC or mapped drives) have no Recycle Bin, and Electron's trashItem refuses to
+    // fall back to a permanent delete ("Failed to perform delete operation"). Like Explorer, those
+    // items are deleted permanently, always after an explicit confirmation.
+    const net = permanent ? [] : t.filter((e) => this.isNetworkPath(e.path))
+    const local = permanent ? t : t.filter((e) => !this.isNetworkPath(e.path))
+    const what = (items: typeof t) => (items.length === 1 ? `"${items[0].name}"` : plural(items.length, 'item'))
+    if (net.length) {
+      const ok = await this.confirm(`Permanently delete ${what(net)}?`, 'Network locations have no Recycle Bin, so this cannot be undone.', 'Delete permanently')
+      if (!ok) return
+    }
     const needConfirm = permanent ? this.settings?.confirmPermanentDelete !== false : this.settings?.confirmDelete
-    if (needConfirm) {
-      const what = t.length === 1 ? `"${t[0].name}"` : plural(t.length, 'item')
-      const ok = await this.confirm(permanent ? `Permanently delete ${what}?` : `Move ${what} to the Recycle Bin?`, permanent ? 'This cannot be undone.' : undefined, permanent ? 'Delete permanently' : 'Delete')
+    if (local.length && needConfirm) {
+      const ok = await this.confirm(permanent ? `Permanently delete ${what(local)}?` : `Move ${what(local)} to the Recycle Bin?`, permanent ? 'This cannot be undone.' : undefined, permanent ? 'Delete permanently' : 'Delete')
       if (!ok) return
     }
     const next = Math.min(pane.focus, pane.rows.length - t.length - 1)
-    if (permanent) {
-      const r = await engine.call('fs.deletePermanent', t.map((e) => e.path))
+    const hard = permanent ? local : net
+    if (hard.length) {
+      const r = await engine.call('fs.deletePermanent', hard.map((e) => e.path))
       if (r.failed.length) this.toast('error', `${plural(r.failed.length, 'item')} could not be deleted`, r.failed[0].message)
-    } else {
-      const r = await host.shell.trash(t.map((e) => e.path))
+    }
+    if (!permanent && local.length) {
+      const r = await host.shell.trash(local.map((e) => e.path))
       if (r.done.length) {
         void engine.call('fs.recordRecycle', r.done)
         this.toast('info', `Deleted ${plural(r.done.length, 'item')}`, undefined, [{ label: 'Undo', run: () => void this.undo() }])
