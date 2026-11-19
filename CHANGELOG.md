@@ -4,7 +4,7 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [2.8.0] — 2026-11-20
 
 ### Added
 - **More options: the Windows right-click menu.** At the bottom of Hopper's right-click menu (or
