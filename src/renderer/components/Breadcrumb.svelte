@@ -10,6 +10,8 @@
   import Icon from './Icon.svelte'
   import { net } from '../lib/network.svelte'
   import { networkHostOf, networkHostPath, parseAddress, visibleShares } from '@shared/network'
+  import { host } from '../lib/api'
+  import { samePath } from '@shared/pathpaste'
 
   let { pane }: { pane: Pane } = $props()
   let editing = $state(false)
@@ -20,6 +22,68 @@
   let dropIdx = $state(-1)
   let bar: HTMLDivElement | undefined = $state()
   let clipped = $state(false)
+  let textDrop = $state(false)
+
+  // Paste-and-go: a copied path is offered at the end of the address bar. A newly copied path
+  // shows its name for a few seconds ("Go to Input"), then shrinks to an accent icon.
+  const FRESH_MS = 12000
+  const offer = $derived(app.clipPath && app.clipPath.kind !== 'missing' && !samePath(app.clipPath.path, pane.path) ? app.clipPath : null)
+  let tick = $state(0)
+  $effect(() => {
+    if (!offer) return
+    const left = offer.at + FRESH_MS - Date.now()
+    if (left <= 0) return
+    const t = setTimeout(() => tick++, left + 50)
+    return () => clearTimeout(t)
+  })
+  const fresh = $derived(!!offer && (void tick, Date.now() - offer.at < FRESH_MS))
+  const offerName = $derived(offer ? offer.path.replace(/\\+$/, '').split('\\').pop() || offer.path : '')
+
+  /** Go to the copied path; with none, open the address box with the clipboard text in it. */
+  async function pasteGo() {
+    const r = offer ?? (await app.refreshClipPath())
+    if (r && r.kind !== 'missing') return app.goToPath(r, pane)
+    const clip = await host.clip.read().catch(() => null)
+    startEdit(clip?.text?.split(/\r?\n/).find((l: string) => l.trim())?.trim() ?? '')
+  }
+
+  /** Text (a path) dragged from Outlook, Teams or a browser onto the address bar. */
+  function textDragOver(e: DragEvent) {
+    const types = [...(e.dataTransfer?.types ?? [])]
+    if (types.includes('Files') || !types.includes('text/plain')) return
+    e.preventDefault()
+    textDrop = true
+  }
+  async function textDropped(e: DragEvent) {
+    const types = [...(e.dataTransfer?.types ?? [])]
+    if (!textDrop || types.includes('Files')) return
+    textDrop = false
+    e.preventDefault()
+    const r = await host.pastePath.resolve(e.dataTransfer?.getData('text/plain') ?? '')
+    if (r) void app.goToPath(r, pane)
+    else app.toast('info', 'That text is not a folder path')
+  }
+
+  /** Ctrl+V into an empty (or fully selected) address box with a path: go there at once. */
+  async function pasted(e: ClipboardEvent) {
+    const t = e.clipboardData?.getData('text/plain') ?? ''
+    if (!input || !t) return
+    const whole = input.selectionStart === 0 && input.selectionEnd === input.value.length
+    if (!whole && input.value.trim()) return
+    e.preventDefault()
+    const r = await host.pastePath.resolve(t)
+    if (!r) {
+      text = t.trim()
+      return
+    }
+    if (r.kind === 'missing') {
+      text = r.path // cleaned up (quotes, file:///, slashes) so it can be fixed by hand
+      void suggest()
+      return
+    }
+    editing = false
+    void app.goToPath(r, pane)
+  }
 
   // Long paths: keep the current folder in view (the start of the path scrolls off).
   $effect(() => {
@@ -79,8 +143,9 @@
     return out
   })
 
-  function startEdit() {
-    if (networkHostOf(pane.path)) text = '\\\\' + networkHostOf(pane.path)
+  function startEdit(prefill?: string) {
+    if (typeof prefill === 'string' && prefill) text = prefill
+    else if (networkHostOf(pane.path)) text = '\\\\' + networkHostOf(pane.path)
     else if (isVirtual(pane.path) && !pane.path.startsWith(VIRTUAL.search)) text = ''
     else text = pane.path.startsWith(VIRTUAL.search) ? '' : pane.path
     editing = true
@@ -93,6 +158,8 @@
   // one opener per pane (each Breadcrumb used to overwrite the other's, so Ctrl+L only worked in the right pane)
   dialogs[`address${pane.index}`] = startEdit
   dialogs.address = () => dialogs[`address${app.activeIndex}`]?.()
+  dialogs[`pasteGo${pane.index}`] = pasteGo
+  dialogs.pasteGo = () => dialogs[`pasteGo${app.activeIndex}`]?.()
 
   async function suggest() {
     const t = text.trim()
@@ -190,7 +257,11 @@
   }
 </script>
 
-<div class="crumbs" bind:this={bar} class:editing class:clipped role="navigation" onclick={(e) => e.target === e.currentTarget && startEdit()} onkeydown={() => {}}>
+<div class="addr">
+<div class="crumbs" bind:this={bar} class:editing class:clipped class:textdrop={textDrop} role="navigation"
+  onclick={(e) => e.target === e.currentTarget && startEdit()} onkeydown={() => {}}
+  onmouseenter={() => void app.refreshClipPath()}
+  ondragover={textDragOver} ondragleave={() => (textDrop = false)} ondrop={textDropped}>
   {#if editing}
     <input
       bind:this={input}
@@ -199,6 +270,7 @@
       spellcheck="false"
       oninput={suggest}
       onkeydown={key}
+      onpaste={pasted}
       onblur={() => setTimeout(() => (editing = false), 150)}
       placeholder="Type a path, or words to search"
     />
@@ -228,11 +300,92 @@
     {#if !isVirtual(pane.path)}
       <button class="chev" tabindex="-1" aria-label="Subfolders" onclick={(e) => children(e, crumbs[crumbs.length - 1])}><Icon name="chevronDown" size={12} /></button>
     {/if}
-    <span class="fill" onclick={startEdit} onkeydown={() => {}} role="presentation"></span>
+    <span class="fill" onclick={() => startEdit()} onauxclick={(e) => e.button === 1 && void pasteGo()} onkeydown={() => {}} role="presentation" title="Click to type a path · middle-click to go to a copied path"></span>
   {/if}
+</div>
+{#if !editing}
+  {#if offer}
+    <button class="pastego" class:fresh title={`Go to the copied path: ${offer.path}  (Ctrl+Alt+V)`} aria-label={`Go to ${offer.path}`} onclick={() => void pasteGo()}>
+      <Icon name={offer.kind === 'file' ? 'file' : 'paste'} size={14} />
+      <!-- the name only in the active pane, and only while it is new: the path itself keeps the room -->
+      {#if fresh && app.active === pane}<span class="ellipsis label">Go to {offerName}</span>{/if}
+    </button>
+  {:else}
+    <button class="pastego idle" title="Paste a path and go  (Ctrl+Alt+V, or Ctrl+V in the file list)" aria-label="Paste a path and go" onclick={() => void pasteGo()}>
+      <Icon name="paste" size={14} />
+    </button>
+  {/if}
+{/if}
 </div>
 
 <style>
+  .addr {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    container-type: inline-size;
+  }
+  /* the address keeps at least ~60% of the bar; the chip's label goes first on narrow panes */
+  @container (max-width: 520px) {
+    .pastego .label {
+      display: none;
+    }
+    .pastego {
+      padding: 0;
+      justify-content: center;
+    }
+  }
+  .pastego {
+    flex: none;
+    height: 32px;
+    min-width: 32px;
+    max-width: 38%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    border-radius: var(--r-sm);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--input));
+    color: var(--accent);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pastego.fresh {
+    animation: offer 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2), glow 1.6s ease-in-out 0.45s 3;
+  }
+  .pastego:hover {
+    background: color-mix(in srgb, var(--accent) 24%, var(--input));
+  }
+  .pastego.idle {
+    border-color: var(--control-stroke);
+    background: var(--input);
+    color: var(--text-3);
+    font-weight: normal;
+    padding: 0;
+    justify-content: center;
+  }
+  .pastego.idle:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  @keyframes offer {
+    from {
+      transform: translateX(12px) scale(0.92);
+      opacity: 0;
+    }
+  }
+  @keyframes glow {
+    50% {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+  }
+  .crumbs.textdrop {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+  }
   .crumbs {
     flex: 1;
     min-width: 0;

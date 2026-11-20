@@ -9,6 +9,29 @@
   let q = $state('')
   let input: HTMLInputElement
   let help = $state(false)
+  let focused = $state(false)
+
+  // The box mirrors the active pane: while it shows search results, their query is here (and
+  // comes back when you return to them with Back or switch tabs/panes); once the pane shows
+  // anything else, the box is empty again - unless you are typing in it right now.
+  const shownQuery = $derived.by(() => {
+    const p = app.ready ? app.active?.path ?? '' : ''
+    return p.startsWith(VIRTUAL.search) ? new URLSearchParams(p.split('?')[1] ?? '').get('q') ?? '' : ''
+  })
+  const searching = $derived(!!shownQuery)
+  const info = $derived(searching ? app.active?.searchInfo : null)
+  $effect(() => {
+    const s = shownQuery
+    if (!focused) q = s
+  })
+
+  /** End the search: back to the folder it searched (or Home), box cleared. */
+  function closeSearch() {
+    q = ''
+    help = false
+    const root = app.active.searchRoot
+    void app.active.navigate(root || VIRTUAL.home)
+  }
   // values the query language did not understand: shown under the box, ignored by the search
   const hints = $derived(q.trim() ? compileQuery(q).hints : [])
 
@@ -19,22 +42,33 @@
   }
 
   function focusOut(e: FocusEvent) {
-    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) help = false
+    if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return
+    help = false
+    focused = false
+    // left the box without searching: show what the pane shows, not a half-typed query
+    q = shownQuery
   }
 
   function submit(e: Event) {
     e.preventDefault()
     const text = q.trim()
-    if (!text) return
+    if (!text) {
+      if (searching) closeSearch()
+      return
+    }
     const root = app.active.searchRoot
     const params = new URLSearchParams({ q: text })
     if (root) params.set('root', root)
     void app.active.navigate(`${VIRTUAL.search}?${params}`)
     help = false
+    focused = false
     input.blur()
   }
 
-  dialogs.search = () => input?.focus()
+  dialogs.search = () => {
+    input?.focus()
+    input?.select()
+  }
   dialogs.searchHelp = () => {
     help = true
     input?.focus()
@@ -50,15 +84,31 @@
     </svg>
     <span class="name">Hopper</span>
   </div>
-  <form class="search" onsubmit={submit} onfocusout={focusOut}>
+  <form class="search" class:active={searching && !focused} onsubmit={submit} onfocusin={() => (focused = true)} onfocusout={focusOut}>
     <Icon name="search" />
     <input
       bind:this={input}
       bind:value={q}
       placeholder={app.ready ? `Search ${app.active?.searchRoot ? basename(app.active.searchRoot) || app.active.searchRoot : 'this PC'}` : 'Search'}
       spellcheck="false"
-      onkeydown={(e) => e.key === 'Escape' && (help ? (help = false) : (q = '', input.blur()))}
+      onkeydown={(e) => {
+        if (e.key !== 'Escape') return
+        if (help) help = false
+        else {
+          q = shownQuery
+          input.blur()
+        }
+      }}
     />
+    {#if searching && info && !focused}
+      <span class="count" class:busy={!info.done} title={info.done ? `${info.hits} found, ${info.scanned.toLocaleString('en-GB')} items looked at` : 'Searching…'}>
+        {info.done ? `${info.hits.toLocaleString('en-GB')} found` : `${info.hits.toLocaleString('en-GB')}…`}
+      </span>
+    {/if}
+    {#if q || searching}
+      <button type="button" class="helpbtn" title={searching ? 'Close search and go back to the folder' : 'Clear'} aria-label="Clear search"
+        onclick={() => (searching ? closeSearch() : ((q = ''), input.focus()))}><Icon name="close" size={14} /></button>
+    {/if}
     {#if hints.length}<span class="hintdot" title={hints.join('\n')}><Icon name="warning" size={14} /></span>{/if}
     <button type="button" class="helpbtn" class:on={help} title="Search filters" aria-label="Search filters" aria-expanded={help} onclick={() => (help = !help)}><Icon name="info" size={14} /></button>
     <span class="kbd">Ctrl+E</span>
@@ -124,6 +174,31 @@
   .search:focus-within {
     background: var(--card-solid);
     border-bottom: 2px solid var(--accent);
+  }
+  /* results of this query are on screen */
+  .search.active {
+    background: color-mix(in srgb, var(--accent) 10%, var(--input));
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--accent);
+  }
+  .search.active input {
+    font-weight: 600;
+  }
+  .count {
+    font-size: 11px;
+    white-space: nowrap;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+  }
+  .count.busy {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
   }
   .search input {
     flex: 1;

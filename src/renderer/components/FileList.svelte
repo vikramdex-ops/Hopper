@@ -527,6 +527,20 @@
     const by = i ? ` — ${i.byName || i.by}, ${new Date(i.at).toLocaleDateString()}` : ''
     return `${r.label ? labelName(r.label) : 'Note'}${by}${r.note ? `\n${r.note}` : ''}`
   }
+
+  // "Waiting for this folder to come back": a one-second clock for the countdown, only while waiting
+  let nowTick = $state(Date.now())
+  $effect(() => {
+    if (!pane.reach) return
+    const t = setInterval(() => (nowTick = Date.now()), 1000)
+    return () => clearInterval(t)
+  })
+  function waitedFor(ms: number) {
+    const s = Math.max(0, Math.round(ms / 1000))
+    if (s < 60) return `${s} s`
+    const m = Math.round(s / 60)
+    return m < 90 ? `${m} min` : `${Math.round(m / 60)} h`
+  }
 </script>
 
 <div
@@ -683,7 +697,23 @@
 
   {#if !rows.length && !pane.groups.length && !pane.loading}
     <div class="empty">
-      {#if pane.error}
+      {#if pane.error && pane.reach}
+        <div class="waitfor" role="status" aria-live="polite">
+          <div class="radar" class:checking={pane.reach.state === 'checking'}><Icon name="network" size={22} /></div>
+          <div class="subtitle">Waiting for this folder to come back</div>
+          <div class="caption wpath" title={pane.reach.path}>{pane.reach.path}</div>
+          <div class="caption why">{pane.error}</div>
+          <div class="wstate">
+            {#if pane.reach.state === 'checking'}Checking now…{:else}Checking again in {Math.max(0, Math.ceil((pane.reach.next - nowTick) / 1000))} s{/if}
+            · unreachable for {waitedFor(nowTick - pane.reach.since)}{#if pane.reach.attempts} · {pane.reach.attempts} check{pane.reach.attempts === 1 ? '' : 's'}{/if}
+          </div>
+          <div class="caption">Hopper keeps checking on its own and opens it the moment it answers. You’ll also get a Windows notification, even with Hopper’s window closed to the tray.</div>
+          <div class="wbtns">
+            <button class="btn sm primary" onclick={() => void window.hopper.reach.now(pane.reach!.path)}><Icon name="refresh" size={14} /> Check now</button>
+            {#if pane.canBack}<button class="btn sm" onclick={() => pane.back()}><Icon name="back" size={14} /> Go back</button>{/if}
+          </div>
+        </div>
+      {:else if pane.error}
         <Icon name="warning" size={28} />
         <div class="subtitle">Can’t open this location</div>
         <div class="caption">{pane.error}</div>
@@ -1009,6 +1039,76 @@
   }
   .empty .btn {
     pointer-events: auto;
+  }
+  .waitfor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    max-width: 520px;
+    padding: 22px 26px;
+    border-radius: var(--r-xl);
+    background: var(--card);
+    border: 1px solid var(--stroke);
+    box-shadow: var(--shadow-card);
+    pointer-events: auto;
+  }
+  .radar {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    margin-bottom: 4px;
+  }
+  .radar::before,
+  .radar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0;
+    animation: ping 2.4s var(--ease) infinite;
+  }
+  .radar::after {
+    animation-delay: 1.2s;
+  }
+  .radar.checking::before,
+  .radar.checking::after {
+    animation-duration: 0.9s;
+  }
+  @keyframes ping {
+    0% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    100% {
+      transform: scale(1.9);
+      opacity: 0;
+    }
+  }
+  .wpath {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .why {
+    color: var(--warn);
+  }
+  .wstate {
+    font-size: 12px;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .wbtns {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
   }
   .loading {
     position: absolute;

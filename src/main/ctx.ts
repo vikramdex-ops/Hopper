@@ -23,13 +23,39 @@ export const ctx: {
   lan?: UtilityProcess
   quitting: boolean
   pendingOpen: string[]
+  showWindow?: () => void
 } = {} as any
 
-/** Send to the window if it still exists; a no-op during shutdown. */
+/**
+ * Send to the window if it exists; a no-op during shutdown or while Hopper sits in the tray
+ * without a window. While a (re)created window is still starting, messages wait for its
+ * 'app:ready' so none reach the page before it listens.
+ */
+let queued: [string, unknown][] = []
+export const windowState = { ready: false }
 export function sendToWindow(channel: string, data: unknown) {
   const win = ctx.win
   if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+  if (!windowState.ready) {
+    if (queued.length < 200) queued.push([channel, data])
+    return
+  }
   win.webContents.send(channel, data)
+}
+export function windowReady() {
+  windowState.ready = true
+  const q = queued
+  queued = []
+  for (const [c, d] of q) sendToWindow(c, d)
+}
+export function windowGone() {
+  windowState.ready = false
+  queued = []
+}
+
+/** Show the main window, creating it first when it was released to save memory (set by index.ts). */
+export function showWindow() {
+  ctx.showWindow?.()
 }
 
 /** Give the renderer a direct MessagePort to each utility process. */

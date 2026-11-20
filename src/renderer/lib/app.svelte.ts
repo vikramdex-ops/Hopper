@@ -88,6 +88,8 @@ export class App {
   quickLook = $state<Entry | null>(null)
   viewer = $state<{ entries: Entry[]; index: number } | null>(null)
   drawer = $state(false)
+  /** paste-and-go: a path in the clipboard text, with when it was first seen (the address bar offers it) */
+  clipPath = $state<{ path: string; kind: 'dir' | 'file' | 'computer' | 'missing' | 'unknown'; at: number } | null>(null)
 
   /** Work has started: the progress window covers it; without that window, open the Transfers panel. */
   showProgress() {
@@ -135,12 +137,16 @@ export class App {
     lanx.init()
     unlockUi.init()
     watchUi.init()
+    void host.app.ready()
     this.ready = true
     await Promise.all(this.panes.map((p) => p.load()))
     void this.refreshDrives()
     void this.loadNewTypes()
     setInterval(() => void this.refreshDrives(), 30000)
     window.addEventListener('focus', () => void this.refreshDrives())
+    // coming back from Outlook/Teams/a browser with a path copied: the address bar offers it
+    window.addEventListener('focus', () => void this.refreshClipPath())
+    void this.refreshClipPath()
     void engine.call('undo.list').then((l) => (this.undoList = l.slice(0, 30)))
     void engine.call('jobs.list').then((l) => (this.jobs = l))
     void lan.call('peers.list').then((p) => (this.peers = p)).catch(() => {})
@@ -194,10 +200,50 @@ export class App {
         ...(item.link ? [{ label: 'Open folder', run: () => void lanx.openLink(item.link!) }] : []),
         { label: 'Inbox', run: () => this.active.navigate(VIRTUAL.inbox) }
       ])
-      if (!document.hasFocus()) new Notification(receivedTitle(item), { body: receivedBody(item) || 'Saved to your Hopper Inbox' })
+      // hidden in the tray (or released): main shows the Windows notification instead
+      if (!document.hasFocus() && document.visibilityState === 'visible') new Notification(receivedTitle(item), { body: receivedBody(item) || 'Saved to your Hopper Inbox' })
       for (const p of this.panes) if (p.path === VIRTUAL.inbox || (item.folder && p.path.toLowerCase() === item.folder.toLowerCase())) void p.refresh()
     })
     host.onOpen((p: string) => void this.active.navigate(p, { newTab: true }))
+    // Predictive Storage Intelligence and Smart File Notifications (Windows notifications come from main)
+    const insights = (tab: string) => void import('./commands').then((m) => m.dialogs.insights?.(tab))
+    engine.on('storage-alert', (a: { title: string; body: string; path: string; culprit?: string }) => {
+      this.toast('warning', a.title, a.body, [
+        { label: 'Open', run: () => void this.active.navigate(a.culprit ?? a.path) },
+        { label: 'Storage forecast', run: () => insights('storage') }
+      ], true)
+    })
+    engine.on('smart-notice', (n: { title: string; body: string; folder: string; select?: string }) => {
+      this.toast('info', n.title, n.body, [
+        { label: 'Show', run: () => void (n.select ? this.reveal(n.select) : this.active.navigate(n.folder)) },
+        { label: 'Smart notices', run: () => insights('notices') }
+      ])
+    })
+    // A folder that could not be opened is checked again in main; here its panes follow along
+    host.reach.on((m: { path: string; state: 'waiting' | 'checking' | 'back'; attempts?: number; next?: number; since: number }) => {
+      const waiting = this.panes.filter((p) => p.reach && p.reach.path.toLowerCase() === m.path.toLowerCase())
+      if (m.state === 'back') {
+        for (const p of waiting) {
+          p.reach = null
+          void p.load({ keepSelection: true })
+        }
+        const name = m.path.replace(/\\+$/, '').split('\\').pop() || m.path
+        this.toast('success', `${name} is back`, `${m.path} can be reached again.`, waiting.length ? undefined : [{ label: 'Open', run: () => void this.active.navigate(m.path) }])
+        return
+      }
+      for (const p of waiting) p.reach = { path: p.reach!.path, state: m.state, attempts: m.attempts ?? 0, next: m.next ?? Date.now(), since: m.since }
+    })
+    // Hopper Clipboard: files pasted into a folder later, and paths opened from the panel
+    host.cliphist.onTransfer(({ paths, dest, op }: { paths: string[]; dest: string | null; op: 'copy' | 'move' }) => {
+      const to = dest ?? this.active.path
+      if (isVirtual(to)) return this.toast('warning', "Can't paste here", 'Open a folder in Hopper first, or choose one.')
+      void this.transfer(op, paths, to).then(() => {
+        if (dest && dest.toLowerCase() !== this.active.path.toLowerCase()) void this.active.navigate(dest)
+      })
+    })
+    host.cliphist.onReveal((p: string) => {
+      void host.pastePath.resolve(p).then((r: any) => (r ? this.goToPath(r) : undefined))
+    })
     host.onTheme(({ dark }: { dark: boolean }) => {
       this.dark = dark
       this.applyTheme()
@@ -511,8 +557,11 @@ export class App {
     if (isVirtual(dest)) return this.toast('warning', "Can't paste here")
     const clip = await host.clip.read()
     if (!clip.paths?.length) {
-      if (clip.text) return this.toast('info', 'The clipboard holds text, not files')
-      return
+      if (!clip.text) return
+      // a copied path: Ctrl+V takes you there (paste-and-go)
+      const r = await host.pastePath.resolve(clip.text)
+      if (r) return this.goToPath(r)
+      return this.toast('info', 'The clipboard holds text, not files')
     }
     if (isArchivePath(dest)) {
       const { file } = splitArchive(dest)
@@ -529,6 +578,28 @@ export class App {
       await host.clip.writeText('')
       this.cutPaths = new Set()
     }
+  }
+
+  /** Re-read the clipboard's path; a new one is offered in the address bar for a while. */
+  async refreshClipPath() {
+    try {
+      const r = (await host.pastePath.fromClipboard()) as { path: string; kind: 'dir' | 'file' | 'computer' | 'missing' | 'unknown' } | null
+      if (!r) this.clipPath = null
+      else if (this.clipPath?.path !== r.path || this.clipPath.kind !== r.kind) this.clipPath = { ...r, at: Date.now() }
+    } catch {
+      this.clipPath = null
+    }
+    return this.clipPath
+  }
+
+  /** Go to a pasted path: a folder opens, a file opens its folder with the file selected. */
+  async goToPath(r: { path: string; kind: string }, pane = this.active) {
+    if (r.kind === 'missing') {
+      this.toast('warning', `Can't find ${r.path}`, 'The copied path does not exist, or this PC cannot reach it.', [{ label: 'Edit address', run: () => void import('./commands').then((m) => m.dialogs[`address${pane.index}`]?.(r.path)) }])
+      return
+    }
+    if (r.kind === 'file') return this.reveal(r.path)
+    return pane.navigate(r.path)
   }
 
   async transfer(op: 'copy' | 'move', sources: string[], dest: string, opts: { policy?: 'ask' | 'overwrite' | 'skip' | 'rename' | 'newer'; verify?: boolean; filter?: string } = {}) {

@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, promises as fsp } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { release } from 'node:os'
-import { applyTheme, ctx, pushOfficeToUtilities } from './ctx'
+import { applyTheme, ctx, pushOfficeToUtilities, windowReady } from './ctx'
 import { clearThumbCache } from './protocol'
 import { checkForUpdates, installUpdate, updaterState } from './updater'
 import defmgr from './defmgr'
@@ -13,6 +13,8 @@ import { lockOffice, officeMeta, officeUser, revokeOffice, saveOffice } from './
 import { registerNetworkIpc } from './network'
 import { canRunAsAdmin, shortcutBaseName, shortcutName } from '@shared/shellops'
 import type { OfficeConfig, Settings } from '@shared/types'
+import { parsePastedPath } from '@shared/pathpaste'
+import { clip } from './clipboard'
 
 const h = (name: string, fn: (...args: any[]) => unknown) => ipcMain.handle(name, (_e, ...args) => fn(...args))
 
@@ -36,6 +38,28 @@ function assoc() {
     setBackup: (b: any) => ctx.settings.set({ folderAssocBackup: b } as any)
   })
   return folderAssoc
+}
+
+const envLookup = (name: string) => {
+  const k = Object.keys(process.env).find((x) => x.toLowerCase() === name.toLowerCase())
+  return k ? process.env[k] : undefined
+}
+
+/** The path in pasted text and what is there: a folder, a file, missing, or unknown (slow share). */
+async function resolvePasted(text: string): Promise<{ path: string; kind: 'dir' | 'file' | 'computer' | 'missing' | 'unknown' } | null> {
+  const p = parsePastedPath(text.slice(0, 4000), envLookup)
+  if (!p) return null
+  if (/^\\\\[^\\]+$/.test(p)) return { path: p, kind: 'computer' }
+  const st = await Promise.race([
+    fsp.stat(p).then((s): 'dir' | 'file' => (s.isDirectory() ? 'dir' : 'file'), (): 'missing' => 'missing'),
+    new Promise<'unknown'>((r) => setTimeout(() => r('unknown'), 2500))
+  ])
+  return { path: p, kind: st }
+}
+
+/** Hopper owns folders on this PC: make sure Win+E opens Hopper too (best effort). */
+export function healFolderAssoc() {
+  setTimeout(() => void assoc().ensureWinE().catch(() => {}), 8000)
 }
 
 export function registerIpc() {
@@ -65,6 +89,11 @@ export function registerIpc() {
   h('win:isMaximized', () => !!ctx.win?.isMaximized())
   h('win:fullscreen', (on: boolean) => ctx.win?.setFullScreen(on))
   h('win:devtools', () => ctx.win?.webContents.toggleDevTools())
+  /** the main window has wired its listeners: deliver what waited for it */
+  ipcMain.handle('app:ready', (e) => {
+    if (e.sender === ctx.win?.webContents) windowReady()
+    return true
+  })
   h('app:quit', () => {
     ctx.quitting = true
     app.quit()
@@ -80,8 +109,9 @@ export function registerIpc() {
   h('settings:get', () => ctx.settings.data)
   h('settings:set', (patch: Partial<Settings>) => {
     const themeChanged = patch.theme && patch.theme !== ctx.settings.data.theme
-    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset', 'recentFiles', 'watchedFolders'].some((k) => k in patch)
+    const lanChanged = ['officeKeyOverride', 'lan', 'profile', 'inboxDir', 'parallelSmallFiles', 'verifyCopies', 'archivePresets', 'defaultPreset', 'recentFiles', 'watchedFolders', 'storageIntel', 'smartNotify'].some((k) => k in patch)
     ctx.settings.set(patch)
+    if ('clipboard' in patch) clip.configure(ctx.settings.data.clipboard)
     if (themeChanged) applyTheme()
     if (lanChanged) pushOfficeToUtilities()
     return true
@@ -284,6 +314,9 @@ export function registerIpc() {
   h('clip:writeFiles', (paths: string[], cut: boolean) => ctx.shell.call('clipWrite', { paths, cut }, 10000))
   h('clip:read', () => ctx.shell.call('clipRead', {}, 10000))
   h('clip:writeText', (text: string) => clipboard.writeText(text))
+  // Paste-and-go: the path in the clipboard's text (or in given text), and whether it exists.
+  h('path:fromClipboard', async () => resolvePasted(await clipboard.readText().catch(() => '')))
+  h('path:resolve', (text: string) => resolvePasted(String(text ?? '')))
 
   // --- drag out to Explorer, desktop, Outlook, Cliq -----------------------
   ipcMain.on('drag:start', async (e, paths: string[]) => {

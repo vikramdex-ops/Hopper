@@ -21,6 +21,12 @@ execFileSync(
   ['/nologo', '/optimize+', '/platform:x64', '/target:winexe', `/out:${join(out, 'HopperShell.exe')}`, ...refs, ...readdirSync(join(root, 'native')).filter((f) => f.endsWith('.cs')).map((f) => join(root, 'native', f))],
   { stdio: 'inherit' }
 )
+// Memory diet: workstation GC without the concurrent background collector - these helpers are
+// small request/response processes, and the background GC thread and its reserve cost every one of them.
+writeFileSync(
+  join(out, 'HopperShell.exe.config'),
+  '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <runtime>\n    <gcConcurrent enabled="false"/>\n    <gcServer enabled="false"/>\n  </runtime>\n  <startup><supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8"/></startup>\n</configuration>\n'
+)
 // The build bakes this hash into the app (electron.vite.config.ts): "File unlock on this server"
 // copies the helper to Program Files and checks the copy against it before the elevated task uses it.
 const sha = createHash('sha256').update(readFileSync(join(out, 'HopperShell.exe'))).digest('hex')

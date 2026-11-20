@@ -89,6 +89,8 @@ export class Pane {
   entries = $state.raw<Entry[]>([])
   loading = $state(false)
   error = $state('')
+  /** the folder could not be opened and is being checked again automatically (main/reach.ts) */
+  reach = $state<{ path: string; state: 'waiting' | 'checking'; attempts: number; next: number; since: number } | null>(null)
   listMs = $state(0)
   /** selected keys (lower-case paths) */
   selection = $state.raw<Set<string>>(new Set())
@@ -371,6 +373,8 @@ export class Pane {
     }
     this.loading = true
     this.error = ''
+    // moved on from a folder that was being waited for: stop waiting for it
+    if (this.reach && this.reach.path.toLowerCase() !== path.toLowerCase()) this.stopWaiting()
     if (!opts.keepSelection) {
       this.filter = ''
       this.searchInfo = null
@@ -396,6 +400,7 @@ export class Pane {
         entries = r.entries
       }
       if (token !== this.token) return
+      if (this.reach) this.stopWaiting()
       this.listMs = Math.round(performance.now() - t0)
       this.entries = entries
       void this.loadLabels()
@@ -422,6 +427,11 @@ export class Pane {
       if (token !== this.token) return
       this.entries = []
       this.error = String(e?.message ?? e).replace(/^Error:\s*/, '')
+      // a real folder (a share, a mapped or removable drive): keep checking until it is back
+      if (!isVirtual(path) && !isArchivePath(path) && /^([a-zA-Z]:\\|\\\\)/.test(path)) {
+        if (!this.reach) this.reach = { path, state: 'waiting', attempts: 0, next: Date.now() + 3000, since: Date.now() }
+        void window.hopper.reach.watch(path, String(this.index), this.error)
+      }
     } finally {
       if (token === this.token) this.loading = false
     }
@@ -430,6 +440,12 @@ export class Pane {
 
   refresh() {
     return this.load({ keepSelection: true })
+  }
+
+  stopWaiting() {
+    const r = this.reach
+    this.reach = null
+    if (r) void window.hopper.reach.unwatch(r.path, String(this.index))
   }
 
   /** The folder a search typed in this pane should look in ('' = everywhere). */

@@ -26,7 +26,25 @@ export function parseQuery(q: string, caseSensitive = false, weekStart?: number,
 interface RootIndex {
   ix: NameIndex
   watcher?: FSWatcher
+  /**
+   * The index lives on disk and is not in memory (memory diet: the indexes of a few network
+   * drives are hundreds of MB). `ix` is then an empty placeholder; `meta` keeps what status shows,
+   * and folders the watcher reports are queued in `dirty` and applied when it is loaded again.
+   */
+  cold?: boolean
+  meta?: { live: number; scannedAt?: number }
+  dirty?: Set<string>
+  /** more changes than are worth queueing: rebuild in the background on next load */
+  overflow?: boolean
+  lastUse: number
+  waking?: Promise<void>
+  /** a rebuild is running: never put to sleep mid-build */
+  busy?: boolean
 }
+
+/** An index nobody searched for this long leaves memory (it is on disk already). */
+const IDLE_COLD_MS = 3 * 60_000
+const DIRTY_MAX = 20_000
 
 const norm = (p: string) => (p.endsWith('\\') ? p : p + '\\').toLowerCase()
 
@@ -63,23 +81,92 @@ export function searchHandlers(ctx: EngineCtx) {
 
   const status = (): IndexStatus => ({
     roots: [
-      ...[...roots.values()].map((r) => ({ path: r.ix.root, files: r.ix.live, ready: r.ix.ready, scannedAt: r.ix.scannedAt })),
+      ...[...roots.values()].map((r) => (r.cold ? { path: r.ix.root, files: r.meta?.live ?? 0, ready: true, scannedAt: r.meta?.scannedAt } : { path: r.ix.root, files: r.ix.live, ready: r.ix.ready, scannedAt: r.ix.scannedAt })),
       ...[...covered].map(([path, outer]) => {
         const o = roots.get(outer.toLowerCase())?.ix
         return { path, files: 0, ready: !!o?.ready, scannedAt: o?.scannedAt, coveredBy: outer }
       })
     ],
-    total: [...roots.values()].reduce((a, r) => a + r.ix.live, 0),
+    total: [...roots.values()].reduce((a, r) => a + (r.cold ? r.meta?.live ?? 0 : r.ix.live), 0),
     building
   })
 
-  const save = async (r: RootIndex) => {
+  const metaFor = (root: string) => baseFor(root) + '.meta.json'
+  const save = async (r: Pick<RootIndex, 'ix'>) => {
     if (r.ix.dead > r.ix.n * 0.2) r.ix = r.ix.compact()
     await fsp.mkdir(indexDir, { recursive: true })
     const f = fileFor(r.ix.root)
     await r.ix.save(f + '.tmp')
     await fsp.rename(f + '.tmp', f)
+    // a few bytes beside it, so a cold index's size and age are known without loading it
+    await fsp.writeFile(metaFor(r.ix.root), JSON.stringify({ live: r.ix.live, scannedAt: r.ix.scannedAt }), 'utf8').catch(() => {})
   }
+
+  const readMeta = async (root: string): Promise<{ live: number; scannedAt?: number } | null> => {
+    try {
+      await fsp.access(fileFor(root))
+      const j = JSON.parse(await fsp.readFile(metaFor(root), 'utf8'))
+      return typeof j?.live === 'number' ? { live: j.live, scannedAt: typeof j.scannedAt === 'number' ? j.scannedAt : undefined } : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Load a cold index back into memory and apply what changed while it slept. */
+  const wake = (r: RootIndex): Promise<void> => {
+    r.lastUse = Date.now()
+    if (!r.cold) return Promise.resolve()
+    r.waking ??= (async () => {
+      const ix = await load(r.ix.root)
+      if (!ix) {
+        r.cold = false
+        r.busy = true
+        await build(r.ix.root).catch(() => {})
+        r.busy = false
+        return
+      }
+      r.ix = ix
+      r.cold = false
+      const dirty = [...(r.dirty ?? [])]
+      const overflow = r.overflow
+      r.dirty = undefined
+      r.overflow = false
+      if (overflow || !ix.scannedAt || Date.now() - ix.scannedAt > 7 * 86400000) refresh(ix.root)
+      else if (dirty.length) {
+        await rescanDirs(r, dirty)
+        dirtySave(r)
+      }
+    })().finally(() => {
+      r.waking = undefined
+      r.lastUse = Date.now()
+    })
+    return r.waking
+  }
+
+  /** Put idle indexes to sleep: saved first if changed, then dropped from memory. */
+  const sleep = async (r: RootIndex) => {
+    if (r.cold || r.busy || r.waking || !r.ix.ready) return
+    if (saveTimers.has(r.ix.root)) {
+      clearTimeout(saveTimers.get(r.ix.root))
+      saveTimers.delete(r.ix.root)
+      try {
+        await save(r)
+      } catch {
+        return // could not be saved: keep it in memory rather than lose changes
+      }
+    }
+    if (r.cold || r.busy || r.waking || Date.now() - r.lastUse < IDLE_COLD_MS) return
+    r.meta = { live: r.ix.live, scannedAt: r.ix.scannedAt }
+    const root = r.ix.root
+    r.ix = new NameIndex(root)
+    r.cold = true
+    r.dirty = new Set()
+    // the index's Buffers are freed only when V8 collects; do it now rather than "eventually"
+    setTimeout(() => (globalThis as { gc?: () => void }).gc?.(), 100)
+  }
+  setInterval(() => {
+    for (const r of roots.values()) if (!r.cold && Date.now() - r.lastUse >= IDLE_COLD_MS) void sleep(r)
+  }, 30_000).unref?.()
 
   const load = async (root: string): Promise<NameIndex | null> => {
     try {
@@ -116,7 +203,13 @@ export function searchHandlers(ctx: EngineCtx) {
   const saveTimers = new Map<string, NodeJS.Timeout>()
   const dirtySave = (r: RootIndex) => {
     clearTimeout(saveTimers.get(r.ix.root))
-    saveTimers.set(r.ix.root, setTimeout(() => void save(r).catch(() => {}), 60000))
+    saveTimers.set(
+      r.ix.root,
+      setTimeout(() => {
+        saveTimers.delete(r.ix.root)
+        void save(r).catch(() => {})
+      }, 60000)
+    )
   }
 
   const startWatcher = (r: RootIndex) => {
@@ -126,11 +219,21 @@ export function searchHandlers(ctx: EngineCtx) {
     try {
       r.watcher = watch(r.ix.root, { recursive: true, persistent: false }, (_ev, rel) => {
         if (!rel) return
+        if (r.cold) {
+          // asleep: remember the folder, re-list it on wake
+          if (r.dirty && r.dirty.size < DIRTY_MAX) r.dirty.add(dirname(join(r.ix.root, rel.toString())))
+          else r.overflow = true
+          return
+        }
         pending.add(dirname(join(r.ix.root, rel.toString())))
         clearTimeout(timer)
         timer = setTimeout(async () => {
           const dirs = [...pending]
           pending.clear()
+          if (r.cold) {
+            for (const d of dirs) r.dirty?.add(d)
+            return
+          }
           await rescanDirs(r, dirs)
           dirtySave(r)
           // live views of saved searches (smart folders) refresh when their folders change
@@ -151,17 +254,26 @@ export function searchHandlers(ctx: EngineCtx) {
     const key = root.toLowerCase()
     let r = roots.get(key)
     // keep serving the old index while the new one builds
-    if (!r) roots.set(key, (r = { ix }))
-    await walk(ctx, root, (e) => {
-      // skip noise that nobody searches for
-      if (e.dir && /^(\$recycle\.bin|system volume information|node_modules|\.git)$/i.test(e.name)) return false
-      ix.add(e.name, dirname(e.path), e.dir, e.size, e.mtime)
-    }, { concurrency: 3, lane: 'index' })
+    if (!r) roots.set(key, (r = { ix, lastUse: Date.now() }))
+    r.busy = true
+    try {
+      await walk(ctx, root, (e) => {
+        // skip noise that nobody searches for
+        if (e.dir && /^(\$recycle\.bin|system volume information|node_modules|\.git)$/i.test(e.name)) return false
+        ix.add(e.name, dirname(e.path), e.dir, e.size, e.mtime)
+      }, { concurrency: 3, lane: 'index' })
+    } finally {
+      r.busy = false
+    }
     ix.trim()
     ix.ready = true
     ix.scannedAt = Date.now()
     if (roots.get(key) !== r) return // the root was removed while building
+    // the fresh build replaces whatever was there (also a sleeping index and its queued changes)
     r.ix = ix
+    r.cold = false
+    r.dirty = undefined
+    r.overflow = false
     startWatcher(r)
     await save(r).catch(() => {})
     ctx.emit('index', status())
@@ -180,9 +292,9 @@ export function searchHandlers(ctx: EngineCtx) {
     const keep = new Set(want.map((r) => baseFor(r)))
     const names = await fsp.readdir(indexDir).catch(() => [] as string[])
     for (const f of names) {
-      const base = join(indexDir, f.replace(/\.(bin|ix2)(\.tmp)?$/, ''))
+      const base = join(indexDir, f.replace(/\.(bin|ix2|meta\.json)(\.tmp)?$/, ''))
       // a kept root's .bin was converted (and removed) on load; any other is stale
-      if ((f.endsWith('.bin') || f.endsWith('.ix2')) && !keep.has(base)) await fsp.rm(join(indexDir, f), { force: true }).catch(() => {})
+      if ((f.endsWith('.bin') || f.endsWith('.ix2') || f.endsWith('.meta.json')) && !keep.has(base)) await fsp.rm(join(indexDir, f), { force: true }).catch(() => {})
     }
   }
 
@@ -203,12 +315,26 @@ export function searchHandlers(ctx: EngineCtx) {
     building = true
     ctx.emit('index', status())
     for (const root of want) {
-      if (roots.get(root.toLowerCase())?.ix.ready) continue
-      const loaded = await load(root)
-      if (loaded) {
-        const r: RootIndex = { ix: loaded }
+      const have = roots.get(root.toLowerCase())
+      if (have && (have.cold || have.ix.ready)) continue
+      // memory diet: an index already on disk starts asleep; the first search loads it
+      const meta = await readMeta(root)
+      if (meta) {
+        const r: RootIndex = { ix: new NameIndex(root), cold: true, meta, dirty: new Set(), lastUse: 0 }
         roots.set(root.toLowerCase(), r)
         startWatcher(r)
+        ctx.emit('index', status())
+        // no daily rebuild at startup: the watcher keeps it current, and a stale one is refreshed
+        // when it is next woken (a rebuild holds a second full index in memory while it runs)
+        continue
+      }
+      const loaded = await load(root)
+      if (loaded) {
+        const r: RootIndex = { ix: loaded, lastUse: Date.now() }
+        roots.set(root.toLowerCase(), r)
+        startWatcher(r)
+        // writes the .meta.json for next time
+        void save(r).catch(() => {})
         ctx.emit('index', status())
         // refresh stale indexes in the background (older than a day)
         if (!loaded.scannedAt || Date.now() - loaded.scannedAt > 86400000) refresh(root)
@@ -290,11 +416,22 @@ export function searchHandlers(ctx: EngineCtx) {
       return true
     },
     'index.status': () => status(),
+    /** memory diagnostics: which indexes are in memory, and the process's own counters */
+    'index.memory': () => ({
+      roots: [...roots.values()].map((r) => ({ root: r.ix.root, cold: !!r.cold, busy: !!r.busy, idleS: Math.round((Date.now() - r.lastUse) / 1000), saving: saveTimers.has(r.ix.root) })),
+      mem: process.memoryUsage()
+    }),
     'index.rebuild': async (root?: string) => {
       for (const r of root ? [root] : [...roots.values()].map((x) => x.ix.root)) await build(r)
       return status()
     },
-    'index.query': (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number }) => query(q, opts),
+    'index.query': async (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number }) => {
+      // wake only the indexes this query can use
+      const under = opts?.under ? norm(opts.under) : undefined
+      const need = [...roots.values()].filter((r) => !under || norm(r.ix.root).startsWith(under) || under.startsWith(norm(r.ix.root)))
+      await Promise.all(need.map((r) => wake(r).catch(() => {})))
+      return query(q, opts)
+    },
 
     'search.run': (token: string, q: SearchQuery) => {
       const ac = new AbortController()

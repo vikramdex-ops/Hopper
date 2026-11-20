@@ -23,18 +23,50 @@ namespace Hopper
         static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         static UiThread ui;
         static int pending;
+        static int lastActivity;
+
+        [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll")] static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr min, IntPtr max);
+
+        /** Collect and let Windows take back the pages this helper is not using (they return on demand). */
+        public static void Trim()
+        {
+            try
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                SetProcessWorkingSetSize(GetCurrentProcess(), new IntPtr(-1), new IntPtr(-1));
+            }
+            catch { }
+        }
 
         [STAThread]
         static int Main(string[] argv)
         {
             // elevated server agent for file unlock (native/Unlock.cs), started by a scheduled task
             if (argv.Length > 0 && argv[0] == "--agent") return Agent.Run();
+            // Hopper Clipboard: clipboard listener and the Win+V hook (native/Hooks.cs)
+            if (argv.Length > 0 && argv[0] == "--hooks") return Hooks.Run();
             var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
             stdout.AutoFlush = false;
             Console.SetOut(stdout);
             // Listings block on I/O (often SMB); don't let the pool's slow ramp-up queue them.
             ThreadPool.SetMinThreads(32, 16);
             ui = new UiThread();
+            // memory diet: a few seconds after the last request, hand unused pages back to Windows
+            var trimmer = new Thread(delegate ()
+            {
+                bool trimmed = false;
+                while (true)
+                {
+                    Thread.Sleep(3000);
+                    bool idle = Volatile.Read(ref pending) == 0 && Environment.TickCount - Volatile.Read(ref lastActivity) > 4000;
+                    if (idle && !trimmed) { Trim(); trimmed = true; }
+                    else if (!idle) trimmed = false;
+                }
+            });
+            trimmer.IsBackground = true;
+            trimmer.Start();
 
             var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
             string line;
@@ -45,7 +77,8 @@ namespace Hopper
                 // Each request runs on the thread pool so a slow network listing
                 // never holds up a clipboard call.
                 Interlocked.Increment(ref pending);
-                ThreadPool.QueueUserWorkItem(delegate { try { Handle(reqLine); } finally { Interlocked.Decrement(ref pending); } });
+                Volatile.Write(ref lastActivity, Environment.TickCount);
+                ThreadPool.QueueUserWorkItem(delegate { try { Handle(reqLine); } finally { Volatile.Write(ref lastActivity, Environment.TickCount); Interlocked.Decrement(ref pending); } });
             }
             // stdin closed (parent gone): give in-flight work a moment, then exit. Kept short: a helper
             // lingering after Hopper quits locks its own exe and breaks the next upgrade.

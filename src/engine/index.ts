@@ -19,6 +19,8 @@ import { Labels, labelHandlers } from './labels'
 import { unlockHandlers } from './unlock'
 import { FolderWatch, folderWatchHandlers } from './folderwatch'
 import { revisionHandlers } from './revisions'
+import { StorageIntel, storageHandlers } from './storage'
+import { SmartNotify, smartHandlers } from './smartnotify'
 
 export interface EngineCtx {
   emit: (event: string, data: unknown) => void
@@ -37,6 +39,10 @@ export interface EngineCtx {
   labels: Labels
   /** Watch this folder (folderwatch.ts) */
   folderWatch: FolderWatch
+  /** Predictive Storage Intelligence (storage.ts) */
+  storage: StorageIntel
+  /** Smart File Notifications (smartnotify.ts) */
+  smart: SmartNotify
 }
 
 const servers: ReturnType<typeof serve>[] = []
@@ -47,7 +53,8 @@ const emit = (event: string, data: unknown) => {
 const ctx: EngineCtx = {
   emit,
   jobs: new JobQueue(emit),
-  shell: new HopperShell(process.env.HOPPER_HELPER!),
+  // the listing helper stays warm while you browse; after five quiet minutes it lets go
+  shell: new HopperShell(process.env.HOPPER_HELPER!, 300_000),
   // bulk and index helpers exit after a quiet minute (~25 MB each); the listing one stays warm
   bulkShell: new HopperShell(process.env.HOPPER_HELPER!, 60000),
   indexShell: new HopperShell(process.env.HOPPER_HELPER!, 60000),
@@ -58,12 +65,21 @@ const ctx: EngineCtx = {
   settings: null,
   officePath: '',
   labels: null as unknown as Labels,
-  folderWatch: null as unknown as FolderWatch
+  folderWatch: null as unknown as FolderWatch,
+  storage: null as unknown as StorageIntel,
+  smart: null as unknown as SmartNotify
 }
 ctx.labels = new Labels(ctx)
 ctx.folderWatch = new FolderWatch(ctx)
+ctx.storage = new StorageIntel(ctx)
+ctx.smart = new SmartNotify(ctx)
 // what this Hopper creates, moves or deletes is never reported by a watched folder as someone else's
-ctx.undo.onRecord = (r) => ctx.folderWatch.noteOwn(r.pairs.flatMap(([from, to]) => (r.kind === 'recycle' ? [from] : r.kind === 'move' || r.kind === 'rename' ? [from, to] : [to])))
+// (nor as a "duplicate download" by Smart File Notifications)
+ctx.undo.onRecord = (r) => {
+  const paths = r.pairs.flatMap(([from, to]) => (r.kind === 'recycle' ? [from] : r.kind === 'move' || r.kind === 'rename' ? [from, to] : [to]))
+  ctx.folderWatch.noteOwn(paths)
+  ctx.smart.noteOwn(paths)
+}
 
 const handlers: Handlers = {
   ping: () => 'pong',
@@ -85,7 +101,9 @@ const handlers: Handlers = {
   ...labelHandlers(ctx),
   ...unlockHandlers(ctx),
   ...folderWatchHandlers(ctx),
-  ...revisionHandlers(ctx)
+  ...revisionHandlers(ctx),
+  ...storageHandlers(ctx),
+  ...smartHandlers(ctx)
 }
 
 process.parentPort.on('message', (e) => {
@@ -106,6 +124,8 @@ process.parentPort.on('message', (e) => {
     ctx.settings = data.settings
     ctx.officePath = String(data.officePath || '')
     ctx.folderWatch.configure(ctx.settings?.watchedFolders)
+    ctx.storage.configure(ctx.settings?.storageIntel)
+    ctx.smart.configure(ctx.settings?.smartNotify)
     emit('office', null)
   }
 })

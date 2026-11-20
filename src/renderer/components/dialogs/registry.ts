@@ -47,6 +47,8 @@ export function registerDialogs(d: Record<string, (...args: any[]) => unknown>) 
     unlock: lazy('UnlockDialog', (paths: string[], op?: unknown) => ({ paths, op })),
     watchFolder: lazy('WatchFolderDialog', (folder, isNew?: boolean) => ({ folder, isNew: isNew === true })),
     revisionTimeline: lazy('RevisionTimelineDialog', (path: string) => ({ path })),
+    /** Storage forecast and Smart notices */
+    insights: lazy('InsightsDialog', (tab?: 'storage' | 'notices') => ({ tab: tab === 'notices' ? 'notices' : 'storage' })),
     /** two PDFs, older first (the viewer can swap them) */
     pdfCompare: lazy('PdfCompareDialog', (older: string, newer: string, labels?: [string, string]) => ({ older, newer, labels }))
   })

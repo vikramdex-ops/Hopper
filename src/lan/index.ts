@@ -36,6 +36,8 @@ const RETRY_MS = 30_000
 const servers: ReturnType<typeof serve>[] = []
 const emit = (event: string, data: unknown) => {
   for (const s of servers) s.emit(event, data)
+  // the window may not exist (Hopper in the tray frees it): main shows the Windows notification
+  if (event === 'received') post({ type: 'received', item: data })
 }
 const post = (msg: unknown) => {
   try {
@@ -45,7 +47,8 @@ const post = (msg: unknown) => {
   }
 }
 
-const shell = new HopperShell(process.env.HOPPER_HELPER!)
+// exits after a quiet minute (~25 MB); started again on the next call
+const shell = new HopperShell(process.env.HOPPER_HELPER!, 60_000)
 const ctx: LanCtx = {
   emit,
   attention: () => post({ type: 'attention' }),
@@ -318,6 +321,20 @@ process.parentPort.on('message', (e) => {
     reconcile()
   } else if (data?.type === 'shutdown') {
     void shutdown()
+  } else if (data?.type === 'notify-connect' && typeof data.text === 'string') {
+    // Storage alert: to me and to the people named on the tracked folder (Dexterity Connect)
+    const cfg = ctx.office?.connect
+    const users = [...new Set([ctx.me.user, ...(Array.isArray(data.users) ? data.users : [])].filter((u): u is string => typeof u === 'string' && !!u))]
+    if (connectEnabled(cfg) && users.length) void postConnect(cfg, users, data.text.slice(0, 1000), { title: String(data.title || 'Hopper').slice(0, 80) }).then((r) => { if (!r.ok) ctx.log('notify-connect', r.error ?? r.status) })
+    // ...and into the others' Hopper Inbox as a message, so they see it without Connect too
+    const others = users.filter((u) => u.toLowerCase() !== String(ctx.me.user).toLowerCase())
+    if (others.length) {
+      try {
+        void Promise.resolve(shares.send({ to: others, paths: [], kind: 'message', message: data.text.slice(0, 1000), notifyCliq: false })).catch((err) => ctx.log('notify-message', String(err?.message ?? err)))
+      } catch (err: any) {
+        ctx.log('notify-message', String(err?.message ?? err))
+      }
+    }
   } else if (data?.type === 'watch-connect' && typeof data.text === 'string') {
     // Watch this folder: a copy of the notice to me on Dexterity Connect (folder name and counts only)
     const cfg = ctx.office?.connect

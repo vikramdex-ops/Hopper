@@ -23,4 +23,8 @@ if (density) document.documentElement.dataset.density = density
 ;(app as any).__formatPath = formatPath
 ;(app as any).__watch = watchUi
 
-mount(App, { target: document.getElementById('app')! })
+// The Win+V clipboard panel is its own small window loading this page with #clipboard.
+if (location.hash === '#clipboard') {
+  document.documentElement.dataset.panel = 'clipboard'
+  void import('./components/ClipPanel.svelte').then((m) => mount(m.default, { target: document.getElementById('app')! }))
+} else mount(App, { target: document.getElementById('app')! })

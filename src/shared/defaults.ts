@@ -72,7 +72,11 @@ export function defaultSettings(home: string, docs: string): Settings {
     folderViews: {},
     smartFolders: [],
     unlock: { via: 'both', waitMinutes: 10 },
-    watchedFolders: []
+    watchedFolders: [],
+    storageIntel: { enabled: true, folders: [], scanHours: 6, drives: true },
+    smartNotify: { enabled: true, folders: [], largeTempMB: 500, tempTotalGB: 5, muted: [] },
+    clipboard: { enabled: true, winV: true, max: 500, pasteAfterPick: true },
+    performance: { gpu: false, releaseInTray: true }
   }
 }
 

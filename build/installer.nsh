@@ -27,6 +27,44 @@
     Pop $0
     Sleep 1500
   ${EndIf}
+
+  !ifndef BUILD_UNINSTALLER
+    ; Next, electron-builder runs the OLD version's uninstaller and retries it 5 times before
+    ; showing "Hopper cannot be closed" (Retry/Cancel) - even when nothing is running, because
+    ; uninstallers up to 2.8.0 abort when any single file in the folder cannot be moved aside
+    ; at that instant (antivirus or the search indexer scanning a file, Explorer reading the icon).
+    ; Swap in this version's uninstaller, whose file removal never aborts (customRemoveFiles).
+    ${If} ${FileExists} "$INSTDIR\${UNINSTALL_FILENAME}"
+      ClearErrors
+      File "/oname=$INSTDIR\${UNINSTALL_FILENAME}" "${UNINSTALLER_OUT_FILE}"
+      ${If} ${Errors}
+        DetailPrint `Could not refresh the old uninstaller; using it as is.`
+        ClearErrors
+      ${EndIf}
+    ${EndIf}
+  !endif
+!macroend
+
+; Remove the installed files without electron-builder's all-or-nothing rename step, which aborts
+; the whole uninstall (and so the upgrade) when one file is briefly held by another program.
+; Whatever cannot be deleted now is overwritten by the installer that follows.
+!macro customRemoveFiles
+  SetOutPath $TEMP
+  StrCpy $R8 0
+  ${Do}
+    ClearErrors
+    RMDir /r $INSTDIR
+    ${IfNot} ${FileExists} "$INSTDIR\*.*"
+      ${Break}
+    ${EndIf}
+    IntOp $R8 $R8 + 1
+    ${If} $R8 >= 3
+      DetailPrint `Some files in $INSTDIR are in use; they will be replaced by the update.`
+      ${Break}
+    ${EndIf}
+    Sleep 1000
+  ${Loop}
+  ClearErrors
 !macroend
 
 ; The old version's uninstaller failing must never stop the upgrade: everything from the old
@@ -42,6 +80,14 @@
 !macroend
 
 !macro customUnInstall
+  ; An update runs the old uninstaller first: keep the folder, Win+E and notification
+  ; registrations, which point at the same Hopper.exe the update writes back.
+  ${IfNot} ${isUpdated}
+    !insertmacro hopperUnregister
+  ${EndIf}
+!macroend
+
+!macro hopperUnregister
   ; Restore the effective default verb to Windows only when ours is still in
   ; place — never overwrite a change made later by the user or another app.
   StrCpy $1 "$INSTDIR\Hopper.exe"
@@ -58,6 +104,12 @@
   ${If} $0 == $2
     DeleteRegKey HKCU "Software\Classes\Drive\shell\open"
     DeleteRegValue HKCU "Software\Classes\Drive\shell" ""
+  ${EndIf}
+
+  ; Win+E, when it still starts this Hopper.
+  ReadRegStr $0 HKCU "Software\Classes\CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command" ""
+  ${If} $0 == '"$1"'
+    DeleteRegKey HKCU "Software\Classes\CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow"
   ${EndIf}
 
   ; Our own verb is always safe to remove.

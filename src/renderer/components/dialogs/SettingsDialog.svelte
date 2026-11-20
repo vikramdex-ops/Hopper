@@ -29,6 +29,8 @@
     { id: 'sharing', label: 'Sharing', icon: 'share' },
     { id: 'office', label: 'Office', icon: 'people' },
     { id: 'search', label: 'Search', icon: 'search' },
+    { id: 'clipboard', label: 'Clipboard', icon: 'paste' },
+    { id: 'performance', label: 'Performance', icon: 'activity' },
     { id: 'advanced', label: 'Advanced', icon: 'code' },
     { id: 'about', label: 'About', icon: 'info' }
   ]
@@ -1351,7 +1353,7 @@
         {/if}
       {:else if current === 'search'}
         <h3 class="subtitle">Search index</h3>
-        {@render toggle('Index file names for instant search', 'Names only, kept in memory and updated as files change', s.indexEnabled, (v) => set({ indexEnabled: v }))}
+        {@render toggle('Index file names for instant search', 'Names only, kept on disk and updated as files change; loaded into memory while you search and released after three idle minutes', s.indexEnabled, (v) => set({ indexEnabled: v }))}
         <div class="caption">Indexed folders{s.indexRoots.length ? '' : ' (default: your user folder, plus D:\\ when present)'}</div>
         <div class="list">
           {#each roots as r, ri (ri)}
@@ -1375,6 +1377,25 @@
         {#if indexStatus}
           <div class="caption">{plural(indexStatus.total, 'item')} indexed{indexStatus.building ? ' · building…' : ''}</div>
         {/if}
+      {:else if current === 'clipboard'}
+        {@const c = { enabled: true, winV: true, max: 500, pasteAfterPick: true, ...(s.clipboard ?? {}) }}
+        <h3 class="subtitle">Hopper Clipboard</h3>
+        {@render toggle('Keep a clipboard history', 'Text, rich text, images, files and folders you copy, kept across restarts. Content password managers mark as private is never recorded.', c.enabled, (v) => set({ clipboard: { ...c, enabled: v } }))}
+        {@render toggle('Win+V opens Hopper Clipboard', "Instead of Windows' clipboard history, while Hopper is running", c.winV, (v) => set({ clipboard: { ...c, winV: v } }))}
+        {@render toggle('Picking an entry pastes it', 'Into the window you were in; off = only copies it', c.pasteAfterPick, (v) => set({ clipboard: { ...c, pasteAfterPick: v } }))}
+        <label class="field">
+          <span>Entries to keep (pinned ones always stay)</span>
+          <select class="input" value={String(c.max)} onchange={(e) => set({ clipboard: { ...c, max: Number(e.currentTarget.value) } })}>
+            {#each [100, 250, 500, 1000, 2500] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          </select>
+        </label>
+        <div class="row"><button type="button" class="btn" onclick={() => void window.hopper.cliphist.show()}><Icon name="paste" /> Open clipboard history</button></div>
+      {:else if current === 'performance'}
+        {@const p = { gpu: false, releaseInTray: true, ...(s.performance ?? {}) }}
+        <h3 class="subtitle">Memory and performance</h3>
+        <div class="caption">Hopper keeps its search index on disk, lets its helper processes exit when idle, and frees the window's memory while it sits in the tray.</div>
+        {@render toggle('Free memory while Hopper is in the tray', "The window is rebuilt from your saved tabs when you open Hopper again (about a second). Notifications, LAN sharing and the clipboard keep working.", p.releaseInTray, (v) => set({ performance: { ...p, releaseInTray: v } }))}
+        {@render toggle('Use the graphics card', 'Off (default) saves about 100 MB: no GPU process. Turn on only if scrolling very large folders feels slow on this PC. Applies after Hopper restarts.', p.gpu, (v) => set({ performance: { ...p, gpu: v } }))}
       {:else if current === 'advanced'}
         <h3 class="subtitle">Default file manager</h3>
         <div class="item" class:done={dm?.state === 'set'}>

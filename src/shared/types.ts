@@ -551,5 +551,16 @@ export interface Settings {
   unlock?: { via: 'hopper' | 'connect' | 'both'; waitMinutes: number }
   /** folders that notify when files arrive, change or go (see shared/folderwatch.ts) */
   watchedFolders: import('./folderwatch').WatchedFolder[]
+  /** Predictive Storage Intelligence: tracked folders and how often to measure (shared/storage.ts) */
+  storageIntel?: import('./storage').StorageSettings
+  /** Smart File Notifications (shared/smartnotify.ts) */
+  smartNotify?: import('./smartnotify').SmartSettings
+  /**
+   * Memory diet switches. gpu: use the graphics card (off = no GPU process, applies on restart).
+   * releaseInTray: free the window's memory a minute and a half after it is closed to the tray.
+   */
+  performance?: { gpu: boolean; releaseInTray: boolean }
+  /** Hopper Clipboard: history kept across restarts, and Win+V opens it (shared/cliphist.ts) */
+  clipboard?: import('./cliphist').ClipSettings
 }
 

@@ -9,7 +9,12 @@
 //
 // Deliberately NOT touched:
 //   - Folder (special/virtual folders: This PC, Recycle Bin, Control Panel)
-//   - Explorer's Win+E handling and the common file dialogs
+//   - the common file dialogs
+//
+// Win+E is taken over too while Hopper owns folders: Explorer runs the
+// `opennewwindow` verb of the {52205fd8-…} shell object for Win+E, and a
+// per-user command for that verb (with an empty DelegateExecute) wins over
+// Explorer's own. Revert removes it again.
 //   - any UserChoice hash (those are protected by Windows on purpose)
 //
 // Everything here is per-user (no elevation) and never claims to be a
@@ -21,6 +26,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const VERB = 'Hopper';
+// Win+E (and Explorer's "open new window") target. Same id on Windows 10 and 11.
+const WINE_CLSID = 'HKCU\\Software\\Classes\\CLSID\\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}';
+const WINE_VERB = `${WINE_CLSID}\\shell\\opennewwindow`;
 const APP_NAME = 'Hopper';
 
 function reg(args, timeout = 8000) {
@@ -130,6 +138,37 @@ class FolderAssociation {
     return `"${this.exePath}" --open "${arg}"`;
   }
 
+  winECommand() { return `"${this.exePath}"`; }
+
+  /**
+   * Point Win+E at Hopper. Remembers whether the per-user CLSID key existed so
+   * revert can remove exactly what was added.
+   */
+  async applyWinE() {
+    const b = this.getBackup();
+    if (b && b.winE === undefined) {
+      this.setBackup({ ...b, winE: { clsidExisted: await keyExists(WINE_CLSID) } });
+    }
+    await mustSet(`${WINE_VERB}\\command`, this.winECommand());
+    await mustSet(`${WINE_VERB}\\command`, '', 'DelegateExecute');
+  }
+
+  /** Startup repair: a PC set as default before Win+E support gets it without a re-toggle. */
+  async ensureWinE() {
+    if (process.platform !== 'win32' || !this.isPackaged || !this.getBackup()) return false;
+    const st = await this.status();
+    if (st.state !== 'set' || st.parts.winE) return false;
+    await this.applyWinE();
+    return true;
+  }
+
+  async revertWinE(winE) {
+    const cmd = await query(`${WINE_VERB}\\command`);
+    if (cmd.exists && cmd.value !== this.winECommand()) return; // someone else's now
+    if (winE && winE.clsidExisted === false) await deleteKey(WINE_CLSID);
+    else await deleteKey(WINE_VERB);
+  }
+
   verbKey(base) { return `${base}\\${VERB}`; }
   verbCommandKey(base) { return `${base}\\${VERB}\\command`; }
 
@@ -169,7 +208,12 @@ class FolderAssociation {
         : state === 'other'
           ? 'Another app currently opens folders'
           : 'Windows Explorer opens folders',
-      parts: { directory: dirOk, drive: drvOk, background: !!(await query(this.verbCommandKey(this.keys.background))).exists },
+      parts: {
+        directory: dirOk,
+        drive: drvOk,
+        background: !!(await query(this.verbCommandKey(this.keys.background))).exists,
+        winE: (await query(`${WINE_VERB}\\command`)).value === this.winECommand()
+      },
       effectiveCommand: effective.value || '',
       owner,
       backup: !!this.getBackup(),
@@ -199,7 +243,7 @@ class FolderAssociation {
           snapshot.push({ key: full, existed: q.exists, data: q.value, parentKey: parent, parentExisted });
         }
       }
-      this.setBackup({ at: Date.now(), exe: this.exePath, items: snapshot });
+      this.setBackup({ at: Date.now(), exe: this.exePath, items: snapshot, winE: { clsidExisted: await keyExists(WINE_CLSID) } });
     }
 
     const cmdDir = this.expectedCommand('%1');
@@ -229,6 +273,8 @@ class FolderAssociation {
     const appPathKey = `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${path.basename(this.exePath)}`;
     await mustSet(appPathKey, this.exePath);
     await mustSet(appPathKey, path.dirname(this.exePath), 'Path');
+
+    await this.applyWinE();
 
     await notifyShell();
     return this.status();
@@ -266,6 +312,7 @@ class FolderAssociation {
     for (const base of [this.keys.directory, this.keys.drive, this.keys.background]) {
       await deleteKey(this.verbKey(base));
     }
+    await this.revertWinE(snapshot?.winE);
     // If our `open` override survived (no snapshot), removing it reveals the
     // machine-wide default again.
     for (const base of [this.keys.directory, this.keys.drive]) {

@@ -4,6 +4,47 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.9.0] — 2026-11-20
+
+### Added
+- **Clipboard history (Win+V or Ctrl+Shift+H).** Hopper's own clipboard panel remembers copied
+  text, links, paths, images and files and folders. It previews images and text, merges duplicates,
+  and has search, filters and pins. A copied file or folder can be pasted into any folder later,
+  including recent destinations, as a copy or a move. Password managers' private copies are not
+  kept. Settings › Clipboard turns it off or gives Win+V back to Windows.
+- **Storage forecast (Ctrl+Alt+I).** From its own measurements, Hopper forecasts when each drive
+  and tracked folder will fill up, and spots subfolders growing much faster than usual (robust
+  trend and outlier statistics, no AI). Alerts go to you and to the people named for that folder.
+- **Smart notices.** Context-aware notices instead of generic ones: a download identical to a file
+  already in that folder (confirmed by content, not by name), large or piled-up temporary files,
+  stalled downloads, archives already extracted, old installers and low disk space. Each has an
+  action (open, keep, recycle), and each kind can be muted.
+- **Paste a path into the address bar.** When the clipboard holds a folder path, the address bar
+  offers "Go to …" for 12 seconds. Ctrl+Alt+V goes straight there; Ctrl+V in the file list, a
+  middle-click on the address bar or dropping text on it does too. Quotes, `file:///` links,
+  `%VARIABLES%` and forward slashes are understood.
+- **Unreachable folders wait and retry by themselves.** A share that cannot be reached shows a
+  countdown and is checked again automatically. When it comes back, the pane reloads and a Windows
+  notification stays on screen until dismissed, even with Hopper closed to the tray.
+- **Win+E opens Hopper** once Hopper is the default file manager (undone when that is reverted or
+  Hopper is uninstalled).
+- Settings › Performance: graphics acceleration and "Release the window when in the tray".
+
+### Changed
+- **Much lower memory use**: about 384 MB with a window open, down from about 1.2 GB. The search
+  index stays on disk until a search needs it and leaves memory after 3 idle minutes; graphics
+  acceleration is off by default; the window is released 90 seconds after closing to the tray;
+  helper processes exit or trim themselves when idle. A search after a quiet spell can take a few
+  seconds longer while the index loads.
+- The search box shows "N found" and a × while results are shown, and clears when you navigate
+  away (Back brings the search back).
+
+### Fixed
+- The installer said "Hopper cannot be closed" when Hopper was not running. Upgrades now replace
+  the old uninstaller and retry locked files instead of failing.
+- The taskbar showed "Electron" with no icon on PCs that had run a development copy. Stale
+  shortcuts are now removed or repointed at start-up.
+
 ## [2.8.0] — 2026-11-20
 
 ### Added
