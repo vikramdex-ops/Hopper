@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte'
+  import { engine } from '../lib/api'
   import { VIRTUAL } from '../lib/pane.svelte'
   import { dialogs } from '../lib/commands'
   import Icon from './Icon.svelte'
@@ -84,7 +85,11 @@
     </svg>
     <span class="name">Hopper</span>
   </div>
-  <form class="search" class:active={searching && !focused} onsubmit={submit} onfocusin={() => (focused = true)} onfocusout={focusOut}>
+  <form class="search" class:active={searching && !focused} onsubmit={submit} onfocusin={() => {
+    // load sleeping indexes while the query is typed, so Enter answers at once
+    if (!focused) void engine.call('index.warm', app.active?.searchRoot || undefined).catch(() => {})
+    focused = true
+  }} onfocusout={focusOut}>
     <Icon name="search" />
     <input
       bind:this={input}

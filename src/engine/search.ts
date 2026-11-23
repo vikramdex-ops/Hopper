@@ -112,17 +112,19 @@ export function searchHandlers(ctx: EngineCtx) {
     }
   }
 
-  /** Load a cold index back into memory and apply what changed while it slept. */
+  /**
+   * Load a cold index back into memory. Resolves as soon as the index can answer: what changed
+   * while it slept is re-listed in the background (a search never waits on network folders), and
+   * a missing index is rebuilt in the background while searches walk that root live instead.
+   */
   const wake = (r: RootIndex): Promise<void> => {
     r.lastUse = Date.now()
     if (!r.cold) return Promise.resolve()
     r.waking ??= (async () => {
       const ix = await load(r.ix.root)
       if (!ix) {
-        r.cold = false
-        r.busy = true
-        await build(r.ix.root).catch(() => {})
-        r.busy = false
+        r.cold = false // r.ix stays an empty, not-ready placeholder until the rebuild lands
+        refresh(r.ix.root)
         return
       }
       r.ix = ix
@@ -133,8 +135,12 @@ export function searchHandlers(ctx: EngineCtx) {
       r.overflow = false
       if (overflow || !ix.scannedAt || Date.now() - ix.scannedAt > 7 * 86400000) refresh(ix.root)
       else if (dirty.length) {
-        await rescanDirs(r, dirty)
-        dirtySave(r)
+        void rescanDirs(r, dirty)
+          .then(() => {
+            dirtySave(r)
+            ctx.emit('index-changed', { dirs: dirty })
+          })
+          .catch(() => {})
       }
     })().finally(() => {
       r.waking = undefined
@@ -395,6 +401,16 @@ export function searchHandlers(ctx: EngineCtx) {
 
   const searches = new Map<string, AbortController>()
 
+  /** Folders the index skips (see build): a search inside one has to walk it. */
+  const UNINDEXED = /\\(\$recycle\.bin|system volume information|node_modules|\.git)(\\|$)/i
+  /** The index that answers for `root`, if one is ready (or asleep on disk). */
+  const indexFor = (root: string) => {
+    if (UNINDEXED.test(root)) return undefined
+    const n = norm(root)
+    for (const r of roots.values()) if ((r.cold || r.ix.ready) && n.startsWith(norm(r.ix.root))) return r
+    return undefined
+  }
+
   const contentMatch = async (p: string, needle: string | RegExp, signal: AbortSignal) => {
     // Stream with a small overlap so matches across chunk borders are found.
     let tail = ''
@@ -425,6 +441,12 @@ export function searchHandlers(ctx: EngineCtx) {
       for (const r of root ? [root] : [...roots.values()].map((x) => x.ix.root)) await build(r)
       return status()
     },
+    /** The search box got focus: load the indexes a search from there would use, before Enter. */
+    'index.warm': (under?: string) => {
+      const u = under ? norm(under) : undefined
+      for (const r of roots.values()) if (!u || norm(r.ix.root).startsWith(u) || u.startsWith(norm(r.ix.root))) void wake(r).catch(() => {})
+      return true
+    },
     'index.query': async (q: string, opts?: { limit?: number; dirsOnly?: boolean; under?: string; weekStart?: number }) => {
       // wake only the indexes this query can use
       const under = opts?.under ? norm(opts.under) : undefined
@@ -442,19 +464,47 @@ export function searchHandlers(ctx: EngineCtx) {
       let hits = 0
       let scanned = 0
       let batch: Entry[] = []
-      let lastFlush = Date.now()
+      let finished = false
+      let folders = 0
+      let last = '' // the latest entry seen: its folder is where the walk is now
       const flush = (done = false) => {
-        if (batch.length || done) ctx.emit('search-hit', { token, entries: batch, scanned, hits, done })
+        if (finished) return
+        finished = done
+        // progress goes out even without new hits, so the count moves while a walk runs
+        ctx.emit('search-hit', { token, entries: batch, scanned, hits, done, folders, at: last && dirname(last) })
         batch = []
-        lastFlush = Date.now()
       }
+      const ticker = setInterval(flush, 200)
       const checks: Promise<void>[] = []
       let active = 0
+      // A name search is answered by the index wherever one covers the root (the watchers keep it
+      // current); only roots without an index are walked live. Content and size/date/kind
+      // searches still walk, since they need what the index does not hold.
+      const nameOnly = !needle && !q.kinds && q.minSize === undefined && q.maxSize === undefined && !q.after && !q.before
       const run = async () => {
         if (m.filters.labels) await ctx.labels.preload(q.roots).catch(() => {})
+        const walkRoots: string[] = []
         for (const root of q.roots) {
+          const r = nameOnly ? indexFor(root) : undefined
+          if (r) await wake(r).catch(() => {})
+          if (ac.signal.aborted) break
+          if (!r || !r.ix.ready) {
+            walkRoots.push(root)
+            continue
+          }
+          if (hits >= limit) continue
+          const res = query(q.name || '', { limit: limit - hits, under: root, weekStart: q.weekStart })
+          scanned += r.ix.live
+          last = join(root, '*') // "at" reads as the indexed root itself
+          hits += res.entries.length
+          batch.push(...res.entries)
+          flush()
+        }
+        for (const root of walkRoots) {
           await walk(ctx, root, (e) => {
             scanned++
+            if (e.dir) folders++
+            last = e.path
             if (ac.signal.aborted || hits >= limit) return false
             if (!m.test(e.name.toLowerCase())) return
             if (m.filtered && !passesFilters(m.filters.labels ? { ...e, label: ctx.labels.labelOf(e.path) } : e, m.filters)) return
@@ -486,14 +536,17 @@ export function searchHandlers(ctx: EngineCtx) {
             }
             hits++
             batch.push(e)
-            if (Date.now() - lastFlush > 150) flush()
           }, { signal: ac.signal, concurrency: 6 })
         }
         await Promise.all(checks)
-        flush(true)
-        searches.delete(token)
       }
       void run()
+        .catch(() => {})
+        .finally(() => {
+          clearInterval(ticker)
+          flush(true)
+          searches.delete(token)
+        })
       return token
     },
     'search.cancel': (token: string) => searches.get(token)?.abort(),

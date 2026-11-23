@@ -10,6 +10,7 @@
   import { canWindowsMenu, windowsMenu } from '../lib/winshell'
   import { ATTR, type ColumnSpec } from '@shared/types'
   import Icon from './Icon.svelte'
+  import SearchFlow from './SearchFlow.svelte'
 
   let { pane }: { pane: Pane } = $props()
 
@@ -721,7 +722,7 @@
       {:else if pane.filter}
         <div class="caption">No items match “{pane.filter}”.</div>
       {:else if pane.searchInfo}
-        <div class="caption">{pane.searchInfo.done ? 'No results.' : 'Searching…'}</div>
+        {#if pane.searchInfo.done}<div class="caption">{pane.searchInfo.stopped ? 'Search stopped. Nothing found before it stopped.' : 'No results.'}</div>{:else}<SearchFlow {pane} />{/if}
       {:else}
         <div class="caption">This folder is empty.</div>
       {/if}
@@ -729,6 +730,9 @@
   {/if}
   {#if pane.loading && !rows.length}
     <div class="loading"><span class="bar"></span></div>
+  {/if}
+  {#if pane.searchInfo && !pane.searchInfo.done && rows.length}
+    <SearchFlow {pane} compact />
   {/if}
 </div>
 

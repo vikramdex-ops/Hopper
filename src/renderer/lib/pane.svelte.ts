@@ -98,7 +98,7 @@ export class Pane {
   anchor = -1
   renaming = $state<string | null>(null)
   /** search pane extras */
-  searchInfo = $state<{ scanned: number; hits: number; done: boolean } | null>(null)
+  searchInfo = $state<{ scanned: number; hits: number; done: boolean; folders?: number; at?: string; started?: number; roots?: string[]; stopped?: boolean } | null>(null)
   /** shared labels and notes of what is listed, keyed by lower-case path */
   labelItems = $state.raw<Record<string, LabelItem>>({})
   /** who the lock files in this folder name, keyed by lower-case lock-file path (null: unreadable) */
@@ -461,7 +461,9 @@ export class Pane {
     const content = params.get('content') ?? ''
     const st = `s${token}${Date.now().toString(36)}`
     this.searchToken = st
-    this.searchInfo = { scanned: 0, hits: 0, done: false }
+    const roots = root ? [root] : this.app.searchEverywhereRoots()
+    const started = Date.now()
+    this.searchInfo = { scanned: 0, hits: 0, done: false, started, roots }
     const seen = new Set<string>()
     const fresh: Entry[] = []
     const push = (list: Entry[]) => {
@@ -471,21 +473,26 @@ export class Pane {
       if (replace) fresh.push(...add)
       else if (add.length) this.entries = this.entries.concat(add)
     }
-    // Instant results from the index first (names, sizes, dates); the live walk then fills in the rest.
-    if (!content) void engine.call<{ entries: Entry[] }>('index.query', q, { limit: 2000, under: root || undefined, weekStart: WEEK_START }).then((r) => push(r.entries))
-    const off = engine.on('search-hit', (d: { token: string; entries: Entry[]; scanned: number; hits: number; done: boolean }) => {
+    // search.run answers indexed folders from the index at once and walks only the folders without one
+    const off = engine.on('search-hit', (d: { token: string; entries: Entry[]; scanned: number; hits: number; done: boolean; folders?: number; at?: string }) => {
       if (d.token !== st) return
       if (token !== this.token) return off()
       push(d.entries)
-      this.searchInfo = { scanned: d.scanned, hits: Math.max(d.hits, seen.size), done: d.done }
+      this.searchInfo = { scanned: d.scanned, hits: Math.max(d.hits, seen.size), done: d.done, folders: d.folders, at: d.at, started, roots, stopped: this.searchInfo?.stopped }
       if (d.done) {
         off()
         if (replace) this.entries = fresh
         void this.loadLabels()
       }
     })
-    const roots = root ? [root] : this.app.searchEverywhereRoots()
     void engine.call('search.run', st, { roots, name: q, content: content || undefined, limit: 20000, weekStart: WEEK_START })
+  }
+
+  /** Stop a running search; what was found so far stays listed. */
+  stopSearch() {
+    if (!this.searchToken || !this.searchInfo || this.searchInfo.done) return
+    this.searchInfo = { ...this.searchInfo, stopped: true }
+    void engine.call('search.cancel', this.searchToken)
   }
 
   // ---- shared labels and lock files ---------------------------------------------
