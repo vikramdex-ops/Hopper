@@ -4,6 +4,27 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.9.1] — 2026-11-23
+
+### Fixed
+- **Instant search is instant again.** A name search in a folder the index covers is now answered
+  from the index alone: "s3d admin" on a 1.4-million-item drive finishes in under a second instead
+  of waiting for a live crawl of the whole drive. Only folders without an index are searched live;
+  content and size, date and kind searches still look at the files themselves.
+- A search after a quiet spell no longer waits while the index re-reads folders that changed in the
+  meantime, or while a missing index is rebuilt; both happen in the background.
+- The first hits of a live search show at once instead of being held back until the next hit or the
+  end of the search. Content-search hits stream the same way.
+
+### Changed
+- **Clicking into the search box loads the index** while you type, so pressing Enter answers at once.
+- **A new view while a search runs** in a folder without an index: the "line of flow" from the
+  folder being searched to a counter of what has been found, with each folder branching off as it
+  is opened, your search words, the folder being looked in, items and folders looked at, speed and
+  elapsed time, and **Stop search** (results found so far stay listed). Once results are listed, a
+  slim flowing strip on top of the list shows the search is still going. It appears only when a
+  search takes longer than a moment, and is still when Windows animations are turned off.
+
 ## [2.9.0] — 2026-11-20
 
 ### Added

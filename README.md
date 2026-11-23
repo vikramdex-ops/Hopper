@@ -12,7 +12,7 @@ file sharing to colleagues over the office LAN with an `@mention`, and download 
 
 [**Website**](https://vikramdex-ops.github.io/Hopper/) ·
 [**Download**](https://github.com/vikramdex-ops/Hopper/releases/latest) ·
-[What's new](#whats-new-in-25) ·
+[What's new](#whats-new-in-29) ·
 [Office setup](docs/OFFICE-SETUP.md) ·
 [Keyboard](#keyboard)
 
@@ -32,7 +32,7 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 | **Viewers** — PDF (continuous scroll, `Ctrl`+wheel zoom), Excel, Word, the preview saved in DWG files, MicroStation V7 drawings (`.dgn`, `.i01`…) with zoom, pan and levels, and SmartSketch `.sha` details. No design software needed. | **Project folders** — the *Dexterity project* template asks for job number, name, type, 3D platform, disciplines, sub-projects, areas and review gates, shows the exact tree first and never overwrites. A second template makes a dated issue pack. |
 | **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **Copies you can watch** — copy, move, delete, zip and extract show a progress window (percentage, current file, speed, time left, Pause / Cancel / Hide) that also asks about name conflicts, with *apply to all*. Everything runs in one background queue; the Transfers panel (`Ctrl+J`) keeps the history. Same-drive moves are instant; flaky shares are retried. |
 | **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Revisions (`RevA / RevB / Rev0`) group under the latest; unknown orders are flagged, never guessed. | **Hopper's own, top to bottom** — its own context menu, Properties, Open with and folder picker; nothing is handed to Windows Explorer. Path Copy (UNC, Internet, Samba forms), Recycle Bin restore, `Ctrl+Z` undo, the Windows clipboard both ways and drag-out to Outlook or Cliq. |
-| **Find it instantly** — a background index of your drives answers as you type; content search on demand; duplicates by content. **Network**: computers and NAS shares on the office network and your saved places, with Hopper's own sign-in. | **Fluent and fast** — Windows 11 look (Mica, light and dark), one pane or two (switch at the top right, `F10`), a *New* menu with your installed document types, a Home start page, drives with "free of total", a sidebar that collapses to a rail (`Ctrl+Shift+B`), announcements, workspaces and lists that stay smooth at 100,000 items. |
+| **Find it instantly** — a background index of your drives answers name searches in well under a second, with `date:`, `size:`, `type:` and `label:` filters and saved searches as smart folders; folders without an index are searched live with a progress view and *Stop search*; content search on demand; duplicates by content. **Network**: computers and NAS shares on the office network and your saved places, with Hopper's own sign-in. | **Fluent and fast** — Windows 11 look (Mica, light and dark), one pane or two (switch at the top right, `F10`), a *New* menu with your installed document types, a Home start page, drives with "free of total", a sidebar that collapses to a rail (`Ctrl+Shift+B`), announcements, workspaces and lists that stay smooth at 100,000 items. |
 
 <table>
 <tr>
@@ -74,6 +74,55 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.9
+
+**2.9.1**
+- **Instant search is instant again.** A name search in an indexed folder is answered from the
+  index alone — under a second on a drive of 1.4 million items — instead of waiting for a live
+  crawl of the whole drive. Only folders without an index are searched live.
+- Clicking into the search box loads the index while you type, and a search after a quiet spell no
+  longer waits on folders that changed in the meantime.
+- **A view while a search runs** in a folder without an index: the folder being searched, each
+  subfolder as it is opened, what has been found, items looked at, speed, elapsed time and
+  **Stop search**. Hits show the moment they are found.
+
+**2.9.0**
+- **Clipboard history** (<kbd>Win</kbd>+<kbd>V</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>):
+  text, links, paths, images, files and folders, with previews, search, filters and pins. A copied
+  file or folder can be pasted into any folder later.
+- **Storage forecast** (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd>): when each drive and tracked
+  folder will fill up, and which subfolders are growing unusually fast.
+- **Smart notices**: duplicate downloads (by content), piled-up temporary files, stalled downloads,
+  archives already extracted, old installers and low disk space, each with an action.
+- **Paste a path into the address bar** to go there; **unreachable shares wait and retry** by
+  themselves; **Win+E opens Hopper** once it is the default file manager.
+- **Much lower memory**: about 384 MB with a window open, down from about 1.2 GB.
+
+## What's new in 2.8
+
+- **More options**: the real Windows right-click menu (7-Zip, TortoiseGit, Bluebeam, Send to …) at
+  the bottom of Hopper's own; **Create shortcut**, **Run as administrator**, **Map network drive**.
+- **Group by** type, date, size, name or label; **each folder remembers its view**.
+- **Search filters** (`date:`, `size:`, `type:`, `label:`) and **smart folders** from saved searches.
+- **Who has it open?** asks every Hopper on the network which person, PC and program holds a file,
+  with **Ask to close** and **Wait and retry**; a **server agent** on the file server finds files
+  held by PCs without Hopper ([details](docs/UNLOCK.md)). **Lock badges** show Office and AutoCAD
+  owner files.
+- **Status labels and notes** shared with the whole office (Checked, Sent to client, Hold, Revise,
+  Final).
+- **Watch this folder**: one notice per burst of new, changed or deleted files, with quiet hours.
+- **Revision timeline** of a drawing and **Compare PDFs** (red only in the older, green only in the
+  newer).
+- **Fixed**: upgrades no longer stop at "Failed to uninstall old application files"; Print works for
+  every file name.
+
+## What's new in 2.7
+
+- Notices can go to **Dexterity Connect** instead of Zoho Cliq ([setup](docs/CONNECT-SETUP.md)).
+- **Delete works on network folders** (asked once, then deleted permanently, as Explorer does).
+- **Much less memory** for the search index; no built-in office address; **Dexterity Share
+  hardening**.
 
 ## What's new in 2.6
 
@@ -246,7 +295,11 @@ Details: [docs/OFFICE-SETUP.md](docs/OFFICE-SETUP.md).
 | `Ctrl+Alt+Z` / `Ctrl+Shift+Z` | zip here with default preset / with options |
 | `Ctrl+Alt+X` | extract here (smart) |
 | `Ctrl+Shift+Enter` | share with people |
-| `Ctrl+Alt+L` | create a client link (Dexterity Share) |
+| `Ctrl+Alt+L` / `Ctrl+Alt+K` | create a client link (Dexterity Share) / my client links |
+| `Win+V` or `Ctrl+Shift+H` | clipboard history |
+| `Ctrl+Alt+V` | go to the folder path on the clipboard |
+| `Alt+L` | status label and note |
+| `Ctrl+Alt+I` | storage forecast |
 | `Ctrl+Shift+C` | copy path (your default Path Copy form) |
 | `Alt+Enter` | properties |
 | `Ctrl+Shift+B` | show / hide the sidebar |

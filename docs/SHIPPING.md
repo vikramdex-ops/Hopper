@@ -15,6 +15,12 @@
 Signing: set `CSC_LINK` / `CSC_KEY_PASSWORD` secrets to sign the installer; unsigned builds show
 a SmartScreen prompt.
 
-Local builds on a network drive: keep `TEMP`, npm, Electron and electron-builder caches off C:
-(see the commands in this repo's history), and run test instances with `--no-sandbox` — the
-Chromium sandbox can't start child processes from an executable on a network share.
+Local builds on a network drive: leave `TEMP` and the npm, Electron and electron-builder caches at
+their defaults on the local disk (temp on a network share stalls every build when the share drops),
+and run test instances with `--no-sandbox` — the Chromium sandbox can't start child processes from
+an executable on a network share.
+
+Before tagging, check that the release notes read well: the workflow copies the version's
+`CHANGELOG.md` section as-is. Keep `README.md` (*What's new*, Highlights, Keyboard) and the landing
+page (`site/index.html`: *New in …* cards; the hero version and download buttons follow the latest
+release by themselves) in step with what shipped.
