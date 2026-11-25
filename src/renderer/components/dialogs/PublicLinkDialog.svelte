@@ -9,7 +9,7 @@
   import { engine, host } from '../../lib/api'
   import { basename, dirname, fmtEta, fmtRate, fmtSize, plural } from '../../lib/format'
   import {
-    DAY_MS, EXPIRY_DAYS, buildEmail, daysLeft, fmtExpiryDate, generatePassword, mailtoUrl, normalizeDays,
+    DAY_MS, EXPIRY_DAYS, MAX_RECIPIENTS, buildEmail, daysLeft, fmtExpiryDate, generatePassword, mailtoUrl, normalizeDays, parseRecipients,
     type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus
   } from '@shared/pubshare'
 
@@ -28,8 +28,11 @@
   let title = $state(files.length === 1 ? (hasFolders ? basename(files[0]) : stem(files[0])) : basename(dirname(files[0] ?? '')) || 'Files')
   let message = $state('')
   let days = $state(normalizeDays(cfg?.defaultDays))
+  /** who can download: anyone with the link, with a password, or only named addresses (code by e-mail) */
+  let protect = $state<'none' | 'password' | 'email'>('none')
   let password = $state('')
   let showPw = $state(false)
+  let recipientsText = $state('')
   let zipFirst = $state(hasFolders || files.length > 1)
   let presetId = $state(presets.find((p) => p.id === app.settings?.defaultPreset)?.id ?? presets[0]?.id ?? 'fast')
   let maxDownloads = $state(0)
@@ -45,7 +48,23 @@
   const job = $derived(created ? app.jobs.find((j) => j.id === created!.jobId) : undefined)
   const pct = $derived(job?.total ? Math.min(100, (job.done / job.total) * 100) : 0)
   const full = $derived(!!status && status.freeBytes != null && status.minFreeBytes != null && status.freeBytes - bytes < status.minFreeBytes)
-  const pwProblem = $derived(password && password.length < 6 ? 'Use at least 6 characters' : '')
+  const usePw = $derived(protect === 'password')
+  const useEmail = $derived(protect === 'email')
+  const pwProblem = $derived(usePw && password && password.length < 6 ? 'Use at least 6 characters' : '')
+  /** the share server reports in its heartbeat whether it can send e-mail */
+  const mailReady = $derived(status?.server?.mail === true)
+  const recipients = $derived(parseRecipients(recipientsText))
+  const recipProblem = $derived(
+    !useEmail
+      ? ''
+      : recipients.bad.length
+        ? `${recipients.bad.length === 1 ? 'Not an e-mail address' : 'Not e-mail addresses'}: ${recipients.bad.join(', ')}`
+        : recipients.list.length > MAX_RECIPIENTS
+          ? `At most ${MAX_RECIPIENTS} addresses (${recipients.list.length} typed)`
+          : ''
+  )
+  /** the chosen protection is complete (a password typed, or 1-10 good addresses on a server that can mail) */
+  const protectOk = $derived(usePw ? !!password && !pwProblem : useEmail ? mailReady && recipients.list.length > 0 && !recipProblem : true)
   const email = $derived(
     created
       ? buildEmail({
@@ -55,7 +74,8 @@
           sender: app.settings?.profile.displayName || 'Dexterity Design Services',
           files: link?.files ?? [],
           expiresAt: created.expiresAt,
-          hasPassword: !!password
+          hasPassword: usePw && !!password,
+          recipientsOnly: useEmail
         })
       : null
   )
@@ -81,12 +101,21 @@
   }
 
   async function go() {
-    if (phase !== 'form' || !title.trim() || pwProblem) return
+    if (phase !== 'form' || !title.trim() || !protectOk) return
     error = ''
     // With a known selection the tick box decides; for paths handed in from elsewhere the engine
     // works out whether a zip is needed (a folder always is).
     const zip = zipFirst ? { presetId, name: title.trim() } : known || files.length > 1 ? null : undefined
-    const spec: PublicShareSpec = { paths: files, title: title.trim(), message: message.trim() || undefined, days, password: password || undefined, zip, maxDownloads }
+    const spec: PublicShareSpec = {
+      paths: files,
+      title: title.trim(),
+      message: message.trim() || undefined,
+      days,
+      password: (usePw && password) || undefined,
+      recipients: useEmail ? recipients.list : undefined,
+      zip,
+      maxDownloads
+    }
     try {
       created = await engine.call<PublicShareCreated>('pubshare.create', spec)
       phase = 'working'
@@ -157,15 +186,39 @@
       </label>
     </div>
 
-    <label class="field">
-      <span>Password <span class="caption">(optional — send it to the client separately, never in the same e-mail)</span></span>
-      <div class="row">
-        <input class="input" type={showPw ? 'text' : 'password'} bind:value={password} autocomplete="new-password" spellcheck="false" />
-        <button type="button" class="btn" title="Make a strong password" onclick={() => ((password = generatePassword()), (showPw = true))}><Icon name="lock" /> Generate</button>
-        <button type="button" class="btn icon" title={showPw ? 'Hide' : 'Show'} aria-label={showPw ? 'Hide password' : 'Show password'} onclick={() => (showPw = !showPw)}><Icon name={showPw ? 'hidden' : 'eye'} /></button>
+    <div class="field" role="radiogroup" aria-label="Who can download">
+      <span>Who can download</span>
+      <div class="radios">
+        <label class="check"><input type="radio" name="protect" bind:group={protect} value="none" /> Anyone with the link</label>
+        <label class="check"><input type="radio" name="protect" bind:group={protect} value="password" /> Password</label>
+        <label class="check" class:disabled={!mailReady} title={mailReady ? '' : 'E-mail codes are not set up on the share server'}>
+          <input type="radio" name="protect" bind:group={protect} value="email" disabled={!mailReady} /> Only these e-mail addresses (code by e-mail)
+        </label>
       </div>
-      {#if pwProblem}<span class="hint bad">{pwProblem}</span>{/if}
-    </label>
+      {#if status && !mailReady}<span class="hint">E-mail codes are not set up on the share server yet. Whoever looks after Dexterity Share can set them up in Share server settings → E-mail codes.</span>{/if}
+    </div>
+
+    {#if usePw}
+      <label class="field">
+        <span>Password <span class="caption">(send it to the client separately, never in the same e-mail)</span></span>
+        <div class="row">
+          <input class="input" type={showPw ? 'text' : 'password'} bind:value={password} autocomplete="new-password" spellcheck="false" />
+          <button type="button" class="btn" title="Make a strong password" onclick={() => ((password = generatePassword()), (showPw = true))}><Icon name="lock" /> Generate</button>
+          <button type="button" class="btn icon" title={showPw ? 'Hide' : 'Show'} aria-label={showPw ? 'Hide password' : 'Show password'} onclick={() => (showPw = !showPw)}><Icon name={showPw ? 'hidden' : 'eye'} /></button>
+        </div>
+        {#if pwProblem}<span class="hint bad">{pwProblem}</span>{/if}
+      </label>
+    {:else if useEmail}
+      <label class="field">
+        <span>E-mail addresses <span class="caption">(up to {MAX_RECIPIENTS}; separate with commas or one per line)</span></span>
+        <textarea class="input" rows="2" bind:value={recipientsText} maxlength="4000" spellcheck="false" autocomplete="off" placeholder="name@client.com"></textarea>
+        {#if recipProblem}
+          <span class="hint bad">{recipProblem}</span>
+        {:else}
+          <span class="hint">{recipients.list.length ? `${recipients.list.length} ${recipients.list.length === 1 ? 'address' : 'addresses'} · ` : ''}The page asks the client for their e-mail address and sends a one-time code to the address typed here. Anyone else is turned away.</span>
+        {/if}
+      </label>
+    {/if}
 
     {#if !isArchive}
       <div class="zipline">
@@ -202,7 +255,10 @@
     {#if link}
       <div class="caption">{link.files.length === 1 ? link.files[0].name : plural(link.files.length, 'file')} · {fmtSize(link.bytes)}{maxDownloads ? ` · ${maxDownloads === 1 ? 'one download' : `${maxDownloads} downloads`} per file` : ''}</div>
     {/if}
-    {#if password}
+    {#if link?.recipients}
+      <div class="caption">Only for: {link.recipients.join(', ')}. Each gets a one-time code by e-mail when they open the link.</div>
+    {/if}
+    {#if usePw && password}
       <div class="pw">
         <Icon name="lock" />
         <span>Password: <b class="mono">{password}</b></span>
@@ -227,7 +283,7 @@
   {#snippet footer()}
     {#if phase === 'form'}
       <span class="caption foot">Files stay on the office server. Only this link can reach them, until it expires.</span>
-      <button type="submit" class="btn primary" disabled={!title.trim() || !files.length || !!pwProblem || full || status?.enabled === false || status?.storeOk === false}><Icon name="link" /> Create link</button>
+      <button type="submit" class="btn primary" disabled={!title.trim() || !files.length || !protectOk || full || status?.enabled === false || status?.storeOk === false}><Icon name="link" /> Create link</button>
       <button type="button" class="btn" onclick={() => close()}>Cancel</button>
     {:else if phase === 'working'}
       <span class="spacer"></span>
@@ -292,6 +348,13 @@
   }
   .hint.bad {
     color: var(--bad);
+  }
+  .radios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    align-items: center;
+    min-height: 32px;
   }
   .zipline {
     display: flex;

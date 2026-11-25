@@ -114,7 +114,7 @@
   }
 
   async function copyEmail(l: PublicLink) {
-    const m = buildEmail({ url: l.url, title: l.title, message: l.message, sender: l.sender, files: l.files, expiresAt: l.expiresAt, hasPassword: l.hasPassword })
+    const m = buildEmail({ url: l.url, title: l.title, message: l.message, sender: l.sender, files: l.files, expiresAt: l.expiresAt, hasPassword: l.hasPassword, recipientsOnly: !!l.recipients })
     await host.clip.writeText(`Subject: ${m.subject}\r\n\r\n${m.body}`)
     flash(`e:${l.id}`)
   }
@@ -146,6 +146,15 @@
     } finally {
       busy = ''
     }
+  }
+
+  /** One recipient of an e-mail-code link, from the server's stats (index-aligned with the manifest). */
+  function recipState(l: PublicLink, i: number) {
+    const r = l.stats?.recipients?.[i]
+    if (r?.downloads) return { text: `downloaded ${r.downloads === 1 ? 'once' : `${r.downloads} times`}${r.lastDownloadAt ? `, ${fmtAgo(r.lastDownloadAt)}` : ''}`, hit: true }
+    if (r?.verifiedAt) return { text: `code entered ${fmtAgo(r.verifiedAt)}, not downloaded yet`, hit: false }
+    if (r?.codesSent) return { text: `code sent${r.codesSent > 1 ? ` ${r.codesSent} times` : ''}, not entered yet`, hit: false }
+    return { text: 'no code asked for yet', hit: false }
   }
 
   function expiry(l: PublicLink) {
@@ -239,6 +248,7 @@
           <div class="head">
             <span class="name ellipsis" title={l.title}>{l.title}</span>
             {#if l.hasPassword}<span class="tag" title="Password protected"><Icon name="lock" size={12} /> password</span>{/if}
+            {#if l.recipients}<span class="tag" title="Only the listed addresses can download, with a one-time code sent by e-mail"><Icon name="lock" size={12} /> e-mail code</span>{/if}
             <span class="tag" class:warnc={!l.expired && daysLeft(l.expiresAt) <= 2} class:badc={l.expired} title={fmtExpiryDate(l.expiresAt)}>{expiry(l)}</span>
           </div>
           <div class="caption">
@@ -253,6 +263,16 @@
               <span>Not opened yet</span>
             {/if}
           </div>
+          {#if l.recipients}
+            <div class="who">
+              <span>Only for:</span>
+              {#each l.recipients as r, i (r)}
+                {@const s = recipState(l, i)}
+                <span class:hit={s.hit}><b>{r}</b> · {s.text}</span>
+              {/each}
+              {#if l.stats?.refused}<span class="warnText">{l.stats.refused === 1 ? '1 attempt' : `${l.stats.refused} attempts`} by other addresses</span>{/if}
+            </div>
+          {/if}
           <div class="acts">
             {#if confirm === l.id}
               <span class="ask">Revoke this link? The client can no longer download and the files are removed from the server.</span>
@@ -377,6 +397,23 @@
   .stats .hit {
     color: var(--ok);
     font-weight: 600;
+  }
+  .who {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .who b {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .who .hit {
+    color: var(--ok);
+  }
+  .warnText {
+    color: var(--warn);
   }
   .acts {
     display: flex;

@@ -238,7 +238,7 @@ await check('metadata: public fields only, nothing about paths, host or owner', 
   eq(r.json.files[0].sha256, sha(bigBytes))
   eq(r.json.totalSize, bigBytes.length)
   ok(Math.abs(r.json.now - Date.now()) < 5000, 'server clock included')
-  eq(Object.keys(r.json).sort().join(','), 'createdAt,expiresAt,fileCount,files,message,needsPassword,now,sender,title,totalSize,unlocked,v')
+  eq(Object.keys(r.json).sort().join(','), 'createdAt,expiresAt,fileCount,files,message,needsEmail,needsPassword,now,sender,title,totalSize,unlocked,v')
   const text = r.body.toString()
   for (const leak of ['owner', 'asha"', 'PC-TEST-07', 'store', 'share-agent', os.hostname(), 'U:\\', '192.168']) ok(!text.includes(leak), `leaks ${leak}`)
   eq(r.headers['cache-control'], 'no-store')

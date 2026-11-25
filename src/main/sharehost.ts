@@ -6,7 +6,7 @@
 import { app, ipcMain, safeStorage, utilityProcess, type UtilityProcess } from 'electron'
 import { existsSync, promises as fsp, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { DEFAULT_PAGE_URL, DEFAULT_SHARE_SERVER, normalizeDays, type PublicShareConfig, type ShareServerSettings } from '@shared/pubshare'
+import { DEFAULT_PAGE_URL, DEFAULT_SHARE_SERVER, normalizeDays, normalizeShareMail, type PublicShareConfig, type ShareServerSettings } from '@shared/pubshare'
 import { ctx, officeListeners, sendToWindow } from './ctx'
 import { hostname } from 'node:os'
 import { normPc } from '@shared/office-access'
@@ -26,9 +26,11 @@ function send(msg: unknown) {
 }
 
 const dir = () => join(app.getPath('userData'), 'share')
-const secretFile = (name: 'pointer' | 'tunnel') => join(dir(), `${name}-token.bin`)
+/** 'mail' is the SMTP password for e-mail codes */
+type Secret = 'pointer' | 'tunnel' | 'mail'
+const secretFile = (name: Secret) => join(dir(), `${name}-token.bin`)
 
-function readSecret(name: 'pointer' | 'tunnel') {
+function readSecret(name: Secret) {
   try {
     if (!safeStorage.isEncryptionAvailable()) return ''
     return safeStorage.decryptString(readFileSync(secretFile(name)))
@@ -37,7 +39,7 @@ function readSecret(name: 'pointer' | 'tunnel') {
   }
 }
 
-async function writeSecret(name: 'pointer' | 'tunnel', value: string) {
+async function writeSecret(name: Secret, value: string) {
   if (!value) {
     rmSync(secretFile(name), { force: true })
     return
@@ -47,7 +49,11 @@ async function writeSecret(name: 'pointer' | 'tunnel', value: string) {
   await fsp.writeFile(secretFile(name), safeStorage.encryptString(value))
 }
 
-export const shareSettings = (): ShareServerSettings => ({ ...DEFAULT_SHARE_SERVER, ...((ctx.settings.data as any).shareServer ?? {}) })
+export const shareSettings = (): ShareServerSettings => {
+  const s = { ...DEFAULT_SHARE_SERVER, ...((ctx.settings.data as any).shareServer ?? {}) }
+  // settings saved before e-mail codes existed have no "mail"
+  return { ...s, mail: normalizeShareMail(s.mail) }
+}
 
 function shareConfig(): PublicShareConfig {
   const c: Partial<PublicShareConfig> = (ctx.office.data as any)?.publicShare ?? {}
@@ -102,7 +108,7 @@ function ensure() {
 export function pushShareConfig(force = false) {
   const settings = shareSettings()
   if (!settings.enabled && !child && !force) return
-  send({ type: 'config', config: { settings, share: shareConfig(), token: readSecret('pointer'), tunnelToken: readSecret('tunnel') } })
+  send({ type: 'config', config: { settings, share: shareConfig(), token: readSecret('pointer'), tunnelToken: readSecret('tunnel'), mailPass: readSecret('mail') } })
 }
 
 function call(method: string, ...args: unknown[]) {
@@ -123,9 +129,9 @@ function pushShareConfigOnce() {
 
 export function initShareHost() {
   const h = (name: string, fn: (...args: any[]) => unknown) => ipcMain.handle(name, (_e, ...args) => fn(...args))
-  h('share:state', async () => ({ ...((await call('state')) as object), settings: shareSettings(), tunnelTokenSaved: existsSync(secretFile('tunnel')), protected: safeStorage.isEncryptionAvailable() }))
-  h('share:call', (method: 'checkToken' | 'probeCloudflared' | 'downloadCloudflared' | 'selfTest' | 'republish', ...args: unknown[]) => {
-    if (!['checkToken', 'probeCloudflared', 'downloadCloudflared', 'selfTest', 'republish'].includes(method)) throw new Error('not allowed')
+  h('share:state', async () => ({ ...((await call('state')) as object), settings: shareSettings(), tunnelTokenSaved: existsSync(secretFile('tunnel')), mailPasswordSaved: existsSync(secretFile('mail')), protected: safeStorage.isEncryptionAvailable() }))
+  h('share:call', (method: 'checkToken' | 'probeCloudflared' | 'downloadCloudflared' | 'selfTest' | 'republish' | 'testMail', ...args: unknown[]) => {
+    if (!['checkToken', 'probeCloudflared', 'downloadCloudflared', 'selfTest', 'republish', 'testMail'].includes(method)) throw new Error('not allowed')
     return call(method, ...args)
   })
   /** Step 3: validates the token, creates or reuses the gist, and only then stores the token (encrypted). */
@@ -139,6 +145,12 @@ export function initShareHost() {
     pushShareConfig(true)
     return true
   })
+  /** SMTP password for e-mail codes: encrypted beside the tokens, never in settings.json; '' forgets it. */
+  h('share:setMailPassword', async (pass: string) => {
+    await writeSecret('mail', String(pass ?? ''))
+    pushShareConfig(true)
+    return true
+  })
   h('share:forgetToken', async () => {
     await writeSecret('pointer', '')
     pushShareConfig(true)
@@ -147,6 +159,7 @@ export function initShareHost() {
   /** Save the per-PC settings. Switching the server on also makes Hopper start with Windows and stay in the tray. */
   h('share:configure', (patch: Partial<ShareServerSettings>) => {
     const next = { ...shareSettings(), ...patch }
+    if (patch.mail) next.mail = normalizeShareMail(patch.mail)
     const turningOn = next.enabled && !shareSettings().enabled
     ctx.settings.set({ shareServer: next, ...(turningOn ? { keepInTray: true } : {}) } as any)
     // the share server must come back after a crash or power cut: write this now, not on the usual delay

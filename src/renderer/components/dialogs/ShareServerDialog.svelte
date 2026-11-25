@@ -9,11 +9,11 @@
   import { host } from '../../lib/api'
   import { lanx } from '../../lib/lan2.svelte'
   import { fmtAgo, fmtSize } from '../../lib/format'
-  import { DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, type PublicShareConfig, type ShareServerSettings, type ShareServerState } from '@shared/pubshare'
+  import { DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, normEmail, type PublicShareConfig, type ShareMailSettings, type ShareServerSettings, type ShareServerState } from '@shared/pubshare'
 
   let { close }: { close: (v?: unknown) => void } = $props()
 
-  type State = ShareServerState & { settings: ShareServerSettings; tunnelTokenSaved: boolean; protected: boolean }
+  type State = ShareServerState & { settings: ShareServerSettings; tunnelTokenSaved: boolean; mailPasswordSaved: boolean; protected: boolean }
   let st = $state.raw<State | null>(null)
   let busy = $state('')
   let errors = $state<Record<string, string>>({})
@@ -153,6 +153,53 @@
     })
   const saveMinFree = () => run('adv', async () => saveOffice({ minFreeGB: Math.max(0, Number(minFree) || 0) }))
   const num = (e: Event) => Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0)
+
+  // ---- E-mail codes: the SMTP account the server sends one-time codes from ----------------------
+  // The password goes to the main process once, is kept encrypted by Windows, and is never shown back.
+  let mailOpen = $state(false)
+  let mail = $state<ShareMailSettings | null>(null)
+  let mailPass = $state('')
+  let mailTo = $state('')
+  let mailTest = $state<{ ok: boolean; text: string } | null>(null)
+  const mailDirty = $derived(!!mail && !!s && (JSON.stringify(mail) !== JSON.stringify(s.mail) || !!mailPass))
+  const mailFromOk = $derived(!!mail && !!normEmail(mail.from || mail.user))
+
+  function toggleMail() {
+    mailOpen = !mailOpen
+    if (mailOpen && s) mail = { ...s.mail }
+  }
+
+  /** SSL/TLS and STARTTLS have their own usual ports: follow the choice unless a custom port is set. */
+  function setSecure(secure: ShareMailSettings['secure']) {
+    if (!mail) return
+    const port = mail.port === 465 || mail.port === 587 || !mail.port ? (secure === 'tls' ? 465 : 587) : mail.port
+    mail = { ...mail, secure, port }
+  }
+
+  async function persistMail() {
+    if (!mail) return
+    await host.share.configure({ mail: { ...mail, host: mail.host.trim(), user: mail.user.trim(), from: mail.from.trim(), port: Number(mail.port) || (mail.secure === 'tls' ? 465 : 587) } })
+    if (mailPass) {
+      await host.share.setMailPassword(mailPass)
+      mailPass = ''
+    }
+    await refresh()
+    if (st) mail = { ...st.settings.mail }
+  }
+
+  const saveMail = () => run('mail', persistMail)
+  const forgetMailPass = () => run('mail', async () => void (await host.share.setMailPassword('')))
+  const testMail = () =>
+    run('mail', async () => {
+      mailTest = null
+      if (mailDirty) await persistMail()
+      try {
+        await host.share.call('testMail', mailTo.trim())
+        mailTest = { ok: true, text: `Sent to ${mailTo.trim()}. Check that inbox (and its spam folder).` }
+      } catch (e) {
+        mailTest = { ok: false, text: clean(e) }
+      }
+    })
 </script>
 
 <Dialog title="Set up Dexterity Share" icon="cloud" width={640} onclose={() => close()}>
@@ -278,6 +325,47 @@
         <label class="field"><span>Cloudflare tunnel token {#if st?.tunnelTokenSaved}<span class="caption">(saved)</span>{/if}</span>
           <div class="row"><input class="input" type="password" bind:value={tunnelToken} autocomplete="off" spellcheck="false" disabled={!admin} /><button type="button" class="btn" disabled={!admin || !tunnelToken.trim() || !!busy} onclick={saveTunnelToken}>Save</button></div></label>
       {/if}
+    </div>
+  {/if}
+
+  <button type="button" class="btn subtle sm disclose" aria-expanded={mailOpen} onclick={toggleMail}><Icon name={mailOpen ? 'chevronDown' : 'chevronRight'} /> E-mail codes{st?.health ? (st.health.mail ? ' · ready' : ' · not set up') : ''}</button>
+  {#if mailOpen && mail}
+    <div class="adv">
+      <div class="caption">For links limited to named e-mail addresses: the server e-mails each client a one-time code from this account. Leave the server empty to switch e-mail codes off.</div>
+      <div class="caption how">Gmail / Google Workspace: smtp.gmail.com, 465 SSL, an app password. Zoho Mail: smtp.zoho.in, 465 SSL.</div>
+      {#if errors.mail}<div class="err">{errors.mail}</div>{/if}
+      <div class="grid">
+        <label class="field"><span>SMTP server</span>
+          <input class="input" bind:value={mail.host} placeholder="smtp.example.com" spellcheck="false" autocomplete="off" disabled={!admin} /></label>
+        <label class="field"><span>Port</span>
+          <input class="input" type="number" min="1" max="65535" step="1" bind:value={mail.port} disabled={!admin} /></label>
+        <label class="field"><span>Security</span>
+          <select class="input" value={mail.secure} disabled={!admin} onchange={(e) => setSecure(e.currentTarget.value as ShareMailSettings['secure'])}>
+            <option value="tls">SSL/TLS (usually 465)</option>
+            <option value="starttls">STARTTLS (usually 587)</option>
+          </select></label>
+        <label class="field"><span>User name</span>
+          <input class="input" bind:value={mail.user} placeholder="share@example.com" spellcheck="false" autocomplete="off" disabled={!admin} /></label>
+        <label class="field"><span>Password {#if st?.mailPasswordSaved}<span class="caption">(saved)</span>{/if}</span>
+          <input class="input" type="password" bind:value={mailPass} placeholder={st?.mailPasswordSaved ? 'Type to replace the saved one' : ''} autocomplete="new-password" spellcheck="false" disabled={!admin} /></label>
+        <label class="field"><span>Sender address <span class="caption">(blank = user name)</span></span>
+          <input class="input" bind:value={mail.from} placeholder={mail.user || 'share@example.com'} spellcheck="false" autocomplete="off" disabled={!admin} /></label>
+        <label class="field"><span>Sender name</span>
+          <input class="input" bind:value={mail.fromName} maxlength="80" disabled={!admin} /></label>
+      </div>
+      {#if mail.host.trim() && !mailFromOk}<div class="err">Give a sender address (or a user name that is an e-mail address).</div>{/if}
+      <div class="row">
+        <button type="button" class="btn" class:primary={mailDirty} disabled={!admin || !!busy || !mailDirty || (!!mail.host.trim() && !mailFromOk)} onclick={saveMail}>{busy === 'mail' ? 'Saving…' : 'Save'}</button>
+        {#if st?.mailPasswordSaved}<button type="button" class="btn subtle sm" disabled={!admin || !!busy} onclick={forgetMailPass}>Forget password</button>{/if}
+        <span class="spacer"></span>
+      </div>
+      <div class="caption">The password is kept on this PC only, encrypted by Windows. It is never shown again or written to any settings file.</div>
+      <div class="row">
+        <input class="input" type="email" bind:value={mailTo} placeholder="Send a test to this address" spellcheck="false" autocomplete="off" aria-label="Test e-mail address" disabled={!admin} />
+        <button type="button" class="btn" disabled={!admin || !!busy || !normEmail(mailTo) || !mail.host.trim() || !st?.running} onclick={testMail}><Icon name="send" /> {busy === 'mail' ? 'Sending…' : 'Send test e-mail'}</button>
+      </div>
+      {#if st && !st.running}<div class="caption">The share server must be running on this PC (step 1) to send a test.</div>{/if}
+      {#if mailTest}<div class={mailTest.ok ? 'note good' : 'note bad'}><Icon name={mailTest.ok ? 'success' : 'error'} /> <span>{mailTest.text}</span></div>{/if}
     </div>
   {/if}
 

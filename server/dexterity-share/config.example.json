@@ -9,6 +9,15 @@
     "minFreeGB": 5,
     "staff": { "enabled": true, "maxGB": 5, "chunkMB": 16, "defaultDays": 7 }
   },
+  "mail": {
+    "host": "smtp.zoho.in",
+    "port": 465,
+    "secure": "tls",
+    "user": "share@example.com",
+    "passFile": "mail-password.txt",
+    "from": "share@example.com",
+    "fromName": "Dexterity Share"
+  },
   "tunnel": {
     "mode": "quick",
     "cloudflared": "C:\\Program Files (x86)\\cloudflared\\cloudflared.exe"

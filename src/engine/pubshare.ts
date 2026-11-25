@@ -8,7 +8,7 @@ import { basename, dirname, join, relative, isAbsolute, resolve } from 'node:pat
 import type { ArchivePreset, OfficeConfig } from '@shared/types'
 import { DEFAULT_PRESETS } from '@shared/defaults'
 import {
-  DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_SHARE_FILES, STAFF_DIR, encodeShareId, isShareId, normalizeDays, normalizeStaffWeb, safeFileName, shareUrl, staffPassUrl,
+  DAY_MS, DEFAULT_MIN_FREE_GB, DEFAULT_PAGE_URL, GIST_ID_RE, KEY_HASH_RE, MANIFEST_VERSION, MAX_RECIPIENTS, MAX_SHARE_FILES, STAFF_DIR, emailKey, encodeShareId, isShareId, normEmail, normalizeDays, normalizeStaffWeb, safeFileName, shareUrl, staffPassUrl,
   type PasswordVerifier, type PublicLink, type PublicShareConfig, type PublicShareCreated, type PublicShareSpec, type PublicShareStatus, type ShareManifest, type ShareStats,
   type StaffPass, type StaffPassCreated, type StaffPassInfo, PUBLIC_SENDER
 } from '@shared/pubshare'
@@ -55,6 +55,24 @@ export function publicShareConfig(ctx: Pick<EngineCtx, 'office' | 'settings'>): 
 /** Office admins, by the same rule main uses (shared/office-access.ts). */
 function isOfficeAdmin(ctx: Pick<EngineCtx, 'office'>, user: string, pc: string) {
   return canConfigureOffice(ctx.office, user, pc)
+}
+
+/**
+ * The addresses a link is limited to, normalised the way the server's validateManifest wants them
+ * (lower-case, distinct by emailKey, 1..MAX_RECIPIENTS); [] for anyone with the link.
+ */
+export function checkRecipients(spec: Pick<PublicShareSpec, 'password' | 'recipients'>): string[] {
+  const raw = (Array.isArray(spec.recipients) ? spec.recipients : []).map((s) => String(s ?? '').trim()).filter(Boolean)
+  if (!raw.length) return []
+  if (spec.password) throw new Error('Choose either a password or e-mail codes, not both')
+  const out: string[] = []
+  for (const r of raw) {
+    const e = normEmail(r)
+    if (!e) throw new Error(`"${r.slice(0, 100)}" is not an e-mail address`)
+    if (!out.some((x) => emailKey(x) === emailKey(e))) out.push(e)
+  }
+  if (out.length > MAX_RECIPIENTS) throw new Error(`A link can be limited to at most ${MAX_RECIPIENTS} e-mail addresses (${out.length} given)`)
+  return out
 }
 
 /** Same verifier the share server checks: scrypt over the NFKC-normalised password. Never stores the password. */
@@ -297,7 +315,8 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
         files,
         password: spec.password ? await makeVerifier(spec.password) : null,
         maxDownloads: Math.max(0, Math.floor(spec.maxDownloads ?? 0)),
-        owner: who
+        owner: who,
+        ...(spec.recipients?.length ? { recipients: spec.recipients } : {})
       }
       await writeAtomic(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2))
       await fsp.rm(join(dir, 'creating.json'), { force: true }).catch(() => {})
@@ -386,6 +405,7 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       files: m.files.map((f) => ({ name: f.name, size: f.size })),
       bytes: m.files.reduce((a, f) => a + f.size, 0),
       hasPassword: !!m.password,
+      recipients: Array.isArray(m.recipients) && m.recipients.length ? m.recipients.map(String) : null,
       maxDownloads: m.maxDownloads ?? 0,
       stats: stats?.v === 1 ? stats : null
     }
@@ -397,11 +417,16 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       const cfg = ready()
       if (!spec?.paths?.length) throw new Error('Nothing selected')
       if (spec.password != null && spec.password !== '' && spec.password.length < 6) throw new Error('Use a password of at least 6 characters')
+      const recipients = checkRecipients(spec)
+      // the server can only send codes when e-mail is set up there (it says so in its heartbeat)
+      if (recipients.length && (await readJson<{ mail?: boolean }>(join(cfg.store, '_server.json')))?.mail !== true) {
+        throw new Error('E-mail codes are not set up on the share server. Ask whoever looks after Dexterity Share to set up e-mail in Share server settings.')
+      }
       const id = encodeShareId(randomBytes(16))
       const createdAt = deps.now()
       const expiresAt = createdAt + normalizeDays(spec.days, cfg.defaultDays) * DAY_MS
       const title = spec.title?.trim() || basename(spec.paths[0])
-      const jobId = ctx.jobs.create('share', `Client link: ${title}`, (ctl) => build(ctl, cfg, { ...spec, title }, id, expiresAt, createdAt), { immediate: true, dest: cfg.store })
+      const jobId = ctx.jobs.create('share', `Client link: ${title}`, (ctl) => build(ctl, cfg, { ...spec, title, recipients }, id, expiresAt, createdAt), { immediate: true, dest: cfg.store })
       return { jobId, id, url: shareUrl(cfg.pageUrl, id, cfg.pointer), expiresAt }
     },
 
@@ -544,8 +569,8 @@ export function pubshareHandlers(ctx: EngineCtx, overrides: Partial<PubshareDeps
       st.minFreeBytes = (cfg.minFreeGB ?? DEFAULT_MIN_FREE_GB) * 2 ** 30
       const beat = await readJson<{ base?: string; updated?: number } & NonNullable<PublicShareStatus['server']>>(join(cfg.store, '_server.json'))
       if (beat) {
-        const { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host } = beat
-        st.server = { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host }
+        const { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host, mail } = beat
+        st.server = { uptimeSec, activeDownloads, bytesToday, downloadsToday, freeBytes, totalBytes, limitMbps, mode, baseSince, host, mail: mail === true }
         st.serverSeenAt = beat.updated
       }
       if (!beat?.base || !/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(beat.base)) {

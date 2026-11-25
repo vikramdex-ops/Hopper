@@ -102,7 +102,22 @@ export interface ShareServerSettings {
   port: number
   /** total upload limit in Mbit/s (0 = no limit) and an optional lower one for office hours */
   bandwidth: { mbps: number; officeMbps: number; officeDays: number[]; officeFrom: string; officeTo: string }
+  /** SMTP for e-mail-code links ('' host = off). The password is kept apart, encrypted, never here. */
+  mail: ShareMailSettings
 }
+
+export interface ShareMailSettings {
+  host: string
+  port: number
+  /** 'tls' = SSL/TLS from the start (465); 'starttls' = upgrade after connecting (587) */
+  secure: 'tls' | 'starttls'
+  user: string
+  /** sender address ('' = the user name) */
+  from: string
+  fromName: string
+}
+
+export const DEFAULT_SHARE_MAIL: ShareMailSettings = { host: '', port: 587, secure: 'starttls', user: '', from: '', fromName: 'Dexterity Share' }
 
 export const DEFAULT_SHARE_SERVER: ShareServerSettings = {
   enabled: false,
@@ -110,7 +125,22 @@ export const DEFAULT_SHARE_SERVER: ShareServerSettings = {
   mode: 'quick',
   publicBase: '',
   port: 47880,
-  bandwidth: { mbps: 0, officeMbps: 0, officeDays: [1, 2, 3, 4, 5, 6], officeFrom: '09:00', officeTo: '19:00' }
+  bandwidth: { mbps: 0, officeMbps: 0, officeDays: [1, 2, 3, 4, 5, 6], officeFrom: '09:00', officeTo: '19:00' },
+  mail: DEFAULT_SHARE_MAIL
+}
+
+/** Settings saved before e-mail codes existed have no "mail"; a partial one is filled in. */
+export function normalizeShareMail(m: Partial<ShareMailSettings> | null | undefined): ShareMailSettings {
+  const secure = m?.secure === 'tls' ? 'tls' : 'starttls'
+  const port = Number(m?.port)
+  return {
+    host: String(m?.host ?? '').trim(),
+    port: Number.isInteger(port) && port > 0 && port < 65536 ? port : secure === 'tls' ? 465 : 587,
+    secure,
+    user: String(m?.user ?? '').trim(),
+    from: String(m?.from ?? '').trim(),
+    fromName: String(m?.fromName ?? '').trim() || DEFAULT_SHARE_MAIL.fromName
+  }
 }
 
 /** What the share process reports to the setup wizard and Settings. */
@@ -138,6 +168,8 @@ export interface ShareServerHealth {
   freeBytes: number | null
   totalBytes: number | null
   limitMbps: number
+  /** the server can send e-mail codes (SMTP is set up) */
+  mail?: boolean
 }
 
 export const DEFAULT_MIN_FREE_GB = 5
@@ -187,6 +219,11 @@ export interface ShareManifest {
   maxDownloads: number
   /** never sent to clients */
   owner: { user: string; host: string }
+  /**
+   * Only these people may download (1..MAX_RECIPIENTS normalised, distinct addresses): the page
+   * e-mails a one-time code to the matching one. Never together with a password.
+   */
+  recipients?: string[] | null
 }
 
 /** stats.json — written by the share server only. */
@@ -199,6 +236,10 @@ export interface ShareStats {
   lastViewAt: number
   lastDownloadAt: number
   files: { started: number; completed: number; bytes: number }[]
+  /** per address of manifest.recipients, same order */
+  recipients?: { codesSent: number; verifiedAt: number; downloads: number; lastDownloadAt: number }[]
+  /** attempts by addresses not on the list (the addresses are never kept) */
+  refused?: number
 }
 
 export interface PublicShareSpec {
@@ -207,6 +248,8 @@ export interface PublicShareSpec {
   message?: string
   days: number
   password?: string
+  /** limit the link to these e-mail addresses (one-time code by e-mail); not with a password */
+  recipients?: string[]
   /** zip the selection into one file first (always needed for folders) */
   zip?: { presetId?: string; name?: string } | null
   maxDownloads?: number
@@ -232,6 +275,8 @@ export interface PublicLink {
   files: { name: string; size: number }[]
   bytes: number
   hasPassword: boolean
+  /** the addresses the link is limited to, or null for anyone with the link */
+  recipients: string[] | null
   maxDownloads: number
   stats: ShareStats | null
 }
@@ -353,6 +398,63 @@ export function safeFileName(name: string, fallback = 'file') {
   return s || fallback
 }
 
+// ---- e-mail code links (same rules as server/dexterity-share/server.mjs) ----
+
+export const MAX_RECIPIENTS = 10
+const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
+
+/** Lower-case, trimmed address, or '' when it is not a plain address. */
+export function normEmail(s: unknown) {
+  const e = String(s ?? '').trim().toLowerCase()
+  return e.length <= 254 && EMAIL_RE.test(e) && !e.includes('..') ? e : ''
+}
+
+/** What two addresses are compared by: "+tag" ignored, and for Gmail the dots too. */
+export function emailKey(s: unknown) {
+  const e = normEmail(s)
+  if (!e) return ''
+  let local = e.slice(0, e.lastIndexOf('@'))
+  let domain = e.slice(e.lastIndexOf('@') + 1)
+  local = local.replace(/\+.*$/, '') || local
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    domain = 'gmail.com'
+    local = local.replace(/\./g, '')
+  }
+  return `${local}@${domain}`
+}
+
+/**
+ * Addresses typed or pasted by a person: separated by commas, semicolons, spaces or new lines;
+ * "Name <a@b.com>" is read as a@b.com. `list` is normalised with duplicates (by emailKey) dropped;
+ * `bad` holds what is not an address, as typed. The caller checks the count against MAX_RECIPIENTS.
+ */
+export function parseRecipients(text: string): { list: string[]; bad: string[] } {
+  const tokens = String(text ?? '')
+    // "Smith, John" <j@x.com>: a quoted display name may hold commas
+    .replace(/"[^"\r\n]*"\s*(?=<)/g, ' ')
+    .split(/[,;\r\n]+/)
+    // in "Name <a@b.com>" the words without an @ are the display name, not a bad address
+    .flatMap((seg) => {
+      const words = seg.replace(/<([^<>]*)>/g, ' <$1> ').split(/\s+/)
+      return /<[^<>]*>/.test(seg) ? words.filter((w) => w.includes('@')) : words
+    })
+    .map((t) => t.trim().replace(/^mailto:/i, '').replace(/^["'(<]+|["')>.]+$/g, ''))
+    .filter(Boolean)
+  const list: string[] = []
+  const bad: string[] = []
+  const keys = new Set<string>()
+  for (const t of tokens) {
+    const e = normEmail(t)
+    if (!e) {
+      if (!bad.includes(t)) bad.push(t)
+    } else if (!keys.has(emailKey(e))) {
+      keys.add(emailKey(e))
+      list.push(e)
+    }
+  }
+  return { list, bad }
+}
+
 export interface EmailInput {
   url: string
   title: string
@@ -363,6 +465,8 @@ export interface EmailInput {
   expiresAt: number
   now?: number
   hasPassword: boolean
+  /** the link is limited to named addresses (one-time code by e-mail) */
+  recipientsOnly?: boolean
 }
 
 /** Subject and plain-text body for the e-mail to the client. Never contains the password. */
@@ -383,7 +487,11 @@ export function buildEmail(e: EmailInput) {
     ...(e.files.length > 1 && e.files.length <= 12 ? e.files.map((f) => `  - ${f.name} (${fmtBytes(f.size)})`) : []),
     '',
     `This link expires on ${fmtExpiryDate(e.expiresAt)} (${n} ${n === 1 ? 'day' : 'days'} from today). Please download before then.`,
-    ...(e.hasPassword ? ['The link is password protected. We will send you the password separately.'] : []),
+    ...(e.recipientsOnly
+      ? ['The link works only for the e-mail address it was sent to. When you open it, enter your e-mail address and you will receive a one-time code by e-mail.']
+      : e.hasPassword
+        ? ['The link is password protected. We will send you the password separately.']
+        : []),
     '',
     'If the link does not open or the download fails, please reply to this e-mail and we will help.',
     '',
