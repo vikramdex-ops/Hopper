@@ -49,7 +49,8 @@ const smtp = createServer((sock) => {
   sock.on('error', () => {})
 })
 await new Promise((r) => smtp.listen(0, '127.0.0.1', r))
-const mailBody = (raw) => Buffer.from(raw.split('\r\n\r\n')[1].replace(/\r\n/g, ''), 'base64').toString('utf8')
+// the plain-text part of the message (the code e-mail is multipart: text, HTML and the logo)
+const mailBody = (raw) => Buffer.from(/Content-Type: text\/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+?)\r\n(?:--|$)/.exec(raw)[1].replace(/\r\n/g, ''), 'base64').toString('utf8')
 const mailTo = (raw) => /^To: <([^>]+)>/m.exec(raw)?.[1]
 
 const freePort = () => new Promise((res) => { const s = createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)) }) })

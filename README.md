@@ -84,6 +84,8 @@ the coffee is ready, and never wonder whether a copy over the network really fin
   *My client links* shows, per address, whether the code was sent, confirmed and downloaded.
 - Needs e-mail set up once on the share server: *Set up Dexterity Share → Advanced → E-mail codes*,
   with **Send test e-mail** ([guide](docs/DEXTERITY-SHARE-IT.md#e-mail-codes)).
+- **2.10.2:** the code e-mail clients receive is designed in the company brand (logo, title panel,
+  large code, what happens next), with a plain-text and a dark-mode version.
 
 ## What's new in 2.9
 

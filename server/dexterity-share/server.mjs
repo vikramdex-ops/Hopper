@@ -1,5 +1,5 @@
 // Dexterity Share server — (c) Dexterity Design Services Private Limited. Internal software.
-// One file, no dependencies (Node 20+). Serves client downloads from the share store that Hopper
+// No dependencies (Node 20+): this file, plus mail-html.mjs and mail-mark.mjs for the e-mails. Serves client downloads from the share store that Hopper
 // fills over the office network. Listens on 127.0.0.1 only: the tunnel is the only way in.
 // It never lists anything; a file is reachable only through its unguessable share id.
 import http from 'node:http'
@@ -8,6 +8,8 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { pipeline, Transform } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { MARK_CID, codeMailHtml, testMailHtml } from './mail-html.mjs'
+import { MARK_PNG_BASE64 } from './mail-mark.mjs'
 
 export const ID_RE = /^[a-z2-7]{26}$/
 const ROUTE_META = /^\/api\/s\/([a-z2-7]{26})$/
@@ -360,7 +362,8 @@ export function mailSettings(m) {
     host,
     port,
     secure,
-    user: String(m.user ?? '').trim(),
+    // a password with no user name: sign in as the sender (Zoho, Gmail and Microsoft 365 all want the address)
+    user: String(m.user ?? '').trim() || (m.pass ? from : ''),
     pass: String(m.pass ?? ''),
     from,
     fromName: String(m.fromName ?? 'Dexterity Share').replace(/[\r\n"\\<>]/g, '').slice(0, 80) || 'Dexterity Share',
@@ -374,9 +377,27 @@ function headerText(s) {
   return /^[\x20-\x7e]*$/.test(t) ? t : `=?UTF-8?B?${Buffer.from(t, 'utf8').toString('base64')}?=`
 }
 
-/** The whole message, CRLF line ends, body base64 (so no line is ever too long or starts with a dot). */
-export function buildMessage(mail, { to, subject, text }, date = new Date()) {
-  const body = Buffer.from(text.replace(/\r?\n/g, '\r\n'), 'utf8').toString('base64').replace(/.{1,76}/g, '$&\r\n')
+const b64lines = (buf) => buf.toString('base64').replace(/.{1,76}/g, '$&\r\n')
+const textPart = (type, s) => [`Content-Type: ${type}; charset=utf-8`, 'Content-Transfer-Encoding: base64', '', b64lines(Buffer.from(s.replace(/\r?\n/g, '\r\n'), 'utf8'))].join('\r\n')
+function multipart(kind, parts) {
+  const b = `=_dx_${crypto.randomBytes(12).toString('hex')}`
+  return [`Content-Type: multipart/${kind}; boundary="${b}"`, '', ...parts.map((p) => `--${b}\r\n${p}`), `--${b}--`, ''].join('\r\n')
+}
+
+/**
+ * The whole message, CRLF line ends, every part base64 (so no line is ever too long or starts with a dot).
+ * With html: multipart/alternative (plain text first, for programs that show no HTML) inside
+ * multipart/related, which also carries the inline images ({ cid, type, base64 }).
+ */
+export function buildMessage(mail, { to, subject, text, html, inline = [] }, date = new Date()) {
+  let content = textPart('text/plain', text)
+  if (html) {
+    content = multipart('alternative', [textPart('text/plain', text), textPart('text/html', html)])
+    if (inline.length) {
+      const images = inline.map((im) => [`Content-Type: ${im.type}`, 'Content-Transfer-Encoding: base64', `Content-ID: <${im.cid}>`, `Content-Disposition: inline; filename="${im.name ?? 'image'}"`, '', im.base64.replace(/.{1,76}/g, '$&\r\n')].join('\r\n'))
+      content = multipart('related', [content, ...images])
+    }
+  }
   return [
     `From: ${headerText(mail.fromName)} <${mail.from}>`,
     `To: <${to}>`,
@@ -384,12 +405,18 @@ export function buildMessage(mail, { to, subject, text }, date = new Date()) {
     `Date: ${date.toUTCString().replace('GMT', '+0000')}`,
     `Message-ID: <${crypto.randomBytes(12).toString('hex')}@${mail.from.slice(mail.from.lastIndexOf('@') + 1)}>`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: base64',
     'Auto-Submitted: auto-generated',
-    '',
-    body
+    content
   ].join('\r\n')
+}
+
+/** What a mail server's refusal means for whoever set it up, in plain words ('' when there is nothing to add). */
+export function smtpHint(code, what, signedIn) {
+  if (code === 530 || (code === 550 && !signedIn && what === 'MAIL FROM')) return signedIn ? 'The mail server wants a sign-in first.' : 'The mail server needs a sign-in: fill in User name (the mailbox address) and Password.'
+  if (code === 535 || code === 534) return 'Sign-in refused: check User name (the full mailbox address) and Password. Use an app password if the mailbox has two-step sign-in, and check that the mailbox may be used by mail programs (IMAP/SMTP access).'
+  if ((code === 553 || code === 550 || code === 554) && what === 'MAIL FROM') return 'The mail server will not let this mailbox send as the sender address. Leave Sender address blank, or use an address the mailbox may send as.'
+  if ((code === 550 || code === 553) && what === 'RCPT TO') return 'The mail server refused the recipient address.'
+  return ''
 }
 
 /** Send one plain-text e-mail over SMTP (implicit TLS, STARTTLS, or plain to this PC only). No dependencies. */
@@ -450,7 +477,10 @@ export async function smtpSend(mail, msg, deps = {}) {
   const cmd = async (line, ok, what = line.split(' ')[0]) => {
     if (line) sock.write(line + '\r\n')
     const r = await read()
-    if (!ok.includes(Math.floor(r.code / 100) * 100) && !ok.includes(r.code)) throw Object.assign(new Error(`SMTP ${what} refused: ${r.text.slice(0, 300)}`), { code: 'ESMTP', smtp: r.code })
+    if (!ok.includes(Math.floor(r.code / 100) * 100) && !ok.includes(r.code)) {
+      const hint = smtpHint(r.code, what, !!mail.user)
+      throw Object.assign(new Error(`${hint ? hint + ' ' : ''}(SMTP ${what} refused: ${r.text.slice(0, 300)})`), { code: 'ESMTP', smtp: r.code })
+    }
     return r
   }
   attach(sock)
@@ -485,10 +515,24 @@ export async function smtpSend(mail, msg, deps = {}) {
   }
 }
 
-/** The code e-mail. Plain words; the code is in the subject too, so a phone shows it without opening. */
-export function codeMail(m, code, minutes) {
+const LOGO = { cid: MARK_CID, type: 'image/png', name: 'dexterity.png', base64: MARK_PNG_BASE64 }
+
+/** The test e-mail from the setup screen, in the same design as the code e-mail. */
+export function testMail(from, now = new Date()) {
+  return {
+    subject: 'Dexterity Share test e-mail',
+    text: 'E-mail codes are ready.\n\nThis test came from the Dexterity Share server. Clients of links limited to named e-mail addresses will receive their one-time codes from this address.\n\nDexterity Share\nDexterity Design Services Private Limited',
+    html: testMailHtml(from, now),
+    inline: [LOGO]
+  }
+}
+
+/** The code e-mail, branded HTML with a plain-text twin; the code is in the subject too, so a phone shows it without opening. */
+export function codeMail(m, code, minutes, to = '') {
   const sender = m.sender || 'Dexterity Design Services'
   return {
+    html: codeMailHtml(m, code, minutes, to),
+    inline: [LOGO],
     subject: `${code} is your code for ${m.title}`.slice(0, 200),
     text: [
       'Hello,',
@@ -1133,7 +1177,7 @@ export function createShareServer(config, hooks = {}) {
     limiter.hit(`cr:${key}`, cfg.codesPerRecipientHour, HOUR, t)
     limiter.hit(`ci:${ip}`, cfg.codesPerIpHour, HOUR, t)
     try {
-      await sendMail({ to: m.recipients[r], ...codeMail(m, code, cfg.codeMinutes) })
+      await sendMail({ to: m.recipients[r], ...codeMail(m, code, cfg.codeMinutes, m.recipients[r]) })
     } catch (e) {
       // the previous code (if any) is still in their inbox and still good
       if (codes.get(key) === entry) prev && prev.exp > now() ? codes.set(key, prev) : codes.delete(key)
@@ -2005,7 +2049,7 @@ export function createShareServer(config, hooks = {}) {
     async testMail(to) {
       if (!canMail()) throw new Error('E-mail is not set up: it needs the mail server and the sender address.')
       if (!normEmail(to)) throw new Error('That is not an e-mail address.')
-      await sendMail({ to: normEmail(to), subject: 'Dexterity Share test e-mail', text: 'This is a test from Dexterity Share.\n\nIf you can read this, clients of e-mail-code links will get their codes.\n\nDexterity Share\nDexterity Design Services Private Limited' })
+      await sendMail({ to: normEmail(to), ...testMail(mail?.from ?? '') })
       return true
     },
     setStaff(s, minFreeGB = cfg.minFreeGB) {

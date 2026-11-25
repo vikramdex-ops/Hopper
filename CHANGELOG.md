@@ -4,6 +4,25 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.10.2] — 2026-11-25
+
+### Changed
+- **The code e-mail now carries the company brand.** Clients receive a designed e-mail in the style
+  of the download page: the Dexterity mark, a dark title panel naming the delivery and who sent it,
+  the line from our office to the client, the code large and easy to read, three steps saying what
+  happens next, and a short note on where the files come from. The logo travels inside the e-mail,
+  so it shows without loading anything from the internet. A plain-text version is included for mail
+  programs that show no designs, and the e-mail has its own dark-mode look.
+- The test e-mail from *Set up Dexterity Share → E-mail codes* uses the same design, so you see
+  exactly what clients will get.
+
+### Fixed
+- **E-mail codes with no user name.** With a password saved and the user name left empty, the server
+  did not sign in and the mail server refused with "530 Authentication Required". It now signs in as
+  the sender address, and the setup screen says so.
+- Mail server refusals are explained in plain words (sign-in needed, wrong user name or password,
+  sender not allowed), followed by the server's own message.
+
 ## [2.10.1] — 2026-11-25
 
 ### Fixed

@@ -344,15 +344,16 @@
             <option value="tls">SSL/TLS (usually 465)</option>
             <option value="starttls">STARTTLS (usually 587)</option>
           </select></label>
-        <label class="field"><span>User name</span>
-          <input class="input" bind:value={mail.user} placeholder="share@example.com" spellcheck="false" autocomplete="off" disabled={!admin} /></label>
+        <label class="field"><span>User name <span class="caption">(the mailbox address you sign in with)</span></span>
+          <input class="input" bind:value={mail.user} placeholder={mail.from || 'share@example.com'} spellcheck="false" autocomplete="off" disabled={!admin} /></label>
         <label class="field"><span>Password {#if st?.mailPasswordSaved}<span class="caption">(saved)</span>{/if}</span>
           <input class="input" type="password" bind:value={mailPass} placeholder={st?.mailPasswordSaved ? 'Type to replace the saved one' : ''} autocomplete="new-password" spellcheck="false" disabled={!admin} /></label>
         <label class="field"><span>Sender address <span class="caption">(blank = user name)</span></span>
           <input class="input" bind:value={mail.from} placeholder={mail.user || 'share@example.com'} spellcheck="false" autocomplete="off" disabled={!admin} /></label>
-        <label class="field"><span>Sender name</span>
+        <label class="field"><span>Sender name <span class="caption">(shown in the client's inbox)</span></span>
           <input class="input" bind:value={mail.fromName} maxlength="80" disabled={!admin} /></label>
       </div>
+      {#if mail.host.trim() && !mail.user.trim() && (st?.mailPasswordSaved || mailPass)}<div class="caption">No user name: the server signs in as the sender address.</div>{/if}
       {#if mail.host.trim() && !mailFromOk}<div class="err">Give a sender address (or a user name that is an e-mail address).</div>{/if}
       <div class="row">
         <button type="button" class="btn" class:primary={mailDirty} disabled={!admin || !!busy || !mailDirty || (!!mail.host.trim() && !mailFromOk)} onclick={saveMail}>{busy === 'mail' ? 'Saving…' : 'Save'}</button>

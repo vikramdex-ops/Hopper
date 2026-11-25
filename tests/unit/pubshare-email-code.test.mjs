@@ -372,3 +372,85 @@ test('smtpSend: refusals come back with the server\'s words; STARTTLS is require
   assert.ok(!h.log.some((l) => typeof l === 'string' && l.startsWith('AUTH')))
   await assert.rejects(S.smtpSend(mail, { to: 'c@x.com\r\nRCPT TO:<evil@x.com>', subject: 's', text: 't' }), /bad recipient/)
 })
+
+// ---- 2.10.2: branded e-mails, blank user name, plain-word refusals ---------------------------
+
+import * as H from '../../server/dexterity-share/mail-html.mjs'
+
+/** The decoded parts of a built message: [{ type, body, headers }] (one level of nesting is enough here). */
+function parts(raw) {
+  const out = []
+  const walk = (block) => {
+    const [head, ...rest] = block.split('\r\n\r\n')
+    const body = rest.join('\r\n\r\n')
+    const b = /boundary="([^"]+)"/.exec(head)?.[1]
+    if (b) return body.split(`--${b}`).slice(1).filter((p) => !p.startsWith('--')).forEach((p) => walk(p.replace(/^\r\n/, '')))
+    const type = /Content-Type: ([^;\r\n]+)/i.exec(head)?.[1]
+    out.push({ type, headers: head, body: Buffer.from(body.replace(/\r\n/g, ''), 'base64') })
+  }
+  walk(raw.slice(raw.indexOf('Content-Type:')))
+  return out
+}
+
+test('code e-mail: plain text and branded HTML, logo inline, code in both', () => {
+  const m = { title: 'Lot 09 <isometrics> & "rev B"', sender: 'Priya Sharma', expiresAt: Date.UTC(2026, 11, 2) }
+  const msg = S.codeMail(m, '482913', 10, 'client.pm@client-co.com')
+  const mail = S.mailSettings({ host: 'smtp.x.com', from: 'share@office.com', fromName: 'Dexterity Design Services' })
+  const raw = S.buildMessage(mail, { to: 'client.pm@client-co.com', ...msg })
+  assert.match(raw, /^Content-Type: multipart\/related; boundary=/m)
+  assert.ok(!raw.split('\r\n').some((l) => l.length > 998), 'no line over the SMTP limit')
+  assert.ok(!raw.split('\r\n').some((l) => l.startsWith('.')), 'no line starts with a dot')
+  const p = parts(raw)
+  assert.deepEqual(p.map((x) => x.type), ['text/plain', 'text/html', 'image/png'])
+  assert.match(p[0].body.toString(), /482 913/)
+  const html = p[1].body.toString()
+  assert.match(html, /482 913/)
+  assert.match(html, new RegExp(`src="cid:${H.MARK_CID}"`))
+  assert.match(p[2].headers, new RegExp(`Content-ID: <${H.MARK_CID}>`))
+  assert.equal(p[2].body.subarray(1, 4).toString(), 'PNG', 'the logo is a real PNG')
+  // manifest text is escaped, never markup
+  assert.ok(html.includes('Lot 09 &lt;isometrics&gt; &amp; &quot;rev B&quot;'))
+  assert.ok(!html.includes('<isometrics>'))
+  assert.ok(html.includes('client.pm@client-co.com') && html.includes('Priya Sharma'))
+  assert.ok(!/<script|<svg|https?:\/\/(?!dexteritydesign\.co\.in)/i.test(html), 'no scripts, SVG or remote content')
+})
+
+test('test e-mail: same design, logo inline', () => {
+  const raw = S.buildMessage(S.mailSettings({ host: 'smtp.x.com', from: 'info@office.com' }), { to: 'a@b.com', ...S.testMail('info@office.com') })
+  const p = parts(raw)
+  assert.deepEqual(p.map((x) => x.type), ['text/plain', 'text/html', 'image/png'])
+  assert.match(p[1].body.toString(), /E-mail codes<br>.*are ready/)
+  assert.match(p[1].body.toString(), /info@office\.com/)
+})
+
+test('a saved password with no user name signs in as the sender', () => {
+  assert.equal(S.mailSettings({ host: 'smtppro.zoho.in', from: 'info@office.com', pass: 'app pw' }).user, 'info@office.com')
+  assert.equal(S.mailSettings({ host: 'smtppro.zoho.in', from: 'info@office.com' }).user, '', 'no password: no sign-in (a relay)')
+  assert.equal(S.mailSettings({ host: 'smtppro.zoho.in', from: 'info@office.com', user: 'sam@office.com', pass: 'x' }).user, 'sam@office.com')
+})
+
+test('refusals in plain words', () => {
+  assert.match(S.smtpHint(530, 'MAIL FROM', false), /fill in User name/)
+  assert.match(S.smtpHint(535, 'AUTH', true), /app password/)
+  assert.match(S.smtpHint(553, 'MAIL FROM', true), /Sender address/)
+  assert.equal(S.smtpHint(421, 'DATA', true), '')
+})
+
+test('smtpSend: no user name and a server that wants a sign-in gives the plain-words hint', async () => {
+  const f = await fakeSmtp()
+  after(() => f.close())
+  const srv = net.createServer((s) => {
+    s.write('220 x\r\n')
+    s.on('data', (c) => {
+      const l = c.toString()
+      if (/^EHLO/.test(l)) s.write('250 x\r\n')
+      else if (/^MAIL FROM/.test(l)) s.write('530 5.7.0 Authentication Required\r\n')
+      else if (/^QUIT/.test(l)) s.end('221 bye\r\n')
+    })
+    s.on('error', () => {})
+  })
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  after(() => srv.close())
+  const mail = S.mailSettings({ host: '127.0.0.1', port: srv.address().port, secure: 'none', from: 'info@office.com' })
+  await assert.rejects(S.smtpSend(mail, { to: 'c@x.com', subject: 's', text: 't' }), /needs a sign-in: fill in User name.*530 5\.7\.0/)
+})
