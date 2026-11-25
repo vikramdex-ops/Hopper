@@ -162,6 +162,12 @@ textarea.in { resize: vertical; min-height: 76px; }
 .chips button:hover { background: var(--row-2); }
 .chips button[aria-pressed='true'] { position: relative; z-index: 1; background: var(--chip-on); border-color: var(--chip-on); color: var(--chip-on-ink); }
 .chips button[aria-pressed='true']::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: 5px; height: 2px; background: var(--amber); }
+/* protection: the same control, with words */
+.chips.words button { min-width: 0; padding: 0 14px; font: 500 13.5px var(--font); }
+.field.sub { gap: 6px; }
+#rcp { min-height: 64px; font-family: var(--mono); font-size: 13.5px; }
+#rcp-hint { overflow-wrap: anywhere; }
+#rcp-hint.bad { color: var(--bad); font-weight: 500; }
 .pwrow { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .pwrow .in { flex: 1; }
 
@@ -217,6 +223,9 @@ textarea.in { resize: vertical; min-height: 76px; }
 .pwbox { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-left: 2px solid var(--amber); border-radius: 0 3px 3px 0; background: var(--warn-tint); color: var(--ink); }
 .pwbox .lbl { color: var(--warn); }
 .pwbox small { color: var(--ink-2); font-size: 13px; }
+.mailbox { border-left-color: var(--accent); background: var(--row); }
+.mailbox .lbl { color: var(--accent); }
+.rcp-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font: 500 14px var(--mono); overflow-wrap: anywhere; }
 .pw { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: 3px; background: var(--bg); font-size: 16px; letter-spacing: .06em; overflow-wrap: anywhere; }
 
 /* ---- your links: title-block counts, then a hairline register ------------------------------------ */
@@ -238,6 +247,15 @@ table.links { width: 100%; border-collapse: collapse; }
 .links td b { font-weight: 500; font-size: 15px; overflow-wrap: anywhere; }
 .links td small { display: block; margin-top: 2px; color: var(--ink-2); font: 400 12px var(--mono); letter-spacing: .01em; }
 .links td.tn { font-family: var(--mono); font-size: 13px; }
+/* a link for named addresses: each address and how far its client got */
+.rcp-wrap { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font: 400 12px/1.45 var(--mono); color: var(--ink-2); }
+.rcp-l { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+.rcp { margin: 0; padding: 0; list-style: none; }
+.rcp li { display: flex; flex-wrap: wrap; gap: 0 8px; min-width: 0; }
+.rcp .addr { color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.rcp .rs.sent { color: var(--warn); }
+.rcp .rs.ok, .rcp .rs.dl { color: var(--ok); }
+.rcp-wrap .refused { color: var(--bad); }
 .links td.acts { white-space: nowrap; text-align: right; padding-right: 0; }
 /* status: a small tag with a dot, not a filled pill */
 .pill { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px 3px 8px; border: 1px solid currentColor; border-radius: 3px; font: 500 12px var(--font); white-space: nowrap; }

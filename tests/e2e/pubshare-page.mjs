@@ -62,13 +62,16 @@ const SITE_ORIGIN = `http://127.0.0.1:${siteServer.address().port}`
 const PAGE = `${SITE_ORIGIN}/share/`
 
 // ---- share server -----------------------------------------------------------------------------------
+// e-mail codes are captured here instead of sent
+const mails = []
+const mailHooks = { sendMail: async (m) => void mails.push(m) }
 const shareCfg = (port) => ({ port, store: STORE, allowedOrigins: [SITE_ORIGIN], stateDir: path.join(WORK, 'state'), logDir: path.join(WORK, 'logs'), manifestCacheMs: 100, revokeCheckMs: 300, statsFlushMs: 300, apiPerMinutePerIp: 100000, filePerMinutePerIp: 100000, clientIpHeader: 'x-test-ip', shutdownGraceSeconds: 0 })
-let app = S.createShareServer(shareCfg(0))
+let app = S.createShareServer(shareCfg(0), mailHooks)
 const PORT = await app.listen()
 const BASE = `http://127.0.0.1:${PORT}`
 site.config = { base: BASE, pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'], company: 'Dexterity Design Services Private Limited' }
 
-async function makeShare({ files, title, message = '', sender = 'Priya Sharma', days = 5, expiresAt, password, sparse }) {
+async function makeShare({ files, title, message = '', sender = 'Priya Sharma', days = 5, expiresAt, password, sparse, recipients }) {
   const id = newId()
   const dir = path.join(STORE, id)
   await fsp.mkdir(path.join(dir, 'data'), { recursive: true })
@@ -87,7 +90,7 @@ async function makeShare({ files, title, message = '', sender = 'Priya Sharma', 
       list.push({ name, size: buf.length, sha256: sha(buf) })
     }
   }
-  const manifest = { v: 1, id, title, message, sender, createdAt: Date.now(), expiresAt: expiresAt ?? Date.now() + days * P.DAY_MS, files: list, password: password ? await S.hashPassword(password, { N: 1024 }) : null, maxDownloads: 0, owner: { user: 'asha', host: 'PC' } }
+  const manifest = { v: 1, id, title, message, sender, createdAt: Date.now(), expiresAt: expiresAt ?? Date.now() + days * P.DAY_MS, files: list, password: password ? await S.hashPassword(password, { N: 1024 }) : null, maxDownloads: 0, owner: { user: 'asha', host: 'PC' }, ...(recipients ? { recipients } : {}) }
   await fsp.writeFile(path.join(dir, 'manifest.json'), JSON.stringify(manifest))
   return { id, manifest, dir }
 }
@@ -282,7 +285,7 @@ await check('verified download: streamed to disk with progress, survives the ser
       await app.close(0)
       await page.waitForSelector('text=/Connection interrupted — resuming in \\d+ s/', { timeout: 20000 })
       await shot(page, '07-verified-interrupted-desktop')
-      app = S.createShareServer(shareCfg(PORT))
+      app = S.createShareServer(shareCfg(PORT), mailHooks)
       await app.listen()
     }
     await page.waitForSelector('.prog.done', { timeout: 90000 })
@@ -398,6 +401,60 @@ await check('password: form, wrong password, attempts left, lockout message, unl
   await u.ctx.close()
 })
 
+await check('e-mail code: named recipient only, someone else refused cleanly, code sent to the listed address, wrong code, download, kept for the tab', async () => {
+  const named = await makeShare({ title: 'Lot 09 — client only', files: [['Lot 09 isometrics.zip', 2_000_000]], recipients: ['client.pm@client-co.com'], days: 7 })
+  await everywhere('22-email-ask', named.id)
+  const { page, ctx } = await open(named.id)
+  await settled(page)
+  ok((await page.textContent('.pills')).includes('Named recipients only'))
+  ok(!(await page.content()).includes('Lot 09 isometrics.zip'), 'file names hidden until confirmed')
+  ok(!(await page.content()).includes('client-co.com'), 'recipient list never sent to the page')
+  eq(await page.evaluate(() => document.activeElement?.id), 'em', 'address field focused')
+  await page.click('button[type=submit]')
+  ok((await page.textContent('#em-err')).includes('full e-mail address'))
+  // a colleague the e-mail was forwarded to
+  await page.fill('#em', 'colleague@client-co.com')
+  await page.keyboard.press('Enter')
+  await page.waitForSelector('text=This link was sent to someone else')
+  ok((await page.textContent('.main')).includes('ask Priya Sharma to share them with your own e-mail address'))
+  eq(mails.length, 0, 'no mail for an address not on the link')
+  await shot(page, '23-email-refused-desktop')
+  await page.click('text=Try a different address')
+  await page.fill('#em', ' Client.PM@Client-Co.com ')
+  await page.keyboard.press('Enter')
+  await page.waitForSelector('#code')
+  eq(mails.length, 1)
+  eq(mails[0].to, 'client.pm@client-co.com', 'code goes to the address the sender entered')
+  ok((await page.textContent('.main')).includes('cl•••@client-co.com'))
+  ok(/Send a new code in \d+ s/.test(await page.textContent('.otp-links')), 'resend waits')
+  await shot(page, '24-email-code-desktop')
+  const code = /(\d{3}) (\d{3})/.exec(mails[0].text).slice(1).join('')
+  await page.fill('#code', code === '000000' ? '111111' : '000000')
+  await page.waitForFunction(() => /isn't right/.test(document.querySelector('#code-err').textContent))
+  await page.fill('#code', `${code.slice(0, 3)} ${code.slice(3)}`) // six digits: goes on by itself
+  await page.waitForSelector('.file')
+  ok((await page.textContent('.pills')).includes('Confirmed'))
+  await shot(page, '25-email-confirmed-desktop')
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('.btn.primary.lg')])
+  const to = path.join(WORK, 'dl-named.bin')
+  await download.saveAs(to)
+  eq(sha(await fsp.readFile(to)), named.manifest.files[0].sha256, 'named file downloads with the token')
+  await page.reload()
+  await settled(page)
+  await page.waitForSelector('.file')
+  await ctx.close()
+  // phone: code step fits
+  const m = await open(named.id, { mobile: true })
+  await settled(m.page)
+  await m.page.fill('#em', 'client.pm@client-co.com')
+  await m.page.keyboard.press('Enter')
+  await m.page.waitForSelector('#code')
+  eq(mails.length, 2, 'a used code is gone: a new one is sent')
+  await noOverflow(m.page, 'code step mobile')
+  await shot(m.page, '24-email-code-mobile')
+  await m.ctx.close()
+})
+
 await check('expiry wording: days, hours, minutes; expired; not found; no link', async () => {
   const a = await open(soon.id)
   await settled(a.page)
@@ -468,7 +525,7 @@ await check('server unreachable: friendly state, countdown, automatic recovery w
   const first = Number(await page.textContent('.countdown'))
   await sleep(2100)
   ok(Number(await page.textContent('.countdown')) < first, 'countdown runs')
-  app = S.createShareServer(shareCfg(PORT))
+  app = S.createShareServer(shareCfg(PORT), mailHooks)
   await app.listen()
   await page.waitForSelector('.file', { timeout: 20000 }) // no click needed
   eq(await page.textContent('h1'), 'P10001 Lot 07 — as-built isometrics, Rev B')

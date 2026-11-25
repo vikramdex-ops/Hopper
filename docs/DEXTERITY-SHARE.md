@@ -32,6 +32,30 @@ Nothing is uploaded to WeTransfer or similar sites.
 Hopper does not keep the password: note it before you close the window. If it is lost, revoke the
 link and create a new one.
 
+### Only for named people (e-mail code)
+
+For confidential lots, choose **Only these e-mail addresses** instead of a password and enter up to
+10 addresses. It is off unless you choose it.
+
+- The client opens the link and types their e-mail address. If it is one you entered, the share
+  server e-mails a **6-digit code to the address you entered** (never to what was typed). They type
+  the code and download as usual. The code works once, for 10 minutes.
+- Anyone else who opens the link — a forwarded e-mail, a wrong recipient — sees *"This link was
+  sent to someone else"* and is told to ask you to share it with their own address. No code is sent
+  and no file names are shown.
+- Small differences in how the client types the address do not matter: capitals, spaces, a
+  `+tag`, or dots in a Gmail address.
+- A link has either a password or e-mail addresses, not both.
+- Codes: a new one can be asked for after a minute, at most five an hour per address; five wrong
+  codes use a code up. Too many wrong addresses or codes from one connection make it wait 10
+  minutes; this never locks out the real recipient.
+- Once confirmed, the browser tab stays confirmed for 12 hours (also after a reload).
+- **My client links** shows, per address, whether a code was sent, whether they confirmed, and
+  their downloads, plus how many times other addresses were refused (those addresses are not kept).
+- The option needs e-mail set up on the share server. If it is greyed out, ask IT
+  ([DEXTERITY-SHARE-IT.md](DEXTERITY-SHARE-IT.md#e-mail-codes)).
+- To add someone later, create a new link: the list cannot be changed after the link is made.
+
 ## Follow up
 
 Open **My client links** from **Share ▾** in the toolbar, from Home, from *Settings → Sharing*, or
@@ -138,8 +162,8 @@ PC, so they arrive even when your PC is off.
 - Links work only while the office share-server PC is on. If a client reports "can't reach our file
   server", check the dot in **My client links** and tell whoever looks after Hopper.
 
-- Anyone who has the link can download until it expires. For confidential lots, set a password
-  and a short expiry.
+- Anyone who has the link can download until it expires, unless it is for named e-mail addresses.
+  For confidential lots, use e-mail codes (or a password) and a short expiry.
 - Download speed is our office upload speed. For multi-GB lots, zip with compression and tell the
   client it may take a while; an interrupted download can be resumed from the browser's
   downloads list.

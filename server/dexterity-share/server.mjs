@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 export const ID_RE = /^[a-z2-7]{26}$/
 const ROUTE_META = /^\/api\/s\/([a-z2-7]{26})$/
-const ROUTE_UNLOCK = /^\/api\/s\/([a-z2-7]{26})\/unlock$/
+const ROUTE_UNLOCK = /^\/api\/s\/([a-z2-7]{26})\/(unlock|code|verify)$/
 const ROUTE_FILE = /^\/d\/([a-z2-7]{26})\/(0|[1-9]\d{0,3})$/
 const MARKERS = ['manifest.json', 'revoked.json', 'creating.json']
 const MAX_FILES = 500
@@ -42,6 +42,22 @@ export const DEFAULTS = {
   unlockWindowMinutes: 10,
   unlockFailuresPerShareHour: 40,
   tokenTtlHours: 12,
+  /**
+   * Links for named e-mail addresses. A code works once, for codeMinutes, and codeTries guesses;
+   * a new one can be asked for after codeResendSeconds, at most codesPerRecipientHour an hour.
+   * Addresses that are not on the link count against the client (per unlockWindowMinutes) and the
+   * link (per hour), so nobody can test addresses one after another.
+   */
+  codeMinutes: 10,
+  codeTries: 5,
+  codeResendSeconds: 60,
+  codesPerRecipientHour: 5,
+  codesPerIpHour: 10,
+  wrongEmailsPerIp: 6,
+  wrongEmailsPerShareHour: 30,
+  wrongCodesPerIp: 15,
+  /** SMTP for e-mail codes: { host, port, secure: tls|starttls|none, user, pass, from, fromName }; null = off */
+  mail: null,
   /** a download with no progress for this long is dropped (the browser can resume it) */
   idleTimeoutSeconds: 300,
   graceHours: 24,
@@ -286,6 +302,211 @@ export async function verifyPassword(password, v) {
   return crypto.timingSafeEqual(got, want)
 }
 
+// ---- e-mail code links ----------------------------------------------------------------------
+// A link can be limited to named e-mail addresses. The client types their address; when it is one
+// of them, a one-time code goes to the address the SENDER entered (never to what was typed), so a
+// loose match below can only ever mail the real recipient.
+
+export const MAX_RECIPIENTS = 10
+const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
+
+/** Lower-case, trimmed address, or '' when it is not a plain address. */
+export function normEmail(s) {
+  const e = String(s ?? '').trim().toLowerCase()
+  return e.length <= 254 && EMAIL_RE.test(e) && !e.includes('..') ? e : ''
+}
+
+/** What two addresses are compared by: "+tag" ignored, and for Gmail the dots too. */
+export function emailKey(s) {
+  const e = normEmail(s)
+  if (!e) return ''
+  let [local, domain] = [e.slice(0, e.lastIndexOf('@')), e.slice(e.lastIndexOf('@') + 1)]
+  local = local.replace(/\+.*$/, '') || local
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    domain = 'gmail.com'
+    local = local.replace(/\./g, '')
+  }
+  return `${local}@${domain}`
+}
+
+/** "j•••@client.com": enough for the recipient to recognise, not enough to read out. */
+export function maskEmail(s) {
+  const e = normEmail(s)
+  if (!e) return ''
+  const at = e.lastIndexOf('@')
+  const local = e.slice(0, at)
+  return `${local.slice(0, local.length > 3 ? 2 : 1)}•••${e.slice(at)}`
+}
+
+/** A manifest's recipients: 1..MAX_RECIPIENTS distinct, normalised addresses, or null. */
+export function validRecipients(list) {
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_RECIPIENTS) return null
+  const out = list.map(normEmail)
+  if (out.some((e, i) => !e || e !== list[i] || out.findIndex((x) => emailKey(x) === emailKey(e)) !== i)) return null
+  return out
+}
+
+/** Server mail settings, or null when e-mail codes cannot be sent. */
+export function mailSettings(m) {
+  if (!m || typeof m !== 'object') return null
+  const host = String(m.host ?? '').trim()
+  const secure = ['tls', 'starttls', 'none'].includes(m.secure) ? m.secure : 'starttls'
+  const port = Number(m.port) || (secure === 'tls' ? 465 : 587)
+  const from = normEmail(m.from || m.user)
+  if (!host || !/^[a-z0-9.-]+$/i.test(host) || !from || !Number.isInteger(port) || port < 1 || port > 65535) return null
+  // plain text only to this PC: a password must never cross the network unencrypted
+  if (secure === 'none' && !['127.0.0.1', 'localhost', '::1'].includes(host.toLowerCase())) return null
+  return {
+    host,
+    port,
+    secure,
+    user: String(m.user ?? '').trim(),
+    pass: String(m.pass ?? ''),
+    from,
+    fromName: String(m.fromName ?? 'Dexterity Share').replace(/[\r\n"\\<>]/g, '').slice(0, 80) || 'Dexterity Share',
+    timeoutMs: Number(m.timeoutMs) > 0 ? Number(m.timeoutMs) : 20_000
+  }
+}
+
+/** RFC 2047 for a header that is not plain ASCII; CR/LF never survive. */
+function headerText(s) {
+  const t = String(s).replace(/[\r\n]+/g, ' ').trim()
+  return /^[\x20-\x7e]*$/.test(t) ? t : `=?UTF-8?B?${Buffer.from(t, 'utf8').toString('base64')}?=`
+}
+
+/** The whole message, CRLF line ends, body base64 (so no line is ever too long or starts with a dot). */
+export function buildMessage(mail, { to, subject, text }, date = new Date()) {
+  const body = Buffer.from(text.replace(/\r?\n/g, '\r\n'), 'utf8').toString('base64').replace(/.{1,76}/g, '$&\r\n')
+  return [
+    `From: ${headerText(mail.fromName)} <${mail.from}>`,
+    `To: <${to}>`,
+    `Subject: ${headerText(subject)}`,
+    `Date: ${date.toUTCString().replace('GMT', '+0000')}`,
+    `Message-ID: <${crypto.randomBytes(12).toString('hex')}@${mail.from.slice(mail.from.lastIndexOf('@') + 1)}>`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    'Auto-Submitted: auto-generated',
+    '',
+    body
+  ].join('\r\n')
+}
+
+/** Send one plain-text e-mail over SMTP (implicit TLS, STARTTLS, or plain to this PC only). No dependencies. */
+export async function smtpSend(mail, msg, deps = {}) {
+  const net = deps.net ?? (await import('node:net'))
+  const tls = deps.tls ?? (await import('node:tls'))
+  const to = normEmail(msg.to)
+  if (!to) throw Object.assign(new Error('bad recipient'), { code: 'EBADRCPT' })
+  let sock = await new Promise((resolve, reject) => {
+    const s = mail.secure === 'tls' ? tls.connect({ host: mail.host, port: mail.port, servername: mail.host }) : net.connect({ host: mail.host, port: mail.port })
+    s.once(mail.secure === 'tls' ? 'secureConnect' : 'connect', () => resolve(s))
+    s.once('error', reject)
+  })
+  const deadline = setTimeout(() => sock.destroy(Object.assign(new Error('SMTP timed out'), { code: 'ETIMEDOUT' })), mail.timeoutMs)
+  let buf = ''
+  let waiting = null
+  let failed = null
+  const onData = (c) => {
+    buf += c.toString('utf8')
+    pump()
+  }
+  const onErr = (e) => {
+    failed = e
+    waiting?.reject(e)
+  }
+  const onClose = () => onErr(failed ?? Object.assign(new Error('SMTP connection closed'), { code: 'ECONNRESET' }))
+  function pump() {
+    if (!waiting) return
+    // a reply is complete at its first line of the form "250 text" (not "250-text")
+    const lines = buf.split('\r\n')
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/^\d{3}(?: |$)/.test(lines[i])) {
+        const reply = lines.slice(0, i + 1)
+        buf = lines.slice(i + 1).join('\r\n')
+        const w = waiting
+        waiting = null
+        w.resolve({ code: Number(reply[i].slice(0, 3)), text: reply.join('\n') })
+        return
+      }
+    }
+  }
+  const attach = (s) => {
+    s.on('data', onData)
+    s.on('error', onErr)
+    s.on('close', onClose)
+  }
+  const detach = (s) => {
+    s.off('data', onData)
+    s.off('error', onErr)
+    s.off('close', onClose)
+  }
+  const read = () =>
+    new Promise((resolve, reject) => {
+      if (failed) return reject(failed)
+      waiting = { resolve, reject }
+      pump()
+    })
+  const cmd = async (line, ok, what = line.split(' ')[0]) => {
+    if (line) sock.write(line + '\r\n')
+    const r = await read()
+    if (!ok.includes(Math.floor(r.code / 100) * 100) && !ok.includes(r.code)) throw Object.assign(new Error(`SMTP ${what} refused: ${r.text.slice(0, 300)}`), { code: 'ESMTP', smtp: r.code })
+    return r
+  }
+  attach(sock)
+  try {
+    await cmd('', [200], 'greeting')
+    const helo = String(deps.hostName ?? 'dexterity-share').replace(/[^a-z0-9.-]/gi, '') || 'localhost'
+    let ehlo = await cmd(`EHLO ${helo}`, [200])
+    if (mail.secure === 'starttls') {
+      if (!/\bSTARTTLS\b/i.test(ehlo.text)) throw Object.assign(new Error('SMTP server does not offer STARTTLS'), { code: 'ESMTP' })
+      await cmd('STARTTLS', [200])
+      detach(sock)
+      buf = ''
+      sock = await new Promise((resolve, reject) => {
+        const s = tls.connect({ socket: sock, servername: mail.host }, () => resolve(s))
+        s.once('error', reject)
+      })
+      attach(sock)
+      ehlo = await cmd(`EHLO ${helo}`, [200])
+    }
+    if (mail.user) await cmd(`AUTH PLAIN ${Buffer.from(`\0${mail.user}\0${mail.pass}`, 'utf8').toString('base64')}`, [235], 'AUTH')
+    await cmd(`MAIL FROM:<${mail.from}>`, [200], 'MAIL FROM')
+    await cmd(`RCPT TO:<${to}>`, [200], 'RCPT TO')
+    await cmd('DATA', [354])
+    await cmd(buildMessage(mail, { ...msg, to }).replace(/\r\n$/, '') + '\r\n.', [200], 'message')
+    sock.write('QUIT\r\n')
+  } finally {
+    clearTimeout(deadline)
+    detach(sock)
+    sock.on('error', () => {})
+    sock.end()
+    setTimeout(() => sock.destroy(), 2000).unref?.()
+  }
+}
+
+/** The code e-mail. Plain words; the code is in the subject too, so a phone shows it without opening. */
+export function codeMail(m, code, minutes) {
+  const sender = m.sender || 'Dexterity Design Services'
+  return {
+    subject: `${code} is your code for ${m.title}`.slice(0, 200),
+    text: [
+      'Hello,',
+      '',
+      `Your code to download "${m.title}" from ${sender}:`,
+      '',
+      `    ${code.slice(0, 3)} ${code.slice(3)}`,
+      '',
+      `Enter it on the download page you have open. It works once, for ${minutes} minutes.`,
+      '',
+      'If you did not ask for this code, you can ignore this e-mail. Nothing can be downloaded without it.',
+      '',
+      'Dexterity Share',
+      'Dexterity Design Services Private Limited'
+    ].join('\n')
+  }
+}
+
 const str = (v, max) => typeof v === 'string' && v.length <= max
 /** Strict manifest check; returns the manifest or null. Nothing in it is ever used to build a path. */
 export function validateManifest(m, id) {
@@ -298,6 +519,8 @@ export function validateManifest(m, id) {
     if (f.mtime != null && !(typeof f.mtime === 'number' && Number.isFinite(f.mtime) && f.mtime >= 0)) return null
   }
   if (m.password != null && !validVerifier(m.password)) return null
+  // a link is for named people OR has a password, never both: either one alone decides who may download
+  if (m.recipients != null && (m.password != null || !validRecipients(m.recipients))) return null
   if (m.maxDownloads != null && !(Number.isSafeInteger(m.maxDownloads) && m.maxDownloads >= 0)) return null
   return m
 }
@@ -360,6 +583,20 @@ export function loadConfig(file, env = process.env) {
   cfg.logDir = path.resolve(base, cfg.logDir || 'logs')
   cfg.allowedOrigins = (cfg.allowedOrigins ?? []).map((o) => String(o).replace(/\/+$/, '').toLowerCase())
   cfg.allowedHosts = [...(cfg.allowedHosts ?? []), ...publicHostOf(raw.tunnel?.publicBase)]
+  // e-mail codes: "mail" beside "server"; the SMTP password sits in its own file, never in config.json
+  if (raw.mail) {
+    const pf = raw.mail.passFile ? path.resolve(base, raw.mail.passFile) : ''
+    let pass = ''
+    if (pf) {
+      try {
+        pass = fs.readFileSync(pf, 'utf8').replace(/^﻿/, '').trim()
+      } catch (e) {
+        throw new Error(`config: mail.passFile cannot be read (${e.code})`)
+      }
+    }
+    cfg.mail = { ...raw.mail, passFile: undefined, pass }
+    if (!mailSettings(cfg.mail)) throw new Error('config: "mail" needs host and from (an e-mail address); secure is tls, starttls, or none (only for 127.0.0.1)')
+  }
   // only Cloudflare overwrites CF-Connecting-IP; behind any other front a client could forge it
   if (raw.tunnel?.mode === 'external') cfg.clientIpHeader = ''
   if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new Error('config: port must be 1-65535')
@@ -475,6 +712,7 @@ const ERROR_TEXT = {
   not_found: ['This link is not available', 'It may have expired or been withdrawn by the sender.'],
   expired: ['This link has expired', 'Please ask the sender for a new link.'],
   locked: ['This download needs its password', 'Open the link you were sent again and enter the password.'],
+  not_verified: ['This download is for a named person', 'Open the link you were sent again and confirm your e-mail address with the code we send you.'],
   limit: ['This file has reached its download limit', 'Please ask the sender for a new link.'],
   busy: ['The server is busy right now', 'Please go back and try again in a minute.'],
   unavailable: ['This file is temporarily unavailable', 'Please try again in a few minutes or contact the sender.'],
@@ -572,6 +810,27 @@ export function createShareServer(config, hooks = {}) {
 
   const bindOf = (m) => (m.password ? m.password.hash : '')
 
+  // ---- e-mail codes ---------------------------------------------------------------------------
+  let mail = mailSettings(cfg.mail)
+  const sendMail = hooks.sendMail ?? ((msg) => smtpSend(mail, msg, { hostName: cfg.hostName }))
+  const canMail = () => !!mail || !!hooks.sendMail
+  /** `${id}|${recipient index}` -> { mac, exp, tries, sending } — memory only: a restart means "ask again" */
+  const codes = new Map()
+  const codeMac = (id, r, code) => crypto.createHmac('sha256', secret).update(`dxshare-code-v1\n${id}\n${r}\n${code}`).digest()
+  // the token names the recipient and is bound to that address, so it cannot be moved to another one
+  const recipientBind = (m, r) => `${bindOf(m)}|r${r}:${m.recipients[r]}`
+
+  /** Who may download with this token: { r } (recipient index, -1 = anyone with the link) or null. */
+  function access(m, id, token) {
+    if (m.recipients) {
+      const t = /^r(\d{1,2})\.(.{1,120})$/.exec(typeof token === 'string' ? token : '')
+      const r = t ? Number(t[1]) : -1
+      return t && m.recipients[r] && verifyToken(secret, id, recipientBind(m, r), t[2], now()) ? { r } : null
+    }
+    if (m.password) return verifyToken(secret, id, bindOf(m), token, now()) ? { r: -1 } : null
+    return { r: -1 }
+  }
+
   // At most two password hashes at a time: each is 32 MB of scrypt on the thread pool that file
   // reads also use, so a flood of unlock attempts must not stall every running download.
   let hashing = 0
@@ -587,7 +846,7 @@ export function createShareServer(config, hooks = {}) {
     }
   }
 
-  async function statsFor(id, dir, nFiles) {
+  async function statsFor(id, dir, nFiles, nRecipients = 0) {
     let s = stats.get(id)
     if (!s) {
       let data = null
@@ -599,6 +858,11 @@ export function createShareServer(config, hooks = {}) {
       stats.set(id, s)
     }
     while (s.data.files.length < nFiles) s.data.files.push({ started: 0, completed: 0, bytes: 0 })
+    if (nRecipients) {
+      if (!Array.isArray(s.data.recipients)) s.data.recipients = []
+      while (s.data.recipients.length < nRecipients) s.data.recipients.push({ codesSent: 0, verifiedAt: 0, downloads: 0, lastDownloadAt: 0 })
+      if (!Number.isSafeInteger(s.data.refused)) s.data.refused = 0
+    }
     return s
   }
 
@@ -683,6 +947,7 @@ export function createShareServer(config, hooks = {}) {
       }
     }
     limiter.prune(t)
+    for (const [k, c] of codes) if (c.exp <= t && !c.sending) codes.delete(k)
     return removed
   }
 
@@ -732,7 +997,8 @@ export function createShareServer(config, hooks = {}) {
     if (share.state === 'missing') return notFound(req, res)
     if (share.state === 'expired') return send(req, res, 410, { error: 'expired' })
     const m = share.manifest
-    const unlocked = !m.password || verifyToken(secret, id, bindOf(m), query.get('t'), now())
+    const who = access(m, id, query.get('t'))
+    const unlocked = !!who
     const body = {
       v: 1,
       title: m.title,
@@ -742,6 +1008,10 @@ export function createShareServer(config, hooks = {}) {
       expiresAt: m.expiresAt,
       now: now(),
       needsPassword: !!m.password,
+      // for named people: the page asks for an e-mail address and a code; the list itself is never sent
+      needsEmail: !!m.recipients,
+      mailReady: m.recipients ? canMail() : undefined,
+      verifiedAs: who && who.r >= 0 ? maskEmail(m.recipients[who.r]) : undefined,
       unlocked,
       fileCount: m.files.length,
       totalSize: m.files.reduce((a, f) => a + f.size, 0),
@@ -749,7 +1019,7 @@ export function createShareServer(config, hooks = {}) {
       files: unlocked ? publicFiles(m) : null
     }
     if (req.method === 'GET' && !query.has('quiet')) {
-      const s = await statsFor(id, share.dir, m.files.length)
+      const s = await statsFor(id, share.dir, m.files.length, m.recipients?.length)
       s.data.views++
       s.data.lastViewAt = now()
       s.dirty = true
@@ -795,6 +1065,132 @@ export function createShareServer(config, hooks = {}) {
     send(req, res, 200, { token: signToken(secret, id, bindOf(m), ttl, now()), expiresIn: Math.floor(ttl / 1000), files: publicFiles(m) })
   }
 
+  /** Shared start of the two e-mail code calls: the share, and the JSON body. */
+  async function codeRequest(req, res, id) {
+    if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return void send(req, res, 415, { error: 'bad_request' })
+    const share = await loadShare(id)
+    if (share.state === 'missing') return void notFound(req, res)
+    if (share.state === 'expired') return void send(req, res, 410, { error: 'expired' })
+    if (!share.manifest.recipients) return void send(req, res, 400, { error: 'bad_request' })
+    let body
+    try {
+      body = JSON.parse((await readBody(req, 4096)).toString('utf8'))
+      if (!body || typeof body !== 'object') throw new Error('not an object')
+    } catch (e) {
+      return void send(req, res, e.status ?? 400, { error: 'bad_request' })
+    }
+    const email = normEmail(body.email)
+    if (!email) return void send(req, res, 400, { error: 'bad_email' })
+    return { share, m: share.manifest, body, email }
+  }
+
+  /** Step 1: the client says who they are. Only a listed address gets a code, sent to the listed address. */
+  async function handleCode(req, res, id, ip) {
+    const c0 = await codeRequest(req, res, id)
+    if (!c0) return
+    const { share, m, email } = c0
+    const t = now()
+    const win = cfg.unlockWindowMinutes * 60_000
+    // A client over its own limit learns nothing more, not even whether an address is right.
+    const pa = limiter.peek(`ce:${ip}:${id}`, cfg.wrongEmailsPerIp, win, t)
+    if (!pa.ok) return tooMany(req, res, pa.retryAfter)
+    const r = m.recipients.findIndex((e) => emailKey(e) === emailKey(email))
+    if (r < 0) {
+      // The link's own limit counts only clients under theirs, and never stops a listed address:
+      // nobody can lock the real recipient out by trying wrong addresses from many places.
+      const pb = limiter.peek(`ces:${id}`, cfg.wrongEmailsPerShareHour, HOUR, t)
+      if (!pb.ok) return tooMany(req, res, pb.retryAfter)
+      const ha = limiter.hit(`ce:${ip}:${id}`, cfg.wrongEmailsPerIp, win, t)
+      limiter.hit(`ces:${id}`, cfg.wrongEmailsPerShareHour, HOUR, t)
+      const s = await statsFor(id, share.dir, m.files.length, m.recipients.length)
+      s.data.refused++
+      s.dirty = true
+      log.info('code-not-recipient', { id: id.slice(0, 6), ip: cfg.logClientIp ? ip : undefined })
+      return send(req, res, 403, { error: 'not_recipient', sender: m.sender ?? '', attemptsLeft: ha.left })
+    }
+    const key = `${id}|${r}`
+    const to = maskEmail(m.recipients[r])
+    const prev = codes.get(key)
+    const resendMs = cfg.codeResendSeconds * 1000
+    if (prev && (prev.sending || t - prev.sentAt < resendMs)) {
+      // one is on its way or was just sent: the page asks for it rather than sending another
+      return send(req, res, 429, { error: 'code_wait', to, retryAfter: Math.max(1, Math.ceil((prev.sentAt + resendMs - t) / 1000)), pending: !prev.sending && prev.exp > t }, { 'Retry-After': String(Math.max(1, Math.ceil((prev.sentAt + resendMs - t) / 1000))) })
+    }
+    const lr = limiter.peek(`cr:${key}`, cfg.codesPerRecipientHour, HOUR, t)
+    const li = limiter.peek(`ci:${ip}`, cfg.codesPerIpHour, HOUR, t)
+    if (!lr.ok || !li.ok) {
+      log.info('code-limited', { id: id.slice(0, 6), r, ip: cfg.logClientIp ? ip : undefined })
+      const retryAfter = Math.max(lr.ok ? 0 : lr.retryAfter, li.ok ? 0 : li.retryAfter)
+      return send(req, res, 429, { error: 'code_limit', to, retryAfter, pending: !!prev && prev.exp > t }, { 'Retry-After': String(retryAfter) })
+    }
+    if (!canMail()) {
+      log.error('code-mail-not-configured', { id: id.slice(0, 6) })
+      return send(req, res, 503, { error: 'mail_unavailable' }, { 'Retry-After': '300' })
+    }
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+    const entry = { mac: codeMac(id, r, code), exp: t + cfg.codeMinutes * 60_000, tries: 0, sentAt: t, sending: true }
+    codes.set(key, entry) // set before the await: a second request meanwhile sees "sending"
+    limiter.hit(`cr:${key}`, cfg.codesPerRecipientHour, HOUR, t)
+    limiter.hit(`ci:${ip}`, cfg.codesPerIpHour, HOUR, t)
+    try {
+      await sendMail({ to: m.recipients[r], ...codeMail(m, code, cfg.codeMinutes) })
+    } catch (e) {
+      // the previous code (if any) is still in their inbox and still good
+      if (codes.get(key) === entry) prev && prev.exp > now() ? codes.set(key, prev) : codes.delete(key)
+      const er = limiter.map.get(`cr:${key}`)
+      if (er) er.n = Math.max(0, er.n - 1)
+      const ei = limiter.map.get(`ci:${ip}`)
+      if (ei) ei.n = Math.max(0, ei.n - 1)
+      log.error('code-mail-failed', { id: id.slice(0, 6), r, code: e.code, smtp: e.smtp, message: String(e.message ?? '').slice(0, 300) })
+      return send(req, res, 502, { error: 'mail_failed' })
+    }
+    entry.sending = false
+    const s = await statsFor(id, share.dir, m.files.length, m.recipients.length)
+    s.data.recipients[r].codesSent++
+    s.dirty = true
+    log.info('code-sent', { id: id.slice(0, 6), r })
+    send(req, res, 200, { sent: true, to, expiresIn: cfg.codeMinutes * 60, resendIn: cfg.codeResendSeconds })
+  }
+
+  /** Step 2: the code from the e-mail. Right: a download token for that recipient. */
+  async function handleVerify(req, res, id, ip) {
+    const c0 = await codeRequest(req, res, id)
+    if (!c0) return
+    const { share, m, email, body } = c0
+    const code = String(body.code ?? '').replace(/[\s-]/g, '')
+    if (!/^\d{6}$/.test(code)) return send(req, res, 400, { error: 'bad_code' })
+    const t = now()
+    const win = cfg.unlockWindowMinutes * 60_000
+    const pv = limiter.peek(`cv:${ip}`, cfg.wrongCodesPerIp, win, t)
+    if (!pv.ok) return tooMany(req, res, pv.retryAfter)
+    const r = m.recipients.findIndex((e) => emailKey(e) === emailKey(email))
+    if (r < 0) return send(req, res, 403, { error: 'not_recipient', sender: m.sender ?? '' })
+    const key = `${id}|${r}`
+    const c = codes.get(key)
+    if (!c || c.sending || c.exp <= t) {
+      if (c && !c.sending) codes.delete(key)
+      return send(req, res, 409, { error: 'code_expired' })
+    }
+    if (!crypto.timingSafeEqual(codeMac(id, r, code), c.mac)) {
+      c.tries++
+      limiter.hit(`cv:${ip}`, cfg.wrongCodesPerIp, win, t)
+      log.info('code-wrong', { id: id.slice(0, 6), r, ip: cfg.logClientIp ? ip : undefined })
+      const left = cfg.codeTries - c.tries
+      if (left <= 0) {
+        codes.delete(key)
+        return send(req, res, 409, { error: 'code_used_up' })
+      }
+      return send(req, res, 403, { error: 'wrong_code', attemptsLeft: left })
+    }
+    codes.delete(key) // once only
+    const s = await statsFor(id, share.dir, m.files.length, m.recipients.length)
+    s.data.recipients[r].verifiedAt = t
+    s.dirty = true
+    log.info('code-verified', { id: id.slice(0, 6), r })
+    const ttl = cfg.tokenTtlHours * HOUR
+    send(req, res, 200, { token: `r${r}.${signToken(secret, id, recipientBind(m, r), ttl, t)}`, expiresIn: Math.floor(ttl / 1000), files: publicFiles(m), verifiedAs: maskEmail(m.recipients[r]) })
+  }
+
   async function handleFile(req, res, id, n, query, ip) {
     const share = await loadShare(id)
     if (share.state === 'missing') return notFound(req, res)
@@ -802,8 +1198,9 @@ export function createShareServer(config, hooks = {}) {
     const m = share.manifest
     const file = m.files[n]
     if (!file) return notFound(req, res)
-    if (m.password && !verifyToken(secret, id, bindOf(m), query.get('t'), now())) return send(req, res, 401, { error: 'locked' })
-    const s = await statsFor(id, share.dir, m.files.length)
+    const who = access(m, id, query.get('t'))
+    if (!who) return send(req, res, 401, { error: m.recipients ? 'not_verified' : 'locked' })
+    const s = await statsFor(id, share.dir, m.files.length, m.recipients?.length)
     // downloads of this file still running count too, so several started at once cannot pass the limit together
     const running = [...active].filter((d) => d.id === id && d.n === n).length
     if (m.maxDownloads > 0 && s.data.files[n].completed + running >= m.maxDownloads) return send(req, res, 410, { error: 'limit' })
@@ -927,6 +1324,11 @@ export function createShareServer(config, hooks = {}) {
         s.data.downloads++
         s.data.files[n].completed++
         s.data.lastDownloadAt = now()
+        const rcp = who.r >= 0 ? s.data.recipients?.[who.r] : null
+        if (rcp) {
+          rcp.downloads++
+          rcp.lastDownloadAt = s.data.lastDownloadAt
+        }
       }
       s.dirty = true
       res.locals.sent = sent
@@ -1119,6 +1521,16 @@ export function createShareServer(config, hooks = {}) {
     if (!strOk(b.title, 300) || !strOk(b.message, 4000)) return sendStaff(req, res, 400, { error: 'bad_request', field: 'text' })
     const password = b.password == null || b.password === '' ? '' : b.password
     if (password && (typeof password !== 'string' || password.length < 6 || password.length > 256)) return sendStaff(req, res, 400, { error: 'bad_password' })
+    let recipients = null
+    if (b.recipients != null && !(Array.isArray(b.recipients) && b.recipients.length === 0)) {
+      if (!Array.isArray(b.recipients) || b.recipients.length > MAX_RECIPIENTS) return sendStaff(req, res, 400, { error: 'bad_recipients', max: MAX_RECIPIENTS })
+      const list = b.recipients.map(normEmail)
+      const bad = b.recipients.find((e, i) => !list[i])
+      if (bad !== undefined) return sendStaff(req, res, 400, { error: 'bad_recipients', email: String(bad).slice(0, 254) })
+      recipients = list.filter((e, i) => list.findIndex((x) => emailKey(x) === emailKey(e)) === i)
+      if (password) return sendStaff(req, res, 400, { error: 'password_and_recipients' })
+      if (!canMail()) return sendStaff(req, res, 409, { error: 'mail_unavailable' })
+    }
     const days = EXPIRY_DAYS.includes(Number(b.days)) ? Number(b.days) : staff.defaultDays
     const mine = (await unfinished(pass.user)).filter((u) => u.staff.pass === pass.id)
     if (mine.length >= staff.maxUnfinished) return sendStaff(req, res, 409, { error: 'too_many_uploads', max: staff.maxUnfinished })
@@ -1148,7 +1560,8 @@ export function createShareServer(config, hooks = {}) {
         title: String(b.title ?? '').trim().slice(0, 200),
         message: String(b.message ?? '').trim().slice(0, 4000),
         sender: pass.name,
-        password: password ? await hashPassword(password) : null
+        password: password ? await hashPassword(password) : null,
+        recipients
       }
     }
     try {
@@ -1288,6 +1701,7 @@ export function createShareServer(config, hooks = {}) {
       expiresAt: createdAt + s.days * DAY,
       files: [{ name: s.name, size: s.size, sha256: hash.digest('hex') }],
       password: s.password ?? null,
+      ...(s.recipients ? { recipients: s.recipients } : {}),
       maxDownloads: 0,
       owner: up.owner
     }
@@ -1382,6 +1796,9 @@ export function createShareServer(config, hooks = {}) {
             expiresAt: m.expiresAt,
             expired: m.expiresAt <= t,
             hasPassword: !!m.password,
+            recipients: m.recipients ?? null,
+            recipientStats: m.recipients ? (st?.recipients ?? []).slice(0, m.recipients.length) : null,
+            refused: m.recipients ? (st?.refused ?? 0) : 0,
             message: m.message ?? '',
             sender: m.sender ?? '',
             downloads: st?.downloads ?? 0,
@@ -1519,6 +1936,8 @@ export function createShareServer(config, hooks = {}) {
       return handleMeta(req, res, meta[1], query)
     }
     if (method !== 'POST') return send(req, res, 405, { error: 'method' }, { Allow: 'POST, OPTIONS' })
+    if (unlock[2] === 'code') return handleCode(req, res, unlock[1], ip)
+    if (unlock[2] === 'verify') return handleVerify(req, res, unlock[1], ip)
     return handleUnlock(req, res, unlock[1], ip)
   }
 
@@ -1571,12 +1990,24 @@ export function createShareServer(config, hooks = {}) {
       countToday(0, false)
       // staffUsed: when each browser pass was last used (pass ids are not secrets), so Hopper can show it
       const staffUsed = Object.fromEntries([...used].sort((a, b) => b[1] - a[1]).slice(0, 300))
-      return { uptimeSec: Math.round((Date.now() - startedAt) / 1000), activeDownloads: active.size, bytesToday: today.bytes, downloadsToday: today.downloads, freeBytes: free?.free ?? null, totalBytes: free?.total ?? null, limitMbps: Math.round((currentLimit(bandwidth) * 8) / 10000) / 100, staffUsed }
+      return { uptimeSec: Math.round((Date.now() - startedAt) / 1000), activeDownloads: active.size, bytesToday: today.bytes, downloadsToday: today.downloads, freeBytes: free?.free ?? null, totalBytes: free?.total ?? null, limitMbps: Math.round((currentLimit(bandwidth) * 8) / 10000) / 100, staffUsed, mail: canMail() }
     },
     setBandwidth(b) {
       bandwidth = b
     },
     /** Browser link settings (office.json publicShare.web) without a restart. */
+    /** SMTP settings for e-mail codes, without a restart (null switches codes off). */
+    setMail(m) {
+      mail = mailSettings(m)
+      return !!mail
+    },
+    /** Send a test e-mail with the current settings; throws with the SMTP server's own words. */
+    async testMail(to) {
+      if (!canMail()) throw new Error('E-mail is not set up: it needs the mail server and the sender address.')
+      if (!normEmail(to)) throw new Error('That is not an e-mail address.')
+      await sendMail({ to: normEmail(to), subject: 'Dexterity Share test e-mail', text: 'This is a test from Dexterity Share.\n\nIf you can read this, clients of e-mail-code links will get their codes.\n\nDexterity Share\nDexterity Design Services Private Limited' })
+      return true
+    },
     setStaff(s, minFreeGB = cfg.minFreeGB) {
       staff = staffSettings(s, minFreeGB)
     },

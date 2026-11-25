@@ -235,6 +235,42 @@ A sign-in link, or a browser that is signed in, can create links in that person'
 pass is switched off. Tell staff not to forward the link and to switch off browsers on PCs they no
 longer use. Uploaded archives are not virus-scanned.
 
+### E-mail codes
+
+Links for named e-mail addresses need the share server to send e-mail. Until it is set up, Hopper
+and the browser page grey the option out, and the client page of such a link says codes cannot be
+sent right now.
+
+**Hopper-hosted server:** on the share-server PC, open the share server settings, section
+**E-mail codes**: SMTP server, port, security, user name, password, sender address and name. Press
+**Send test e-mail** to an address you can read. The password is kept encrypted with Windows data
+protection on that PC only, never in settings or the office config. Changes apply without a restart.
+
+**Standalone service:** add a `mail` block beside `server` in `config.json` (see
+`config.example.json`) and put the SMTP password alone in the file named by `passFile`. Restart
+the service. A `mail` block that cannot work (no host, no sender, `secure: "none"` to another PC)
+stops the service at start with a message saying so.
+
+| Provider | host | port | secure | password |
+|---|---|---|---|---|
+| Gmail / Google Workspace | `smtp.gmail.com` | 465 | `tls` | an app password (2-step verification on) |
+| Zoho Mail (India) | `smtp.zoho.in` | 465 | `tls` | the account password or an app password |
+| Microsoft 365 | `smtp.office365.com` | 587 | `starttls` | SMTP AUTH must be allowed for the mailbox |
+
+Use a dedicated mailbox (for example a "share@" address): the sender address must be one the
+account may send as, or the provider rejects the mail and the client sees "We couldn't send the
+code". The SMTP password is never sent unencrypted: `starttls` refuses a server that does not
+offer encryption, and `none` is only accepted for a relay on the same PC.
+
+How it works: the code is 6 random digits, held only in the server's memory as an HMAC, valid 10
+minutes and once; five wrong codes use it up. It goes to the address the sender listed, never to
+what the visitor typed, so a loose match (capitals, `+tag`, Gmail dots) cannot send it to anyone
+else. The list of addresses is never sent to the page. A confirmed visitor gets a 12-hour token
+bound to that one address. Limits: a new code after 60 s, five per address and ten per connection
+an hour; six wrong addresses per connection per 10 minutes and 30 per link per hour (the link
+limit never blocks a listed address). Logs record the link and recipient number, never the code
+or the address. A server restart forgets pending codes: the client asks for a new one.
+
 ## 6. Advanced: a fixed address instead of the quick tunnel
 
 Cloudflare describes quick tunnels as "for testing and development", with "no uptime guarantee"

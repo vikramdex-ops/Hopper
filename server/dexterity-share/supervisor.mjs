@@ -585,6 +585,9 @@ async function check(cfg) {
     const { publicJwk } = loadPointerKey(cfg.server.stateDir)
     lines.push(`       pointer public key for site/share/config.json ("pointerKey"): ${JSON.stringify(publicJwk)}`)
   } else if (cfg.tunnel.mode === 'quick') say(false, 'tunnel.mode is "quick" but no pointer.github is configured: client links cannot find the server')
+  const m = cfg.server.mail
+  if (m) say(!m.user || !!m.pass, `e-mail codes: ${m.host}:${m.port ?? ''} (${m.secure ?? 'starttls'}) from ${m.from || m.user}${m.user && !m.pass ? ' - no password: set mail.passFile to a file holding the SMTP password' : ''}`)
+  else lines.push('       e-mail codes: not set up (no "mail" block), so links limited to e-mail addresses cannot be made')
   lines.push(`       allowed page origins: ${cfg.server.allowedOrigins.join(', ') || '(none)'}`)
   console.log(lines.join('\n'))
   return bad

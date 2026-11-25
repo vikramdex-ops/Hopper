@@ -79,6 +79,9 @@ await fsp.writeFile(RESUME_ZIP, resumeBytes)
 const SLOW_ZIP = path.join(FILES, 'Stress report pack.zip')
 const slowBytes = makeZip([['stress/report.pdf', zlib.deflateSync(crypto.randomBytes(1000)), ], ['stress/appendix.bin', crypto.randomBytes(330_000)]])
 await fsp.writeFile(SLOW_ZIP, slowBytes)
+const MAIL_ZIP = path.join(FILES, 'Hydrotest pack.zip')
+const mailBytes = makeZip([['hydrotest/HT-07.pdf', crypto.randomBytes(40_000)]])
+await fsp.writeFile(MAIL_ZIP, mailBytes)
 const WRONG = path.join(FILES, 'Drawing list.pdf')
 await fsp.writeFile(WRONG, '%PDF-1.7 demo')
 const FAKE_ZIP = path.join(FILES, 'Not really.zip')
@@ -108,7 +111,8 @@ const SITE_ORIGIN = `http://127.0.0.1:${siteServer.address().port}`
 const PAGE = `${SITE_ORIGIN}/share/create/`
 
 // ---- share server and Hopper's engine ------------------------------------------------------------------
-const app = S.createShareServer({ port: 0, store: STORE, allowedOrigins: [SITE_ORIGIN], stateDir: path.join(WORK, 'state'), logDir: path.join(WORK, 'logs'), manifestCacheMs: 100, passCacheMs: 100, revokeCheckMs: 300, statsFlushMs: 300, apiPerMinutePerIp: 100000, filePerMinutePerIp: 100000, minFreeGB: 0, shutdownGraceSeconds: 0, staff: { enabled: true, maxGB: 0.002, chunkBytes: CHUNK, defaultDays: 7 } })
+const mails = [] // e-mail codes the server "sends" (nothing leaves this PC)
+const app = S.createShareServer({ port: 0, store: STORE, allowedOrigins: [SITE_ORIGIN], stateDir: path.join(WORK, 'state'), logDir: path.join(WORK, 'logs'), manifestCacheMs: 100, passCacheMs: 100, revokeCheckMs: 300, statsFlushMs: 300, apiPerMinutePerIp: 100000, filePerMinutePerIp: 100000, minFreeGB: 0, shutdownGraceSeconds: 0, staff: { enabled: true, maxGB: 0.002, chunkBytes: CHUNK, defaultDays: 7 } }, { sendMail: async (msg) => { mails.push(msg) } })
 const PORT = await app.listen()
 const BASE = `http://127.0.0.1:${PORT}`
 site.config = { base: BASE, pointers: [], pointerKey: null, allowedHosts: ['*.trycloudflare.com'], company: 'Dexterity Design Services Private Limited' }
@@ -197,7 +201,9 @@ await check('create a link from a real zip: chunks, 14 days, generated password,
   await page.setInputFiles('#file', ZIP)
   await page.locator('.drop.has').waitFor()
   await page.locator('.chips button', { hasText: /^14$/ }).click()
-  eq(await page.locator('.chips button[aria-pressed="true"]').innerText(), '14')
+  eq(await page.locator('.chips:not(.words) button[aria-pressed="true"]').innerText(), '14')
+  eq(await page.locator('#pw').isVisible(), false, 'no password field until Password is chosen')
+  await page.locator('#prot button', { hasText: 'Password' }).click()
   await page.locator('button', { hasText: 'Generate' }).click()
   const pw = await page.locator('#pw').inputValue()
   ok(/^[A-HJ-NP-Za-km-np-z2-9]{4}-[A-HJ-NP-Za-km-np-z2-9]{4}-[A-HJ-NP-Za-km-np-z2-9]{4}$/.test(pw), `password ${pw}`)
@@ -265,6 +271,79 @@ await check('plain-language errors: wrong type, too big (with the limit), and a 
   await shot(page, '07-not-a-zip')
   await page.locator('button', { hasText: 'Start again' }).click()
   await page.locator('#create').waitFor()
+})
+
+await check('e-mail code link: addresses parsed and checked, never sent with a password, listed with their status', async () => {
+  await page.setInputFiles('#file', MAIL_ZIP)
+  await page.locator('.drop.has').waitFor()
+  // a password typed first, then E-mail code chosen: the password must not be sent
+  await page.locator('#prot button', { hasText: 'Password' }).click()
+  await page.locator('#pw').fill('Secret-123')
+  await page.locator('#prot button', { hasText: 'E-mail code' }).click()
+  eq(await page.locator('#pw').isVisible(), false, 'password hidden')
+  eq(await page.locator('#prot button[aria-pressed="true"]').innerText(), 'E-mail code')
+  await page.locator('#rcp').fill('"Doe, John" <John.Doe@Client.com>; pm@client.com, bad@')
+  await page.locator('#note').focus()
+  const hint = await page.locator('#rcp-hint').innerText()
+  ok(hint.includes('\u201cbad@\u201d is not an e-mail address'), hint)
+  eq(await page.locator('#rcp').getAttribute('aria-invalid'), 'true')
+  await page.locator('#create').click()
+  ok((await page.locator('#form-err').innerText()).includes('bad@'), await page.locator('#form-err').innerText())
+  await page.locator('#rcp').fill('"Doe, John" <John.Doe@Client.com>; pm@client.com\njohn.doe+lot7@client.com')
+  const hint2 = await page.locator('#rcp-hint').innerText()
+  ok(hint2.startsWith('2 addresses: john.doe@client.com, pm@client.com') && hint2.includes('1 repeated'), hint2)
+  await shot(page, '07a-email-code-form')
+  const sent = page.waitForRequest((r) => r.url().endsWith('/api/staff/uploads') && r.method() === 'POST')
+  await page.locator('#create').click()
+  const body = JSON.parse((await sent).postData())
+  eq(JSON.stringify(body.recipients), JSON.stringify(['john.doe@client.com', 'pm@client.com']))
+  eq(body.password, undefined, 'no password with addresses')
+  await page.locator('#result-link').waitFor({ timeout: 60000 })
+  const url = await page.locator('#result-link').inputValue()
+  const id = P.parseShareRef(url.split('#')[1]).id
+  eq(await page.locator('#result-pw').count(), 0, 'no password box')
+  eq(await page.locator('#result-rcp').innerText(), 'john.doe@client.com\npm@client.com')
+  ok((await page.locator('main').innerText()).includes('one-time code by e-mail'))
+  await page.locator('#copy-email').click()
+  const mail = await page.evaluate(() => navigator.clipboard.readText())
+  ok(mail.includes('works only for the e-mail address it was sent to') && !mail.includes('password'), mail)
+  await shot(page, '07b-email-code-ready')
+  // the client side: an outsider is refused, the listed address gets a code
+  const meta = await (await fetch(`${BASE}/api/s/${id}`)).json()
+  eq(meta.needsEmail, true)
+  const ask = (email) => fetch(`${BASE}/api/s/${id}/code`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+  await ask('someone@else.com')
+  const n = mails.length
+  ok((await ask('pm@client.com')).ok, 'code asked')
+  eq(mails.length, n + 1, 'one code mailed')
+  eq(mails[mails.length - 1].to, 'pm@client.com')
+  await sleep(400) // stats flush
+  await page.locator('#links button', { hasText: 'Refresh' }).click()
+  const row = page.locator(`tr[data-id="${id}"]`)
+  await page.waitForFunction((i) => /code sent/.test(document.querySelector(`tr[data-id="${i}"] .rcp`)?.textContent ?? ''), id, { timeout: 10000 })
+  const text = await row.innerText()
+  ok(/Only for:/i.test(text) && text.includes('john.doe@client.com') && text.includes('not opened yet') && text.includes('1 attempt by other addresses') && text.includes('e-mail code'), text)
+  await shot(page, '07c-email-code-listed')
+  await page.locator('#another').click()
+  await page.locator('#create').waitFor()
+  eq(await page.locator('#prot button[aria-pressed="true"]').innerText(), 'None', 'the next link starts unprotected')
+})
+
+await check('e-mail code link: a server without e-mail set up gets a clear message', async () => {
+  await page.route('**/api/staff/uploads', (route) => route.request().method() === 'POST'
+    ? route.fulfill({ status: 409, headers: { 'Access-Control-Allow-Origin': SITE_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'mail_unavailable' }) })
+    : route.continue())
+  try {
+    await page.setInputFiles('#file', MAIL_ZIP)
+    await page.locator('#prot button', { hasText: 'E-mail code' }).click()
+    await page.locator('#rcp').fill('pm@client.com')
+    await page.locator('#create').click()
+    await page.waitForFunction(() => /not set up/.test(document.getElementById('form-err')?.textContent ?? ''), null, { timeout: 10000 })
+    eq(await page.locator('#form-err').innerText(), 'E-mail codes are not set up on the office share server yet. Use a password, or ask IT.')
+  } finally {
+    await page.unroute('**/api/staff/uploads')
+  }
+  await page.locator('#prot button', { hasText: 'None' }).click()
 })
 
 await check('resume: an upload started earlier carries on when the same file is chosen again', async () => {
@@ -386,6 +465,8 @@ await check('phone width: the cards stack, nothing scrolls sideways, at 390 and 
 })
 
 await check('keyboard: the file chooser, chips and buttons can be reached and show focus', async () => {
+  // start at the top of the page: how many links the list holds must not matter
+  await page.locator('.skip').focus()
   await page.keyboard.press('Tab')
   let found = false
   for (let i = 0; i < 12 && !found; i++) {

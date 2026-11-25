@@ -21,7 +21,8 @@
   var signoutBtn = document.getElementById('signout')
   // S.cfg, S.gist, S.keyHash are the names the pointer code copied from share.js expects
   var S = { cfg: null, gist: '', keyHash: '', base: '', pass: null, me: null, links: [], uploads: [], now: 0, skew: 0, off: {}, memoryOnly: false }
-  var F = { file: null, days: 7, password: '', note: '', title: '', titleTouched: false, resume: null, error: '' }
+  // protect: 'none' | 'password' | 'email' (a link limited to named addresses, opened with a code sent by e-mail)
+  var F = { file: null, days: 7, protect: 'none', password: '', recipients: '', note: '', title: '', titleTouched: false, resume: null, error: '' }
   var U = null // the upload in progress
 
   // ---- small helpers --------------------------------------------------------------------------
@@ -204,6 +205,89 @@
     return out.slice(0, 4).join('') + '-' + out.slice(4, 8).join('') + '-' + out.slice(8).join('')
   }
 
+  // ---- e-mail addresses: the same rules as the share server's normEmail and emailKey --------------
+  var MAX_RECIPIENTS = 10
+  var EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
+  function normEmail(s) {
+    var e = String(s == null ? '' : s).trim().toLowerCase()
+    return e.length <= 254 && EMAIL_RE.test(e) && e.indexOf('..') < 0 ? e : ''
+  }
+  function emailKey(s) {
+    var e = normEmail(s)
+    if (!e) return ''
+    var at = e.lastIndexOf('@')
+    var local = e.slice(0, at)
+    var domain = e.slice(at + 1)
+    local = local.replace(/\+.*$/, '') || local
+    if (domain === 'gmail.com' || domain === 'googlemail.com') {
+      domain = 'gmail.com'
+      local = local.replace(/\./g, '')
+    }
+    return local + '@' + domain
+  }
+  /**
+   * Addresses as typed or pasted: separated by commas, semicolons, spaces or new lines, and
+   * "Name <a@b.com>" as copied from Outlook (a quoted name may hold a comma).
+   * Returns { list: distinct normalised addresses, bad: entries that are not addresses, repeats }.
+   */
+  function parseRecipients(text) {
+    var parts = []
+    var cur = ''
+    var inQ = false
+    var inA = false
+    String(text || '').split('').forEach(function (ch) {
+      if (ch === '"' && !inA) inQ = !inQ
+      else if (ch === '<' && !inQ) inA = true
+      else if (ch === '>' && !inQ) inA = false
+      else if ((ch === ',' || ch === ';' || ch === '\n' || ch === '\r') && !inQ && !inA) {
+        parts.push(cur)
+        cur = ''
+        return
+      }
+      cur += ch
+    })
+    parts.push(cur)
+    var cands = []
+    parts.forEach(function (p) {
+      p = p.trim()
+      if (!p) return
+      var m = /<([^<>]*)>\s*$/.exec(p)
+      if (m) cands.push(m[1].trim())
+      else p.split(/\s+/).forEach(function (t) {
+        if (t) cands.push(t)
+      })
+    })
+    var out = { list: [], bad: [], repeats: 0 }
+    var keys = {}
+    cands.forEach(function (c) {
+      var e = normEmail(c)
+      if (!e) {
+        if (out.bad.indexOf(c) < 0) out.bad.push(c)
+        return
+      }
+      var k = emailKey(e)
+      if (keys[k]) out.repeats++
+      else {
+        keys[k] = true
+        out.list.push(e)
+      }
+    })
+    return out
+  }
+  function addressesText(n) {
+    return n + (n === 1 ? ' address' : ' addresses')
+  }
+  /** What is wrong with the typed addresses, or '' when they can be sent. */
+  function recipientsProblem(p) {
+    if (p.bad.length === 1) return '“' + p.bad[0].slice(0, 80) + '” is not an e-mail address. Correct it or remove it.'
+    if (p.bad.length > 1) return p.bad.length + ' entries are not e-mail addresses: ' + p.bad.slice(0, 4).map(function (b) {
+      return '“' + b.slice(0, 60) + '”'
+    }).join(', ') + (p.bad.length > 4 ? ', …' : '') + '.'
+    if (p.list.length > MAX_RECIPIENTS) return 'A link can be limited to at most ' + MAX_RECIPIENTS + ' addresses; there are ' + p.list.length + '.'
+    if (!p.list.length) return 'Type at least one client e-mail address, or choose another protection.'
+    return ''
+  }
+
   // ---- the e-mail text: the same wording as Hopper's buildEmail (src/shared/pubshare.ts) ------
   function fmtExpiryDate(ms) {
     return longDate.format(new Date(ms)).replace(',', '')
@@ -222,7 +306,8 @@
       lines.push('  - ' + f.name + ' (' + fmtBytes(f.size) + ')')
     })
     lines.push('', 'This link expires on ' + fmtExpiryDate(e.expiresAt) + ' (' + n + ' ' + (n === 1 ? 'day' : 'days') + ' from today). Please download before then.')
-    if (e.hasPassword) lines.push('The link is password protected. We will send you the password separately.')
+    if (e.recipients && e.recipients.length) lines.push('The link works only for the e-mail address it was sent to. When you open it, enter your e-mail address and you will receive a one-time code by e-mail.')
+    else if (e.hasPassword) lines.push('The link is password protected. We will send you the password separately.')
     lines.push('', 'If the link does not open or the download fails, please reply to this e-mail and we will help.', '', 'Regards,', e.sender, company)
     return { subject: e.title + ' - files from ' + company, body: lines.join('\r\n') }
   }
@@ -543,13 +628,47 @@
     })
     var daysNote = h('small', { class: 'muted', text: 'Until ' + fmtExpiryDate(Date.now() + F.days * DAY) })
 
-    var pw = h('input', { class: 'in', id: 'pw', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'None', value: F.password, maxlength: '256', on: { input: function () {
+    // protection: none, a password, or e-mail codes for named addresses (never both)
+    var prot = h('div', { class: 'chips words', id: 'prot', role: 'group', 'aria-labelledby': 'prot-l' })
+    var pw = h('input', { class: 'in', id: 'pw', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'Type one or choose Generate', value: F.password, maxlength: '256', on: { input: function () {
       F.password = pw.value
     } } })
     var gen = h('button', { type: 'button', class: 'btn sm', text: 'Generate', on: { click: function () {
       F.password = pw.value = generatePassword()
       pw.focus()
     } } })
+    var rcpHint = h('small', { class: 'muted', id: 'rcp-hint', 'aria-live': 'polite' })
+    var rcp = h('textarea', { class: 'in', id: 'rcp', rows: '2', maxlength: '4000', spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', inputmode: 'email', placeholder: 'name@client.com, other@client.com', 'aria-describedby': 'rcp-hint rcp-note', on: {
+      input: function () {
+        F.recipients = rcp.value
+        var chk = checkRecipients(rcp, rcpHint, rcpHint.classList.contains('bad'))
+        if (F.error && !chk.problem) setError('') // the addresses that were refused are fixed
+      },
+      blur: function () {
+        if (rcp.value.trim()) checkRecipients(rcp, rcpHint, true)
+      }
+    } })
+    rcp.value = F.recipients
+    var panels = {
+      none: h('small', { class: 'muted', id: 'prot-none', text: 'Anyone who has the link can download until it expires.' }),
+      password: h('div', { class: 'field sub', id: 'prot-pw' }, h('label', { class: 'lbl eyebrow', for: 'pw', text: 'Password' }), h('div', { class: 'pwrow' }, pw, gen), h('small', { class: 'muted', text: 'At least 6 characters. It is shown once, when the link is ready. Send it separately from the link.' })),
+      email: h('div', { class: 'field sub', id: 'prot-mail' }, h('label', { class: 'lbl eyebrow', for: 'rcp', text: 'Client e-mail addresses (up to ' + MAX_RECIPIENTS + ')' }), rcp, rcpHint, h('small', { class: 'muted', id: 'rcp-note', text: 'Only these addresses can open the link. Your client types their address and the office server e-mails them a one-time code. There is no password to send.' }))
+    }
+    var showProt = function () {
+      prot.querySelectorAll('button').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === F.protect))
+      })
+      for (var k in panels) panels[k].hidden = k !== F.protect
+    }
+    ;[['none', 'None'], ['password', 'Password'], ['email', 'E-mail code']].forEach(function (o) {
+      prot.appendChild(h('button', { type: 'button', 'data-v': o[0], 'aria-pressed': String(F.protect === o[0]), text: o[1], 'aria-controls': o[0] === 'password' ? 'prot-pw' : o[0] === 'email' ? 'prot-mail' : 'prot-none', on: { click: function () {
+        F.protect = o[0]
+        showProt()
+      } } }))
+    })
+    showProt()
+    if (F.recipients.trim()) checkRecipients(rcp, rcpHint, true)
+    else checkRecipients(rcp, rcpHint, false)
     var note = h('textarea', { class: 'in', id: 'note', rows: '3', maxlength: '4000', placeholder: 'Optional · appears on the download page and in the e-mail', on: { input: function () {
       F.note = note.value
     } } })
@@ -568,7 +687,7 @@
       drop,
       F.resume ? h('p', { class: 'note-box' }, 'An unfinished upload of this file was found (' + Math.floor((F.resume.received / F.resume.size) * 100) + '% sent). ', h('b', { text: 'Continue upload' }), ' carries on with the settings chosen then.') : null,
       h('div', { class: 'field' }, h('span', { class: 'lbl eyebrow', id: 'days-l', text: 'Link open for (days)' }), chips, daysNote),
-      h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'pw', text: 'Password (optional)' }), h('div', { class: 'pwrow' }, pw, gen), h('small', { class: 'muted', text: 'At least 6 characters. It is shown once, when the link is ready. Send it separately from the link.' })),
+      h('div', { class: 'field' }, h('span', { class: 'lbl eyebrow', id: 'prot-l', text: 'Protection' }), prot, panels.none, panels.password, panels.email),
       h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'note', text: 'Note to the client' }), note),
       h('div', { class: 'field' }, h('label', { class: 'lbl eyebrow', for: 'title', text: 'Title' }), title),
       err,
@@ -617,6 +736,23 @@
     }
   }
 
+  /**
+   * The line under the address box: what will be sent, or (strict) which entry is not an address.
+   * While typing, a half-typed address is not called wrong; leaving the box or creating the link is.
+   */
+  function checkRecipients(box, hint, strict) {
+    var p = parseRecipients(box.value)
+    var why = recipientsProblem(p)
+    var bad = strict && !!why && !!box.value.trim()
+    if (bad) hint.textContent = why
+    else if (p.list.length) hint.textContent = addressesText(p.list.length) + ': ' + p.list.join(', ') + (p.repeats ? ' (' + p.repeats + ' repeated, counted once)' : '') + (p.list.length > MAX_RECIPIENTS ? '. At most ' + MAX_RECIPIENTS + '.' : '')
+    else hint.textContent = 'Separate addresses with commas, semicolons, spaces or new lines. “Name <name@client.com>” works too.'
+    hint.classList.toggle('bad', bad)
+    if (bad) box.setAttribute('aria-invalid', 'true')
+    else box.removeAttribute('aria-invalid')
+    return { parsed: p, problem: why }
+  }
+
   function chooseFile(file) {
     F.error = ''
     var lim = S.me.limits
@@ -654,6 +790,9 @@
     if (j.error === 'bad_type') return 'Only .zip, .rar and .7z files can be sent from here.'
     if (j.error === 'bad_name') return 'The file name cannot be used. Rename the file and choose it again.'
     if (j.error === 'bad_password') return 'Use a password of at least 6 characters.'
+    if (j.error === 'bad_recipients') return j.email != null ? 'The office server does not accept “' + String(j.email).slice(0, 80) + '” as an e-mail address. Correct it and try again.' : 'A link can be limited to at most ' + (j.max || MAX_RECIPIENTS) + ' e-mail addresses.'
+    if (j.error === 'password_and_recipients') return 'A link can have a password or e-mail addresses, not both. Choose one under Protection.'
+    if (j.error === 'mail_unavailable') return 'E-mail codes are not set up on the office share server yet. Use a password, or ask IT.'
     if (j.error === 'disk_full') return (j.message || 'The office server is nearly full.') + ' Ask IT to free space, or switch off old links.'
     if (j.error === 'too_many_uploads') return 'You already have ' + (j.max || 2) + ' unfinished uploads. Continue one (choose the same file again) or discard it below.'
     if (j.error === 'wrong_content') return (file ? file : 'The file') + ' is not really a .' + (j.extension || 'zip') + ' file, so it was not sent. Check you chose the right file.'
@@ -665,7 +804,24 @@
 
   async function create() {
     if (!F.file) return setError('Choose a .zip, .rar or .7z file first.')
-    if (F.password && F.password.length < 6) return setError('Use a password of at least 6 characters, or leave it empty.')
+    // an unfinished upload keeps the protection chosen when it started: nothing here is sent again
+    var password = !F.resume && F.protect === 'password' ? F.password : ''
+    var recipients = null
+    if (!F.resume && F.protect === 'password' && password.length < 6) {
+      var pwIn = document.getElementById('pw')
+      if (pwIn) pwIn.focus()
+      return setError(password ? 'Use a password of at least 6 characters.' : 'Type a password or choose Generate, or choose None under Protection.')
+    }
+    if (!F.resume && F.protect === 'email') {
+      var box = document.getElementById('rcp')
+      var hint = document.getElementById('rcp-hint')
+      var chk = box && hint ? checkRecipients(box, hint, true) : { parsed: parseRecipients(F.recipients), problem: recipientsProblem(parseRecipients(F.recipients)) }
+      if (chk.problem) {
+        if (box) box.focus()
+        return setError(chk.problem)
+      }
+      recipients = chk.parsed.list
+    }
     setError('')
     var btn = document.getElementById('create')
     btn.disabled = true
@@ -683,15 +839,15 @@
       }
       up = { id: F.resume.id, chunkBytes: st.json.chunkBytes, chunks: st.json.chunks, have: st.json.have, resumed: true }
     } else {
-      var r = await call('POST', '/api/staff/uploads', { name: safeFileName(file.name), size: file.size, days: F.days, password: F.password || undefined, message: F.note.trim() || undefined, title: F.title.trim() || undefined })
+      var r = await call('POST', '/api/staff/uploads', { name: safeFileName(file.name), size: file.size, days: F.days, password: password || undefined, recipients: recipients || undefined, message: F.note.trim() || undefined, title: F.title.trim() || undefined })
       if (!S.pass) return
       if (r.status !== 201) {
         btn.disabled = false
         btn.textContent = 'Create link'
         return setError(problem(r))
       }
-      up = { id: r.json.id, chunkBytes: r.json.chunkBytes, chunks: r.json.chunks, have: [], resumed: false }
-      if (F.password) store('dxs-pw-' + up.id, F.password)
+      up = { id: r.json.id, chunkBytes: r.json.chunkBytes, chunks: r.json.chunks, have: [], resumed: false, password: password, recipients: recipients }
+      if (password) store('dxs-pw-' + up.id, password)
     }
     startUpload(file, up)
   }
@@ -719,7 +875,9 @@
       started: Date.now(),
       samples: [],
       speed: 0,
-      password: F.password || store('dxs-pw-' + up.id) || '',
+      // a resumed upload's password is the one kept when it started (this tab), never what is typed now
+      password: up.password || store('dxs-pw-' + up.id) || '',
+      recipients: up.recipients || null, // for a resumed upload: read from the links list once it is finished
       resumed: up.resumed
     }
     U.sent = sentBytes()
@@ -902,9 +1060,10 @@
       var link = h('input', { class: 'in mono', id: 'result-link', readonly: true, value: u.url, 'aria-label': 'Client link', on: { focus: function () {
         link.select()
       } } })
+      var rcpts = u.recipients || (linkOf(u.id) || {}).recipients || null
       var email = function () {
         var l = linkOf(u.id) || {}
-        var m = buildEmail({ url: u.url, title: l.title || titleOf(u), message: l.message != null ? l.message : F.note, sender: l.sender || S.me.name, company: S.cfg.company, files: [{ name: safeFileName(u.file.name), size: u.file.size }], expiresAt: u.result.expiresAt - S.skew, hasPassword: !!u.password || !!l.hasPassword })
+        var m = buildEmail({ url: u.url, title: l.title || titleOf(u), message: l.message != null ? l.message : F.note, sender: l.sender || S.me.name, company: S.cfg.company, files: [{ name: safeFileName(u.file.name), size: u.file.size }], expiresAt: u.result.expiresAt - S.skew, hasPassword: !!u.password || !!l.hasPassword, recipients: u.recipients || l.recipients || null })
         return 'Subject: ' + m.subject + '\r\n\r\n' + m.body
       }
       kids.push(
@@ -926,6 +1085,15 @@
             copy(u.password, 'Password copied')
           } } })),
           h('small', null, 'Send the password separately from the link, for example by phone or text message. Never in the same e-mail.')))
+      } else if (rcpts && rcpts.length) {
+        var ul = h('ul', { class: 'rcp-list', id: 'result-rcp', 'aria-labelledby': 'result-rcp-l' })
+        rcpts.forEach(function (a) {
+          ul.appendChild(h('li', { text: a }))
+        })
+        kids.push(h('div', { class: 'pwbox mailbox reveal', role: 'note' },
+          h('span', { class: 'lbl eyebrow', id: 'result-rcp-l', text: 'Only for ' + (rcpts.length === 1 ? 'this address' : 'these ' + rcpts.length + ' addresses') }),
+          ul,
+          h('small', null, 'The link works only for ' + (rcpts.length === 1 ? 'this address' : 'these addresses') + '. When your client opens it, they type their e-mail address and get a one-time code by e-mail. There is no password to send.')))
       } else if (u.resumed && hasPasswordOnServer(u.id)) {
         kids.push(h('p', { class: 'muted reveal', text: 'This link is password protected with the password you chose when you started the upload.' }))
       }
@@ -933,6 +1101,8 @@
         U = null
         F.file = null
         F.password = ''
+        F.protect = 'none'
+        F.recipients = ''
         F.note = ''
         F.title = ''
         F.titleTouched = false
@@ -1149,13 +1319,29 @@
     var st = statusOf(l)
     var file = l.files && l.files.length === 1 ? l.files[0].name : plural((l.files || []).length, 'file')
     var tr = h('tr', { 'data-id': l.id },
-      h('td', { class: 'f', 'data-label': 'File' }, h('b', { text: l.title && l.title !== file ? l.title : file }), h('small', { class: 'tn', text: (l.title && l.title !== file ? file + ' · ' : '') + fmtBytes(l.bytes) + ' · ' + madeText(l.createdAt) + (l.hasPassword ? ' · password' : '') })),
+      h('td', { class: 'f', 'data-label': 'File' }, h('b', { text: l.title && l.title !== file ? l.title : file }), h('small', { class: 'tn', text: (l.title && l.title !== file ? file + ' · ' : '') + fmtBytes(l.bytes) + ' · ' + madeText(l.createdAt) + (l.hasPassword ? ' · password' : l.recipients && l.recipients.length ? ' · e-mail code' : '') }), recipientsBlock(l)),
       h('td', { class: 'tn', 'data-label': 'Downloads', text: S.off[l.id] ? '–' : String(l.downloads || 0) }),
       h('td', { class: 'tn', 'data-label': 'Expires', text: dayText(l.expiresAt) }),
       h('td', { 'data-label': 'Status' }, h('span', { class: 'pill ' + st[1], text: st[0] })),
       h('td', { class: 'acts' }))
     fillActions(tr.lastChild, l)
     return tr
+  }
+
+  /** A link for named addresses: each address with how far its client got, then refused attempts. */
+  function recipientsBlock(l) {
+    if (!l.recipients || !l.recipients.length) return null
+    var stats = l.recipientStats || []
+    var ul = h('ul', { class: 'rcp', 'aria-label': 'Only for' })
+    l.recipients.forEach(function (a, i) {
+      var s = stats[i] || {}
+      var st = s.downloads > 0 ? ['downloaded' + (s.downloads > 1 ? ' ×' + s.downloads : ''), 'dl', s.lastDownloadAt] : s.verifiedAt > 0 ? ['verified', 'ok', s.verifiedAt] : s.codesSent > 0 ? ['code sent' + (s.codesSent > 1 ? ' ×' + s.codesSent : ''), 'sent', 0] : ['not opened yet', '', 0]
+      ul.appendChild(h('li', null, h('span', { class: 'addr', text: a }), h('span', { class: 'rs' + (st[1] ? ' ' + st[1] : ''), text: st[0] + (st[2] ? ', ' + dayText(st[2]) : '') })))
+    })
+    return h('div', { class: 'rcp-wrap' },
+      h('span', { class: 'rcp-l', text: 'Only for:' }),
+      ul,
+      l.refused > 0 ? h('span', { class: 'refused tn', text: plural(l.refused, 'attempt') + ' by other addresses' }) : null)
   }
 
   function fillActions(cell, l) {

@@ -49,7 +49,8 @@
     unlink: ['M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9', 'M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l.9-.9', 'M3 3l14 14'],
     box: ['M3.5 6.5 10 3l6.5 3.5v7L10 17l-6.5-3.5z', 'M3.5 6.5 10 10l6.5-3.5', 'M10 10v7'],
     shield: ['M10 2.5 16 5v5c0 3.6-2.5 6.5-6 7.5-3.5-1-6-3.9-6-7.5V5z', 'M7.3 10.2l1.9 1.9 3.6-3.9'],
-    folder: ['M3 6a1.5 1.5 0 0 1 1.5-1.5h3l1.5 2h6.5A1.5 1.5 0 0 1 17 8v6.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z']
+    folder: ['M3 6a1.5 1.5 0 0 1 1.5-1.5h3l1.5 2h6.5A1.5 1.5 0 0 1 17 8v6.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z'],
+    mail: ['M3.5 5.5h13v9h-13z', 'M3.5 5.5 10 11l6.5-5.5']
   }
   function icon(name, cls) {
     var ns = 'http://www.w3.org/2000/svg'
@@ -477,6 +478,7 @@
     paint()
     pills.appendChild(ex)
     if (meta.needsPassword) pills.appendChild(cell('', 'Access', h('b', { text: 'Password protected' })))
+    if (meta.needsEmail) pills.appendChild(cell('', 'Access', h('b', { text: meta.verifiedAs ? 'Confirmed' : 'Named recipients only' }), meta.verifiedAs || ''))
     if (meta.message) head.push(h('blockquote', { class: 'message', text: meta.message }))
     head.push(pills)
     head.push(direct(locked ? 'valved shut' : 'idle'))
@@ -542,6 +544,218 @@
     input.focus({ preventScroll: true })
   }
 
+  // ---- links for named e-mail addresses ------------------------------------------------------
+  // Step 1: the visitor gives their address. Only an address the sender listed gets a code, and the
+  // code goes to the address the sender entered. Step 2: the code from the e-mail, then the files.
+  async function postJson(path, body) {
+    var r = null
+    var j = null
+    try {
+      r = await timedFetch(S.base + '/api/s/' + S.id + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, 45000)
+      j = await r.json().catch(function () {
+        return null
+      })
+    } catch (e) {}
+    return { r: r, j: j || {}, wait: r ? Number((j && j.retryAfter) || r.headers.get('Retry-After')) || 60 : 0 }
+  }
+  function minutesText(sec) {
+    return sec < 90 ? plural(Math.max(1, Math.ceil(sec)), 'second') : plural(Math.ceil(sec / 60), 'minute')
+  }
+  var EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
+  function busyButton(btn, busy, glyph, label) {
+    btn.disabled = busy
+    btn.replaceChildren(busy ? h('span', { class: 'spin' }) : icon(glyph), label)
+  }
+
+  function showEmail(meta, problem, email) {
+    var head = headView(meta, true)
+    var main = h('div', { class: 'otp' })
+    var v = split('locked', head, [main])
+    show(v)
+    v.querySelector('h1').removeAttribute('tabindex')
+    S.timers.push(setInterval(head.tick, 30000))
+    var who = meta.sender || 'the sender'
+
+    function askStep(problemText, prefill) {
+      if (meta.mailReady === false) {
+        main.replaceChildren(h('div', { class: 'lock-glyph' }, icon('mail')), h('h2', { class: 'ask', text: "We can't send codes at the moment" }),
+          h('p', { text: 'This link is for named people: we confirm who you are with a code sent by e-mail. Our e-mail service is not available right now.' }),
+          h('p', { text: 'Please try again later, or reply to the e-mail from ' + who + '.' }),
+          h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', text: 'Try again', on: { click: function () {
+            start()
+          } } })))
+        return
+      }
+      var input = h('input', { id: 'em', type: 'email', autocomplete: 'email', autocapitalize: 'off', spellcheck: 'false', inputmode: 'email', maxlength: '254', 'aria-describedby': 'em-err', required: true })
+      input.value = prefill || store('dxs-e-' + S.id) || ''
+      var err = h('p', { class: 'err', id: 'em-err', role: 'alert', text: problemText || '' })
+      var btn = h('button', { class: 'btn primary', type: 'submit' }, icon('mail'), 'Send code')
+      var form = h('form', { class: 'lock', novalidate: true }, h('label', { for: 'em', text: 'Your e-mail address' }), h('div', { class: 'field' }, input, btn), err)
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault()
+        if (btn.disabled) return
+        var addr = input.value.trim().toLowerCase()
+        if (!EMAIL_RE.test(addr) || addr.indexOf('..') >= 0) {
+          err.textContent = 'Enter your full e-mail address, like name@company.com.'
+          input.setAttribute('aria-invalid', 'true')
+          return input.focus()
+        }
+        input.removeAttribute('aria-invalid')
+        busyButton(btn, true, 'mail', 'Sending…')
+        var res = await postJson('/code', { email: addr })
+        busyButton(btn, false, 'mail', 'Send code')
+        var r = res.r
+        var j = res.j
+        if (r && r.status === 200 && j.sent) {
+          store('dxs-e-' + S.id, addr)
+          return codeStep(addr, j.to, '', j.resendIn || 60, j.expiresIn)
+        }
+        if (r && r.status === 403 && j.error === 'not_recipient') return refused(addr, j.attemptsLeft)
+        if (r && r.status === 429 && j.error === 'code_wait') {
+          store('dxs-e-' + S.id, addr)
+          return codeStep(addr, j.to, 'We sent a code to this address a moment ago. Use that one; it is valid for 10 minutes.', res.wait)
+        }
+        if (r && r.status === 429 && j.error === 'code_limit') {
+          if (j.pending) return codeStep(addr, j.to, 'Several codes have been sent to this address. Use the newest one. You can ask for another in ' + minutesText(res.wait) + '.', res.wait)
+          err.textContent = 'Several codes have been sent to this address already. Please try again in ' + minutesText(res.wait) + '.'
+          return
+        }
+        input.setAttribute('aria-invalid', 'true')
+        if (r && r.status === 429) err.textContent = 'Too many attempts from your connection. For security, please wait ' + minutesText(res.wait) + ' before trying again.'
+        else if (r && r.status === 400 && j.error === 'bad_email') err.textContent = 'Enter your full e-mail address, like name@company.com.'
+        else if (r && r.status === 503 && j.error === 'mail_unavailable') err.textContent = "We can't send codes at the moment. Please try again later, or reply to the e-mail from " + who + '.'
+        else if (r && r.status === 502) err.textContent = "We couldn't send the code just now. Please try again in a minute. If it keeps failing, reply to the e-mail from " + who + '.'
+        else if (r && r.status === 404) showNotFound()
+        else if (r && r.status === 410) showExpired()
+        else err.textContent = "We couldn't reach the server. Check your connection and try again."
+      })
+      main.replaceChildren(h('div', { class: 'lock-glyph' }, icon('mail')), h('h2', { class: 'ask', text: 'Confirm your e-mail address' }),
+        h('p', { text: who + ' shared these files with named people only. Enter the e-mail address this link was sent to, and we will e-mail you a one-time code.' }), form)
+      input.focus({ preventScroll: true })
+    }
+
+    function refused(addr, left) {
+      var again = h('button', { class: 'btn', type: 'button', text: 'Try a different address', on: { click: function () {
+        askStep('', addr)
+      } } })
+      kids(main.replaceChildren() || main, [h('div', { class: 'lock-glyph refused' }, icon('lock')), h('h2', { class: 'ask', role: 'alert', text: 'This link was sent to someone else' }),
+        h('p', null, h('b', { text: addr }), ' is not one of the addresses ' + who + ' shared these files with, so we cannot send it a code.'),
+        h('p', { text: 'If you should have these files (for example, a colleague forwarded the e-mail to you), ask ' + who + ' to share them with your own e-mail address.' }),
+        left === 0 ? h('p', { class: 'small', text: 'For security, wait a few minutes before trying another address.' }) : null,
+        h('div', { class: 'actions' }, again)])
+      again.focus({ preventScroll: true })
+    }
+
+    function codeStep(addr, masked, note, resendIn, expiresIn) {
+      var input = h('input', { id: 'code', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '9', pattern: '[0-9 \\-]*', 'aria-describedby': 'code-err', required: true, placeholder: '123 456' })
+      var err = h('p', { class: 'err', id: 'code-err', role: 'alert', text: '' })
+      var btn = h('button', { class: 'btn primary', type: 'submit' }, icon('lock'), 'Open files')
+      var left = Math.max(0, Math.ceil(resendIn || 0))
+      var resend = h('button', { class: 'linkish', type: 'button', on: { click: async function () {
+        if (resend.disabled) return
+        resend.disabled = true
+        resend.textContent = 'Sending…'
+        var res = await postJson('/code', { email: addr })
+        var r = res.r
+        var j = res.j
+        if (r && r.status === 200 && j.sent) {
+          note2.textContent = 'A new code is on its way. The previous one no longer works.'
+          err.textContent = ''
+          input.value = ''
+          input.focus()
+          return countdown(j.resendIn || 60)
+        }
+        if (r && r.status === 429) {
+          err.textContent = j.error === 'code_limit' ? 'Several codes have been sent already. Use the newest one, or ask again in ' + minutesText(res.wait) + '.' : 'Please wait a moment before asking for another code.'
+          return countdown(res.wait)
+        }
+        if (r && r.status === 404) return showNotFound()
+        if (r && r.status === 410) return showExpired()
+        err.textContent = r && r.status === 503 ? "We can't send codes at the moment. Please try again later." : r && r.status === 502 ? "We couldn't send the code just now. Please try again in a minute." : "We couldn't reach the server. Check your connection and try again."
+        countdown(0)
+      } } })
+      function countdown(sec) {
+        left = Math.max(0, Math.ceil(sec))
+        paintResend()
+      }
+      function paintResend() {
+        resend.disabled = left > 0
+        resend.textContent = left > 0 ? 'Send a new code in ' + left + ' s' : 'Send a new code'
+      }
+      S.timers.push(setInterval(function () {
+        if (left > 0) {
+          left--
+          paintResend()
+        }
+      }, 1000))
+      paintResend()
+      var change = h('button', { class: 'linkish', type: 'button', text: 'Use a different address', on: { click: function () {
+        askStep('', addr)
+      } } })
+      var note2 = h('p', { class: 'small', role: 'status', text: note || '' })
+      var form = h('form', { class: 'lock', novalidate: true }, h('label', { for: 'code', text: 'Code from the e-mail' }), h('div', { class: 'field' }, input, btn), err,
+        h('div', { class: 'otp-links' }, resend, change))
+      async function submit() {
+        if (btn.disabled) return
+        var code = input.value.replace(/[\s-]/g, '')
+        if (!/^\d{6}$/.test(code)) {
+          err.textContent = 'Enter the 6-digit code from the e-mail.'
+          input.setAttribute('aria-invalid', 'true')
+          return input.focus()
+        }
+        busyButton(btn, true, 'lock', 'Checking…')
+        var res = await postJson('/verify', { email: addr, code: code })
+        busyButton(btn, false, 'lock', 'Open files')
+        var r = res.r
+        var j = res.j
+        if (r && r.status === 200 && j.token) {
+          S.token = j.token
+          store('dxs-t-' + S.id, j.token)
+          S.files = j.files
+          meta.unlocked = true
+          meta.verifiedAs = j.verifiedAs || masked
+          return showReady(meta)
+        }
+        input.setAttribute('aria-invalid', 'true')
+        if (r && r.status === 403 && j.error === 'wrong_code') {
+          err.textContent = "That code isn't right. " + (j.attemptsLeft <= 3 ? plural(j.attemptsLeft, 'attempt') + ' left.' : 'Check it and try again.')
+          input.select()
+        } else if (r && r.status === 409 && j.error === 'code_used_up') {
+          err.textContent = 'Too many wrong codes, so that code no longer works. Ask for a new code.'
+          input.value = ''
+          countdown(0)
+        } else if (r && r.status === 409) {
+          err.textContent = 'This code has expired or was already used. Ask for a new code.'
+          input.value = ''
+          countdown(0)
+        } else if (r && r.status === 403 && j.error === 'not_recipient') refused(addr)
+        else if (r && r.status === 400) err.textContent = 'Enter the 6-digit code from the e-mail.'
+        else if (r && r.status === 429) err.textContent = 'Too many wrong codes from your connection. For security, please wait ' + minutesText(res.wait) + '.'
+        else if (r && r.status === 404) showNotFound()
+        else if (r && r.status === 410) showExpired()
+        else err.textContent = "We couldn't reach the server. Check your connection and try again."
+      }
+      form.addEventListener('submit', function (e) {
+        e.preventDefault()
+        submit()
+      })
+      // six digits typed or pasted: go straight on
+      input.addEventListener('input', function () {
+        input.removeAttribute('aria-invalid')
+        if (/^\d{6}$/.test(input.value.replace(/[\s-]/g, ''))) submit()
+      })
+      var mins = Math.round((expiresIn || 600) / 60)
+      main.replaceChildren(h('div', { class: 'lock-glyph' }, icon('mail')), h('h2', { class: 'ask', text: 'Check your e-mail' }),
+        h('p', null, 'We sent a 6-digit code to ', h('b', { text: masked || addr }), '. It works once, for ' + plural(mins, 'minute') + '.'),
+        note2, form,
+        h('p', { class: 'small', text: 'Not there after a minute? Look in your spam or junk folder, then send a new code.' }))
+      input.focus({ preventScroll: true })
+    }
+
+    if (email) codeStep(email, '', problem)
+    else askStep(problem)
+  }
+
   // ---- downloads ------------------------------------------------------------------------------
   function fileUrl(f) {
     return S.base + '/d/' + S.id + '/' + f.n + (S.token ? '?t=' + encodeURIComponent(S.token) : '')
@@ -575,7 +789,11 @@
     if (p.kind === 'locked') {
       S.token = ''
       store('dxs-t-' + S.id, null)
-      showLocked(S.meta, 'Your access has timed out. Please enter the password again.')
+      if (S.meta && S.meta.needsEmail) {
+        S.meta.unlocked = false
+        S.meta.verifiedAs = ''
+        showEmail(S.meta, 'Your access has timed out. Please confirm your e-mail address again.')
+      } else showLocked(S.meta, 'Your access has timed out. Please enter the password again.')
       return true
     }
     if (p.kind === 'notfound') return showNotFound(), true
@@ -948,12 +1166,12 @@
       var m = res.meta
       if (typeof m.now === 'number') S.skew = m.now - Date.now()
       S.meta = m
-      if (m.needsPassword && !m.unlocked) {
+      if ((m.needsPassword || m.needsEmail) && !m.unlocked) {
         if (S.token) {
           S.token = ''
           store('dxs-t-' + id, null)
         }
-        return showLocked(m)
+        return m.needsEmail ? showEmail(m) : showLocked(m)
       }
       S.files = m.files
       return showReady(m)

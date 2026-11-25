@@ -99,6 +99,7 @@ const api = {
     call: invoke('share:call'),
     connectPointer: invoke('share:connectPointer'),
     setTunnelToken: invoke('share:setTunnelToken'),
+    setMailPassword: invoke('share:setMailPassword'),
     forgetToken: invoke('share:forgetToken'),
     configure: invoke('share:configure'),
     on: listen('hopper:share')

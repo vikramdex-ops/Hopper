@@ -20,6 +20,8 @@ interface Config {
   token: string
   /** Cloudflare tunnel token for mode 'named' */
   tunnelToken: string
+  /** SMTP password for e-mail codes ('' = none saved) */
+  mailPass?: string
 }
 
 const DATA = join(process.env.HOPPER_DATA!, 'share')
@@ -87,6 +89,12 @@ function staffConfig(share: PublicShareConfig) {
   return { staff: { enabled: web.enabled, maxGB: web.maxGB, defaultDays: normalizeDays(share.defaultDays) }, minFreeGB }
 }
 
+/** The server's SMTP settings, or null while no mail server is set (e-mail codes off). */
+function mailConfig() {
+  const m = cfg?.settings.mail
+  return m?.host ? { ...m, pass: cfg?.mailPass ?? '' } : null
+}
+
 async function stop() {
   const s = sup
   sup = null
@@ -105,7 +113,9 @@ async function apply() {
     sup.app?.setBandwidth(settings.bandwidth)
     const sc = staffConfig(share)
     sup.app?.setStaff?.(sc.staff, sc.minFreeGB)
-    if (sup.cfg?.server) Object.assign(sup.cfg.server, sc) // a server restarted later starts with them too
+    const mail = mailConfig()
+    sup.app?.setMail?.(mail)
+    if (sup.cfg?.server) Object.assign(sup.cfg.server, sc, { mail }) // a server restarted later starts with them too
     sup.pointerDirty = true
     return
   }
@@ -118,7 +128,7 @@ async function apply() {
       inProcess: true,
       file: '',
       hostName: hostname(),
-      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [...new Set([pageOrigin(share.pageUrl), LEGACY_PAGE_ORIGIN, ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3, ...staffConfig(share) },
+      server: { port: settings.port || 47880, store: share.store, allowedOrigins: [...new Set([pageOrigin(share.pageUrl), LEGACY_PAGE_ORIGIN, ...(process.env.HOPPER_SHARE_EXTRA_ORIGIN ? [process.env.HOPPER_SHARE_EXTRA_ORIGIN] : [])])], stateDir: STATE, logDir: LOGS, bandwidth: settings.bandwidth, shutdownGraceSeconds: 3, mail: mailConfig(), ...staffConfig(share) },
       tunnel: {
         mode: settings.mode,
         cloudflared: cloudflaredPath(),
@@ -307,6 +317,12 @@ const methods: Record<string, (...a: any[]) => unknown> = {
   probeCloudflared,
   downloadCloudflared: () => downloadCloudflared((done, total) => process.parentPort.postMessage({ type: 'share-progress', done, total })),
   selfTest,
+  /** Send a test e-mail with the saved settings; the error carries the mail server's own words. */
+  testMail: async (to: string) => {
+    await applying // settings saved just before the test are in place first
+    if (!sup?.app) throw new Error('The share server is not running on this PC, so it cannot send e-mail yet. Switch it on first.')
+    return sup.app.testMail(String(to ?? ''))
+  },
   republish: async () => {
     await applying // a restart in progress finishes first, so the address published is the new one
     if (sup) {
