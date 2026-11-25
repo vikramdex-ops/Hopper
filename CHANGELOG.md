@@ -4,6 +4,28 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.10.0] — 2026-11-25
+
+### Added
+- **Dexterity Share links for named e-mail addresses.** A client link can be limited to up to 10
+  e-mail addresses instead of a password (off unless chosen). The client page asks for the
+  visitor's address; when it is on the link, the share server e-mails a 6-digit code to the address
+  the sender entered (never to what was typed), and the code unlocks the download for that person.
+  Anyone else sees "This link was sent to someone else", with no code sent and no file names shown.
+  Available in Hopper's *Create client link* and on the browser page.
+- Codes work once, for 10 minutes, with five tries; a new code after a minute, at most five an hour
+  per address. Wrong addresses and codes are limited per connection, and a listed address is never
+  locked out by other people's attempts. A confirmed browser tab stays confirmed for 12 hours.
+- *My client links* (and *Your links* on the browser page) show per address whether a code was
+  sent, confirmed and downloaded, and how many times other addresses were refused.
+- **E-mail codes** section in *Set up Dexterity Share → Advanced*: mail server, sender and a
+  **Send test e-mail** button; the password is kept encrypted on that PC only. The standalone
+  service takes a `mail` block in `config.json` with the password in its own file.
+
+### Changed
+- The e-mail text for a client link says how an e-mail-code link works instead of mentioning a
+  password.
+
 ## [2.9.1] — 2026-11-23
 
 ### Fixed

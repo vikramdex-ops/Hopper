@@ -28,7 +28,7 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 
 | | |
 | :-- | :-- |
-| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page that works on phones too. Expiry of 1–90 days, optional password and download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. Away from Hopper, upload a .zip, .rar or .7z on the browser page and get a link there. |
+| **Share with `@`** — type `@` and a name, pick people or a group, add a note. Online colleagues receive directly PC-to-PC (encrypted, resumable, checksum-verified); offline ones get it through the office server. Click a person to message them, send files, a folder link or a request. | **Client links (Dexterity Share)** — select files and choose *Create client link* (`Ctrl+Alt+L`). Files stay on the office server; the client gets a link to a branded download page that works on phones too. Expiry of 1–90 days, an optional password or e-mail code (only the people you name can download), a download limit, ready-made e-mail text, and *My client links* to see downloads, extend or revoke. Away from Hopper, upload a .zip, .rar or .7z on the browser page and get a link there. |
 | **Viewers** — PDF (continuous scroll, `Ctrl`+wheel zoom), Excel, Word, the preview saved in DWG files, MicroStation V7 drawings (`.dgn`, `.i01`…) with zoom, pan and levels, and SmartSketch `.sha` details. No design software needed. | **Project folders** — the *Dexterity project* template asks for job number, name, type, 3D platform, disciplines, sub-projects, areas and review gates, shows the exact tree first and never overwrites. A second template makes a dated issue pack. |
 | **Zip in one key** — `Ctrl+Alt+Z` zips the selection with your default preset using every CPU core (bundled 7-Zip). Presets for store-speed, smallest 7z, email-sized parts, password and RAR. Open any archive like a folder; smart-extract never nests folders twice. | **Copies you can watch** — copy, move, delete, zip and extract show a progress window (percentage, current file, speed, time left, Pause / Cancel / Hide) that also asks about name conflicts, with *apply to all*. Everything runs in one background queue; the Transfers panel (`Ctrl+J`) keeps the history. Same-drive moves are instant; flaky shares are retried. |
 | **Office tools** — package a lot: check names against your convention, write a transmittal (Excel + PDF), zip and share in one go. PDF merge, split, extract, rotate and reorder. Revisions (`RevA / RevB / Rev0`) group under the latest; unknown orders are flagged, never guessed. | **Hopper's own, top to bottom** — its own context menu, Properties, Open with and folder picker; nothing is handed to Windows Explorer. Path Copy (UNC, Internet, Samba forms), Recycle Bin restore, `Ctrl+Z` undo, the Windows clipboard both ways and drag-out to Outlook or Cliq. |
@@ -74,6 +74,16 @@ the coffee is ready, and never wonder whether a copy over the network really fin
 <td><img src="docs/screenshots/f-conflict.png" alt="Name conflict in the progress window"><br><sub><b>Conflicts in place.</b> Replace, keep newer, keep both or skip, for all at once.</sub></td>
 </tr>
 </table>
+
+## What's new in 2.10
+
+- **Client links for named people only.** When you create a client link, choose *Only these e-mail
+  addresses* and enter up to 10. The client types their address and gets a one-time code by e-mail;
+  anyone else who opens the link (a forwarded e-mail, the wrong person) is told it was sent to
+  someone else, and sees no file names. Works from Hopper and from the browser page.
+  *My client links* shows, per address, whether the code was sent, confirmed and downloaded.
+- Needs e-mail set up once on the share server: *Set up Dexterity Share → Advanced → E-mail codes*,
+  with **Send test e-mail** ([guide](docs/DEXTERITY-SHARE-IT.md#e-mail-codes)).
 
 ## What's new in 2.9
 
