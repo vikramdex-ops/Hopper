@@ -454,3 +454,18 @@ test('smtpSend: no user name and a server that wants a sign-in gives the plain-w
   const mail = S.mailSettings({ host: '127.0.0.1', port: srv.address().port, secure: 'none', from: 'info@office.com' })
   await assert.rejects(S.smtpSend(mail, { to: 'c@x.com', subject: 's', text: 't' }), /needs a sign-in: fill in User name.*530 5\.7\.0/)
 })
+
+test('every e-mail says not to reply and names whom to contact', () => {
+  const m = { title: 'Lot 09', sender: 'Priya Sharma', expiresAt: Date.UTC(2026, 11, 2) }
+  const code = S.codeMail(m, '482913', 10, 'a@b.com')
+  for (const t of [code.text, code.html]) {
+    assert.match(t, /Please do not reply to this e-mail/)
+    assert.match(t, /please contact Priya Sharma directly/)
+  }
+  assert.match(S.codeMail({ ...m, sender: '' }, '482913', 10, 'a@b.com').text, /contact the person at Dexterity Design Services who shared the files with you/)
+  const test = S.testMail('info@office.com')
+  assert.match(test.text, /not monitored/)
+  assert.match(test.html, /Please do not reply/)
+  const raw = S.buildMessage(S.mailSettings({ host: 'smtp.x.com', from: 'info@office.com' }), { to: 'a@b.com', ...code })
+  assert.match(raw, /^X-Auto-Response-Suppress: All$/m)
+})

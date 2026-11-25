@@ -8,7 +8,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { pipeline, Transform } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import { MARK_CID, codeMailHtml, testMailHtml } from './mail-html.mjs'
+import { MARK_CID, codeMailHtml, noReplyText, testMailHtml } from './mail-html.mjs'
 import { MARK_PNG_BASE64 } from './mail-mark.mjs'
 
 export const ID_RE = /^[a-z2-7]{26}$/
@@ -406,6 +406,8 @@ export function buildMessage(mail, { to, subject, text, html, inline = [] }, dat
     `Message-ID: <${crypto.randomBytes(12).toString('hex')}@${mail.from.slice(mail.from.lastIndexOf('@') + 1)}>`,
     'MIME-Version: 1.0',
     'Auto-Submitted: auto-generated',
+    // no out-of-office or read-receipt replies into a mailbox nobody reads
+    'X-Auto-Response-Suppress: All',
     content
   ].join('\r\n')
 }
@@ -521,7 +523,7 @@ const LOGO = { cid: MARK_CID, type: 'image/png', name: 'dexterity.png', base64: 
 export function testMail(from, now = new Date()) {
   return {
     subject: 'Dexterity Share test e-mail',
-    text: 'E-mail codes are ready.\n\nThis test came from the Dexterity Share server. Clients of links limited to named e-mail addresses will receive their one-time codes from this address.\n\nDexterity Share\nDexterity Design Services Private Limited',
+    text: 'E-mail codes are ready.\n\nThis test came from the Dexterity Share server. Clients of links limited to named e-mail addresses will receive their one-time codes from this address.\n\n' + noReplyText('') + '\n\nDexterity Share\nDexterity Design Services Private Limited',
     html: testMailHtml(from, now),
     inline: [LOGO]
   }
@@ -544,6 +546,8 @@ export function codeMail(m, code, minutes, to = '') {
       `Enter it on the download page you have open. It works once, for ${minutes} minutes.`,
       '',
       'If you did not ask for this code, you can ignore this e-mail. Nothing can be downloaded without it.',
+      '',
+      noReplyText(m.sender),
       '',
       'Dexterity Share',
       'Dexterity Design Services Private Limited'

@@ -24,6 +24,17 @@ const DISPLAY = "'Archivo','Segoe UI Light','Segoe UI',Helvetica,Arial,sans-seri
 const BODY = "'Instrument Sans','Segoe UI',Helvetica,Arial,sans-serif"
 const MONO = "'JetBrains Mono','Cascadia Mono',Consolas,'Courier New',monospace"
 
+const COMPANY = 'Dexterity Design Services'
+
+/**
+ * Codes go out from a shared office address nobody reads, so every e-mail says so and points the
+ * client to the person who sent the files. sender: the display name from the link ('' = none).
+ */
+export function noReplyText(sender) {
+  const who = sender && sender !== COMPANY ? sender : `the person at ${COMPANY} who shared the files with you`
+  return `This is an automated message sent from an address that is not monitored. Please do not reply to this e-mail. For any questions about the files, please contact ${who} directly.`
+}
+
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
@@ -64,7 +75,7 @@ function steps(list) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${tds}</tr></table>`
 }
 
-/** Every Dexterity Share e-mail. p: { preheader, title, kicker, heading, from, flowTo, main, note } */
+/** Every Dexterity Share e-mail. p: { preheader, title, kicker, heading, from, flowTo, main, note, noReply } */
 function shell(p, year) {
   const from = p.from
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;"><tr>
@@ -97,6 +108,7 @@ function shell(p, year) {
     .dx-ink { color:#eef6f6 !important; }
     .dx-soft { color:#a9c4c7 !important; }
     .dx-codebox { background:#0b1d20 !important; border-left-color:#24474b !important; border-right-color:#24474b !important; border-bottom-color:#24474b !important; }
+    .dx-notice { background:#0b1d20 !important; border-top-color:#24474b !important; border-right-color:#24474b !important; border-bottom-color:#24474b !important; }
     .dx-rule { border-color:#24474b !important; }
     .dx-foot { background:#0b1d20 !important; border-color:#24474b !important; }
   }
@@ -122,7 +134,13 @@ ${from}
 
 ${p.main}
 
-<tr><td class="dx-pad" style="padding:6px 36px 30px;"><div class="dx-soft" style="font:400 13px/1.6 ${BODY};color:${C.graphite};">${p.note}</div></td></tr>
+<tr><td class="dx-pad" style="padding:6px 36px 24px;"><div class="dx-soft" style="font:400 13px/1.6 ${BODY};color:${C.graphite};">${p.note}</div></td></tr>
+
+<tr><td class="dx-pad" style="padding:0 36px 30px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dx-notice" style="background:${C.paper};border:1px solid ${C.line};border-left:3px solid ${C.teal};border-radius:4px;">
+<tr><td style="padding:14px 16px;">${label('Please do not reply', C.tealInk, 'dx-soft')}<div class="dx-soft" style="margin-top:6px;font:400 13px/1.6 ${BODY};color:${C.graphite};">${esc(p.noReply)}</div></td></tr>
+</table>
+</td></tr>
 
 <tr><td class="dx-pad dx-foot" style="background:${C.paper};border-top:1px solid ${C.line};padding:20px 36px 22px;border-radius:0 0 6px 6px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -173,6 +191,7 @@ ${label('Your one-time code', C.tealInk, 'dx-soft')}
       fromText: 'shared these files with you',
       flowTo: 'You',
       main,
+      noReply: noReplyText(m.sender),
       note: '<b class="dx-ink" style="color:#132b2e;">Direct from our office.</b> Your files stay on our own server and are never uploaded to a file-sharing service. Encrypted in transit.<br><br>Did not ask for this code? Ignore this e-mail: nothing can be downloaded without it. Please do not forward it.'
     },
     now.getFullYear()
@@ -195,6 +214,7 @@ export function testMailHtml(from, now = new Date()) {
       from: '',
       flowTo: 'Your clients',
       main,
+      noReply: noReplyText(''),
       note: 'Nothing else to do. If this e-mail landed in spam or junk, mark it as not spam so codes reach the inbox.'
     },
     now.getFullYear()

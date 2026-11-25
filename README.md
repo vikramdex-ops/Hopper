@@ -86,6 +86,8 @@ the coffee is ready, and never wonder whether a copy over the network really fin
   with **Send test e-mail** ([guide](docs/DEXTERITY-SHARE-IT.md#e-mail-codes)).
 - **2.10.2:** the code e-mail clients receive is designed in the company brand (logo, title panel,
   large code, what happens next), with a plain-text and a dark-mode version.
+- **2.10.3:** code e-mails tell clients not to reply to the shared address and to contact the person
+  who shared the files instead.
 
 ## What's new in 2.9
 

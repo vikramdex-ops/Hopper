@@ -4,6 +4,16 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.10.3] — 2026-11-25
+
+### Changed
+- **Code e-mails say not to reply.** Codes go out from a shared office address that nobody reads, so
+  the code e-mail (and the test e-mail) now ends with a *Please do not reply* notice: it was sent
+  from an address that is not monitored, and questions about the files go to the person who shared
+  them, by name. The plain-text version says the same.
+- Code e-mails ask Outlook and Exchange not to send out-of-office or read-receipt replies, so the
+  shared mailbox does not fill up with automatic answers.
+
 ## [2.10.2] — 2026-11-25
 
 ### Changed
