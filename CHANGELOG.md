@@ -4,6 +4,14 @@ All notable changes to Hopper (formerly Xplorer² Modern) are documented here. T
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.10.1] — 2026-11-25
+
+### Fixed
+- **Zoho Mail settings for e-mail codes.** The hint in *Set up Dexterity Share → Advanced → E-mail
+  codes* named `smtp.zoho.in`, which is only for personal Zoho accounts. A mailbox on your own domain
+  sends through **`smtppro.zoho.in`** (465, SSL) with an app password. The IT guide and the example
+  server configuration are corrected too, with a note to keep IMAP access on in Zoho Mail.
+
 ## [2.10.0] — 2026-11-25
 
 ### Added

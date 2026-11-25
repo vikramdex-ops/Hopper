@@ -10,7 +10,7 @@
     "staff": { "enabled": true, "maxGB": 5, "chunkMB": 16, "defaultDays": 7 }
   },
   "mail": {
-    "host": "smtp.zoho.in",
+    "host": "smtppro.zoho.in",
     "port": 465,
     "secure": "tls",
     "user": "share@example.com",

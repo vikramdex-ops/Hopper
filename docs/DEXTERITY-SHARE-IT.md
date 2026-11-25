@@ -254,8 +254,13 @@ stops the service at start with a message saying so.
 | Provider | host | port | secure | password |
 |---|---|---|---|---|
 | Gmail / Google Workspace | `smtp.gmail.com` | 465 | `tls` | an app password (2-step verification on) |
-| Zoho Mail (India) | `smtp.zoho.in` | 465 | `tls` | the account password or an app password |
+| Zoho Mail (India), own domain | `smtppro.zoho.in` | 465 | `tls` | an app password (Zoho Accounts → Security → App Passwords) |
+| Zoho Mail (India), personal `@zohomail.in` | `smtp.zoho.in` | 465 | `tls` | an app password |
 | Microsoft 365 | `smtp.office365.com` | 587 | `starttls` | SMTP AUTH must be allowed for the mailbox |
+
+Zoho: `smtppro.zoho.in` is for any mailbox on your own domain (check the domain's MX records: `mx.zoho.in`
+means Zoho India). In Zoho Mail → Settings → Mail Accounts, keep **IMAP Access** on, or Zoho can refuse
+the sign-in with `535`. Zoho's free plan may not allow sending from other programs at all.
 
 Use a dedicated mailbox (for example a "share@" address): the sender address must be one the
 account may send as, or the provider rejects the mail and the client sees "We couldn't send the

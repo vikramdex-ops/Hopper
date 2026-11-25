@@ -332,7 +332,7 @@
   {#if mailOpen && mail}
     <div class="adv">
       <div class="caption">For links limited to named e-mail addresses: the server e-mails each client a one-time code from this account. Leave the server empty to switch e-mail codes off.</div>
-      <div class="caption how">Gmail / Google Workspace: smtp.gmail.com, 465 SSL, an app password. Zoho Mail: smtp.zoho.in, 465 SSL.</div>
+      <div class="caption how">Gmail / Google Workspace: smtp.gmail.com, 465 SSL, an app password. Zoho Mail with your own domain: smtppro.zoho.in, 465 SSL, an app password (smtp.zoho.in is only for personal @zohomail.in accounts).</div>
       {#if errors.mail}<div class="err">{errors.mail}</div>{/if}
       <div class="grid">
         <label class="field"><span>SMTP server</span>
